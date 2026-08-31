@@ -1,0 +1,97 @@
+appId: app.alcode.editor
+productName: Alcode Editor
+copyright: Copyright © 2026 Alcode
+
+directories:
+  output: release
+  buildResources: build
+
+files:
+  - out/**
+  - build/icon.png
+  - package.json
+  - '!**/*.map'
+
+asar: true
+compression: maximum
+electronLanguages:
+  - en-US
+  - ar
+
+fileAssociations:
+  - ext: pdf
+    name: PDF Document
+    description: PDF document
+    role: Editor
+    icon: build/icon.ico
+  - ext: docx
+    name: Word Document
+    description: Microsoft Word document
+    role: Editor
+    icon: build/icon.ico
+
+win:
+  icon: build/icon.ico
+  artifactName: Alcode-Editor-${version}-${arch}-Setup.${ext}
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: portable
+      arch: [x64]
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowElevation: true
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Alcode Editor
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
+  deleteAppDataOnUninstall: false
+  displayLanguageSelector: true
+  installerLanguages:
+    - en_US
+    - ar_SA
+
+portable:
+  artifactName: Alcode-Editor-${version}-Portable.${ext}
+
+mac:
+  icon: build/icon.png
+  category: public.app-category.productivity
+  darkModeSupport: true
+  artifactName: Alcode-Editor-${version}-${arch}.${ext}
+  hardenedRuntime: false
+  gatekeeperAssess: false
+  identity: null
+  target:
+    - target: dmg
+      arch: [arm64, x64]
+    - target: zip
+      arch: [arm64, x64]
+  extendInfo:
+    NSHumanReadableCopyright: Copyright © 2026 Alcode
+    LSMinimumSystemVersion: '11.0'
+
+dmg:
+  title: Alcode Editor ${version}
+  artifactName: Alcode-Editor-${version}-${arch}.${ext}
+  contents:
+    - x: 140
+      y: 200
+      type: file
+    - x: 400
+      y: 200
+      type: link
+      path: /Applications
+
+linux:
+  icon: build/icon.png
+  category: Office
+  artifactName: Alcode-Editor-${version}-${arch}.${ext}
+  target:
+    - AppImage
+
+publish: null

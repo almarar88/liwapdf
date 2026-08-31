@@ -1,0 +1,48 @@
+{
+  "name": "alcode-editor",
+  "productName": "Alcode Editor",
+  "version": "1.0.0",
+  "description": "Alcode Editor — استوديو احترافي لتحرير وتحويل ملفات PDF و Word، لويندوز وماك",
+  "author": {
+    "name": "Alcode",
+    "email": "support@alcode.app"
+  },
+  "homepage": "https://alcode.app",
+  "license": "MIT",
+  "main": "./out/main/index.js",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "start": "electron-vite preview",
+    "build": "npm run typecheck && electron-vite build",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "dist:win": "npm run build && electron-builder --win --publish never",
+    "postinstall": "electron-builder install-app-deps",
+    "dist:mac": "npm run build && electron-builder --mac --publish never",
+    "dist:linux": "npm run build && electron-builder --linux --publish never",
+    "dist:all": "npm run build && electron-builder --win --mac --publish never"
+  },
+  "devDependencies": {
+    "@cantoo/pdf-lib": "^2.9.1",
+    "@types/node": "^22.10.5",
+    "@types/react": "^19.0.7",
+    "@types/react-dom": "^19.0.3",
+    "@vitejs/plugin-react": "^5.0.0",
+    "docx": "^9.7.1",
+    "electron": "^33.4.11",
+    "electron-builder": "^26.15.3",
+    "electron-vite": "^3.1.0",
+    "framer-motion": "^12.0.0",
+    "jszip": "^3.10.1",
+    "lucide-react": "^0.469.0",
+    "mammoth": "^1.12.2",
+    "pdfjs-dist": "^4.10.38",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "typescript": "^5.7.3",
+    "vite": "^6.0.7",
+    "zustand": "^5.0.3"
+  },
+  "dependencies": {}
+}
