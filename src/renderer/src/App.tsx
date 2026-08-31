@@ -24,7 +24,7 @@ import { HomeView } from './views/HomeView'
 import { ViewerView } from './views/ViewerView'
 import { OrganizeView } from './views/OrganizeView'
 import { AnnotateView } from './views/AnnotateView'
-import { WordView } from './views/WordView'
+import { EditorView } from './views/EditorView'
 import { ConvertView } from './views/ConvertView'
 import { ToolsView } from './views/ToolsView'
 import { SettingsView } from './views/SettingsView'
@@ -109,7 +109,7 @@ export default function App(): React.JSX.Element {
       { id: 'nav-viewer', label: t('nav.viewer'), icon: <FileText size={15} />, run: () => navigate('viewer') },
       { id: 'nav-organize', label: t('nav.organize'), icon: <LayoutGrid size={15} />, run: () => navigate('organize') },
       { id: 'nav-annotate', label: t('nav.annotate'), icon: <PenLine size={15} />, run: () => navigate('annotate') },
-      { id: 'nav-word', label: t('nav.word'), icon: <FileText size={15} />, run: () => navigate('word') },
+      { id: 'nav-editor', label: t('nav.editor'), icon: <FileText size={15} />, run: () => navigate('editor') },
       { id: 'nav-convert', label: t('nav.convert'), icon: <Repeat2 size={15} />, run: () => navigate('convert') },
       { id: 'nav-tools', label: t('nav.tools'), icon: <Wrench size={15} />, run: () => navigate('tools') },
       { id: 'nav-settings', label: t('nav.settings'), icon: <SettingsIcon size={15} />, run: () => navigate('settings') }
@@ -140,7 +140,7 @@ export default function App(): React.JSX.Element {
     viewer: <ViewerView />,
     organize: <OrganizeView />,
     annotate: <AnnotateView />,
-    word: <WordView />,
+    editor: <EditorView />,
     convert: <ConvertView />,
     tools: <ToolsView />,
     settings: <SettingsView />

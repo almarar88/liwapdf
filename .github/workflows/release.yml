@@ -9,7 +9,7 @@ on:
       tag:
         description: 'Release tag to publish (created if it does not exist)'
         required: true
-        default: 'v1.0.0'
+        default: 'v1.1.0'
 
 permissions:
   contents: write
@@ -90,10 +90,10 @@ jobs:
 
             | النظام | الملف |
             | --- | --- |
-            | Windows 10/11 (مثبّت) | `Alcode-Editor-1.0.0-x64-Setup.exe` |
-            | Windows (محمول) | `Alcode-Editor-1.0.0-Portable.exe` |
-            | macOS Apple Silicon | `Alcode-Editor-1.0.0-arm64.dmg` |
-            | macOS Intel | `Alcode-Editor-1.0.0-x64.dmg` |
+            | Windows 10/11 (مثبّت) | `Alcode-Editor-1.1.0-x64-Setup.exe` |
+            | Windows (محمول) | `Alcode-Editor-1.1.0-Portable.exe` |
+            | macOS Apple Silicon | `Alcode-Editor-1.1.0-arm64.dmg` |
+            | macOS Intel | `Alcode-Editor-1.1.0-x64.dmg` |
 
             > النسخ غير موقّعة رقمياً. على ويندوز اختر **More info → Run anyway**،
             > وعلى macOS افتح التطبيق بزر الفأرة الأيمن ثم **Open**.

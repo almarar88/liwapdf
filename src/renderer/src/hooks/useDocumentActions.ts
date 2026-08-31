@@ -1,19 +1,33 @@
 import { useCallback } from 'react'
-import { useApp } from '../store/app'
-import { FILTERS, pickFiles, saveBytes, bytesToText } from '../lib/files'
-import { docxToHtml } from '../lib/docx/read'
+import { useApp, type EditorDoc } from '../store/app'
+import { FILTERS, pickFiles, saveBytes, type FileFilter } from '../lib/files'
+import { readDocument, sanitize } from '../lib/documents/read'
+import { exportDocument, canSaveInPlace } from '../lib/documents/write'
+import { formatInfo, type DocumentFormat, ALL_READABLE_EXTENSIONS } from '../lib/documents/formats'
 import { markdownToHtml } from '../lib/markdown'
-import { htmlToDocx } from '../lib/docx/write'
-import { htmlToPdf } from '../lib/convert'
-import { extensionOf, needsComplexShaping, stripExtension } from '../lib/format'
+import { stripExtension } from '../lib/format'
 
 export interface DocumentActions {
   openDialog: () => Promise<void>
   openPaths: (paths: string[]) => Promise<void>
   saveActive: () => Promise<void>
   savePdfAs: () => Promise<void>
-  saveWordAs: (format: 'docx' | 'pdf' | 'html' | 'txt') => Promise<void>
+  exportEditorAs: (target: DocumentFormat) => Promise<void>
+  newDocument: (kind: 'rich' | 'sheet' | 'code', template?: string) => void
 }
+
+/** Every readable extension, offered as one filter plus per-family filters. */
+export const OPEN_FILTERS: FileFilter[] = [
+  { name: 'All supported documents', extensions: [...ALL_READABLE_EXTENSIONS] },
+  { name: 'PDF', extensions: ['pdf'] },
+  { name: 'Word', extensions: ['docx', 'doc', 'rtf', 'odt'] },
+  { name: 'Spreadsheets', extensions: ['xlsx', 'xls', 'ods', 'csv', 'tsv'] },
+  { name: 'Presentations', extensions: ['pptx', 'ppsx'] },
+  { name: 'Text & code', extensions: ['txt', 'md', 'html', 'json', 'xml', 'yml', 'csv', 'log'] },
+  { name: 'Books', extensions: ['epub'] },
+  { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'] },
+  { name: 'All files', extensions: ['*'] }
+]
 
 /**
  * The single place that knows how to turn a file on disk into the right editor,
@@ -25,56 +39,43 @@ export function useDocumentActions(): DocumentActions {
   const openBytes = useCallback(
     async (name: string, bytes: Uint8Array, path: string | null): Promise<void> => {
       const state = store.getState()
-      const extension = extensionOf(name)
+      state.setBusy({ label: state.t('msg.loading'), progress: null })
 
-      if (extension === 'pdf') {
-        const opened = await state.openPdfBytes(name, bytes, path)
-        if (opened) state.navigate('viewer')
-        return
-      }
+      try {
+        const loaded = await readDocument(name, bytes, path)
 
-      if (extension === 'docx' || extension === 'doc') {
-        state.setBusy({ label: state.t('msg.loading'), progress: null })
-        try {
-          const { html } = await docxToHtml(bytes)
-          state.setWordDoc({ name, path, html, dirty: false })
-          state.navigate('word')
-        } finally {
-          state.setBusy(null)
+        if (loaded.format === 'pdf') {
+          const opened = await store.getState().openPdfBytes(name, bytes, path)
+          if (opened) store.getState().navigate('viewer')
+          return
         }
-        return
-      }
 
-      if (['txt', 'md', 'markdown', 'html', 'htm'].includes(extension)) {
-        const text = bytesToText(bytes)
-        const html =
-          extension === 'html' || extension === 'htm'
-            ? extractBody(text)
-            : extension === 'txt'
-              ? text
-                  .split(/\n{2,}/)
-                  .map((block) => `<p>${block.replace(/\n/g, '<br />')}</p>`)
-                  .join('')
-              : markdownToHtml(text)
-        state.setWordDoc({ name, path, html, dirty: false })
-        state.navigate('word')
-        return
-      }
+        store.getState().openEditorDocument(loaded)
+        store.getState().navigate('editor')
 
-      state.notify({ kind: 'error', title: state.t('msg.unsupported'), message: name })
+        for (const warning of loaded.warnings) {
+          const message = WARNING_MESSAGES[warning]
+          if (message) {
+            store.getState().notify({ kind: 'info', title: store.getState().t(message) })
+          }
+        }
+      } catch (error) {
+        store.getState().reportError(error)
+      } finally {
+        store.getState().setBusy(null)
+      }
     },
     [store]
   )
 
   const openPaths = useCallback(
     async (paths: string[]): Promise<void> => {
-      const state = store.getState()
       for (const path of paths) {
         try {
           const file = await window.alcode.fs.read(path)
           await openBytes(file.name, file.data, file.path)
         } catch (error) {
-          state.reportError(error)
+          store.getState().reportError(error)
         }
       }
       await store.getState().refreshRecents()
@@ -83,7 +84,7 @@ export function useDocumentActions(): DocumentActions {
   )
 
   const openDialog = useCallback(async (): Promise<void> => {
-    const files = await pickFiles(FILTERS.documents, true)
+    const files = await pickFiles(OPEN_FILTERS, true)
     for (const file of files) {
       await openBytes(file.name, file.data, file.path)
     }
@@ -100,84 +101,31 @@ export function useDocumentActions(): DocumentActions {
     const outcome = await saveBytes(doc.bytes, doc.name, FILTERS.pdf)
     if (outcome.saved && outcome.path) {
       state.markSaved(outcome.path)
-      state.notify({
-        kind: 'success',
-        title: state.t('msg.saved'),
-        message: outcome.path,
-        action: {
-          label: state.t('action.reveal'),
-          run: () => void window.alcode.shell.reveal(outcome.path!)
-        }
-      })
+      announceSaved(outcome.path)
     }
   }, [store])
 
-  const saveWordAs = useCallback(
-    async (format: 'docx' | 'pdf' | 'html' | 'txt'): Promise<void> => {
+  const exportEditorAs = useCallback(
+    async (target: DocumentFormat): Promise<void> => {
       const state = store.getState()
-      const doc = state.wordDoc
+      const doc = state.editorDoc
       if (!doc) {
         state.notify({ kind: 'info', title: state.t('msg.noDocument') })
         return
       }
-      const base = stripExtension(doc.name)
-      const rightToLeft = state.settings.language === 'ar' || needsComplexShaping(doc.html.slice(0, 3000))
 
       state.setBusy({ label: state.t('msg.working'), progress: null })
       try {
-        if (format === 'docx') {
-          const bytes = await htmlToDocx(doc.html, { title: base, rightToLeft })
-          const outcome = await saveBytes(bytes, `${base}.docx`, FILTERS.word)
-          if (outcome.saved && outcome.path) {
-            state.markWordSaved(outcome.path, `${base}.docx`)
-            announce(outcome.path)
-          }
-        } else if (format === 'pdf') {
-          const bytes = await htmlToPdf(doc.html, { rightToLeft, title: base, pageSize: 'A4' })
-          const outcome = await saveBytes(bytes, `${base}.pdf`, FILTERS.pdf)
-          if (outcome.saved && outcome.path) announce(outcome.path)
-        } else if (format === 'html') {
-          const outcome = await window.alcode.dialog.save({
-            defaultName: `${base}.html`,
-            filters: FILTERS.html as unknown as { name: string; extensions: string[] }[]
-          })
-          if (!outcome.canceled && outcome.path) {
-            await window.alcode.fs.writeText(
-              outcome.path,
-              `<!doctype html><html lang="${rightToLeft ? 'ar' : 'en'}" dir="${
-                rightToLeft ? 'rtl' : 'ltr'
-              }"><meta charset="utf-8"><title>${base}</title><body>${doc.html}</body></html>`
-            )
-            announce(outcome.path)
-          }
-        } else {
-          const container = document.createElement('div')
-          container.innerHTML = doc.html
-          const outcome = await window.alcode.dialog.save({
-            defaultName: `${base}.txt`,
-            filters: FILTERS.text as unknown as { name: string; extensions: string[] }[]
-          })
-          if (!outcome.canceled && outcome.path) {
-            await window.alcode.fs.writeText(outcome.path, container.innerText)
-            announce(outcome.path)
-          }
-        }
+        const result = await exportDocument(requestFor(doc, target))
+        const info = formatInfo(target)
+        const outcome = await saveBytes(result.bytes, result.fileName, [
+          { name: info?.label ?? target.toUpperCase(), extensions: [target === 'code' ? '*' : target] }
+        ])
+        if (outcome.saved && outcome.path) announceSaved(outcome.path)
       } catch (error) {
-        state.reportError(error)
+        store.getState().reportError(error)
       } finally {
-        state.setBusy(null)
-      }
-
-      function announce(path: string): void {
-        state.notify({
-          kind: 'success',
-          title: state.t('msg.saved'),
-          message: path,
-          action: {
-            label: state.t('action.reveal'),
-            run: () => void window.alcode.shell.reveal(path)
-          }
-        })
+        store.getState().setBusy(null)
       }
     },
     [store]
@@ -185,25 +133,30 @@ export function useDocumentActions(): DocumentActions {
 
   const saveActive = useCallback(async (): Promise<void> => {
     const state = store.getState()
-    if (state.route === 'word' && state.wordDoc) {
-      const doc = state.wordDoc
-      if (doc.path && doc.path.toLowerCase().endsWith('.docx')) {
-        const rightToLeft =
-          state.settings.language === 'ar' || needsComplexShaping(doc.html.slice(0, 3000))
+
+    if (state.route === 'editor' && state.editorDoc) {
+      const doc = state.editorDoc
+      // Save in place only when we can write the format we opened.
+      if (doc.source.path && canSaveInPlace(doc.source)) {
         state.setBusy({ label: state.t('msg.working'), progress: null })
         try {
-          const bytes = await htmlToDocx(doc.html, { title: stripExtension(doc.name), rightToLeft })
-          await window.alcode.fs.write(doc.path, bytes)
-          state.markWordSaved(doc.path)
-          state.notify({ kind: 'success', title: state.t('msg.saved'), message: doc.path })
+          const result = await exportDocument(requestFor(doc, doc.source.format))
+          await window.alcode.fs.write(doc.source.path, result.bytes)
+          store.getState().markEditorSaved(doc.source.path)
+          store.getState().notify({
+            kind: 'success',
+            title: store.getState().t('msg.saved'),
+            message: doc.source.path
+          })
         } catch (error) {
-          state.reportError(error)
+          store.getState().reportError(error)
         } finally {
-          state.setBusy(null)
+          store.getState().setBusy(null)
         }
         return
       }
-      await saveWordAs('docx')
+      // Read-only source formats fall back to the closest writable one.
+      await exportEditorAs(fallbackTarget(doc))
       return
     }
 
@@ -219,12 +172,100 @@ export function useDocumentActions(): DocumentActions {
       return
     }
     await savePdfAs()
-  }, [savePdfAs, saveWordAs, store])
+  }, [exportEditorAs, savePdfAs, store])
 
-  return { openDialog, openPaths, saveActive, savePdfAs, saveWordAs }
+  const newDocument = useCallback(
+    (kind: 'rich' | 'sheet' | 'code', template?: string): void => {
+      const state = store.getState()
+      const rightToLeft = state.settings.language === 'ar'
+
+      if (kind === 'sheet') {
+        state.openEditorDocument({
+          name: 'workbook.xlsx',
+          path: null,
+          format: 'xlsx',
+          kind: 'sheet',
+          sheets: [
+            {
+              name: 'Sheet1',
+              rows: Array.from({ length: 24 }, () => new Array(8).fill(''))
+            }
+          ],
+          direction: rightToLeft ? 'rtl' : 'ltr',
+          warnings: [],
+          originalBytes: new Uint8Array()
+        })
+      } else if (kind === 'code') {
+        state.openEditorDocument({
+          name: 'untitled.txt',
+          path: null,
+          format: 'txt',
+          kind: 'code',
+          text: '',
+          direction: 'ltr',
+          warnings: [],
+          originalBytes: new Uint8Array()
+        })
+      } else {
+        state.openEditorDocument({
+          name: 'document.docx',
+          path: null,
+          format: 'docx',
+          kind: 'rich',
+          html: sanitize(template ? markdownToHtml(template) : blankRichTemplate(rightToLeft)),
+          direction: rightToLeft ? 'rtl' : 'ltr',
+          warnings: [],
+          originalBytes: new Uint8Array()
+        })
+      }
+      state.navigate('editor')
+    },
+    [store]
+  )
+
+  return { openDialog, openPaths, saveActive, savePdfAs, exportEditorAs, newDocument }
 }
 
-function extractBody(html: string): string {
-  const match = /<body[^>]*>([\s\S]*?)<\/body>/i.exec(html)
-  return match ? match[1] : html
+function requestFor(doc: EditorDoc, target: DocumentFormat): Parameters<typeof exportDocument>[0] {
+  return {
+    target,
+    name: doc.source.name,
+    rightToLeft: doc.direction === 'rtl',
+    html: doc.source.kind === 'rich' || doc.source.kind === 'slides' ? doc.html : undefined,
+    sheets: doc.source.kind === 'sheet' ? doc.sheets : undefined,
+    text: doc.source.kind === 'code' ? doc.text : undefined
+  }
+}
+
+/** The best writable format for a document whose own format is read-only. */
+function fallbackTarget(doc: EditorDoc): DocumentFormat {
+  if (doc.source.kind === 'sheet') return 'xlsx'
+  if (doc.source.kind === 'code') return 'txt'
+  return 'docx'
+}
+
+function announceSaved(path: string): void {
+  const state = useApp.getState()
+  state.notify({
+    kind: 'success',
+    title: state.t('msg.saved'),
+    message: path,
+    action: { label: state.t('action.reveal'), run: () => void window.alcode.shell.reveal(path) }
+  })
+}
+
+const WARNING_MESSAGES: Record<string, Parameters<ReturnType<typeof useApp.getState>['t']>[0]> = {
+  'doc-text-only': 'msg.legacyDocNote',
+  'pptx-text-only': 'msg.slidesTextNote',
+  'unknown-format-as-text': 'msg.openedAsText'
+}
+
+function blankRichTemplate(rightToLeft: boolean): string {
+  return rightToLeft
+    ? '<h1>عنوان المستند</h1><p>ابدأ الكتابة هنا…</p>'
+    : '<h1>Document title</h1><p>Start writing here…</p>'
+}
+
+export function documentBaseName(name: string): string {
+  return stripExtension(name)
 }

@@ -2,6 +2,8 @@ import { create } from 'zustand'
 import type { AppSettings, RecentFile } from '@shared/types'
 import { DEFAULT_SETTINGS } from '@shared/types'
 import { openForRender, PasswordRequiredError, type PDFDocumentProxy } from '../lib/pdf/pdfjs'
+import type { LoadedDocument } from '../lib/documents/read'
+import type { SheetData } from '../lib/documents/sheets'
 import { translate, type TranslationKey } from '../i18n'
 import { extensionOf, uid } from '../lib/format'
 
@@ -10,7 +12,7 @@ export type Route =
   | 'viewer'
   | 'organize'
   | 'annotate'
-  | 'word'
+  | 'editor'
   | 'convert'
   | 'tools'
   | 'settings'
@@ -35,10 +37,18 @@ export interface PdfDoc {
   version: number
 }
 
-export interface WordDoc {
-  name: string
-  path: string | null
+/**
+ * The live editing state for any non-PDF document. `source` is what came off
+ * disk; the html/sheets/text fields are what the user has since edited, and
+ * only the one matching `source.kind` is meaningful.
+ */
+export interface EditorDoc {
+  source: LoadedDocument
   html: string
+  sheets: SheetData[]
+  text: string
+  activeSheet: number
+  direction: 'rtl' | 'ltr'
   dirty: boolean
 }
 
@@ -65,7 +75,7 @@ interface AppState {
   selectedPages: number[]
   currentPage: number
 
-  wordDoc: WordDoc | null
+  editorDoc: EditorDoc | null
 
   /** Set when a file needs a password before it can be opened. */
   passwordPrompt: { name: string; bytes: Uint8Array; path: string | null; wrong: boolean } | null
@@ -106,9 +116,14 @@ interface AppActions {
   resolvePassword: (password: string) => Promise<void>
   cancelPassword: () => void
 
-  setWordDoc: (doc: WordDoc | null) => void
-  updateWordHtml: (html: string) => void
-  markWordSaved: (path: string, name?: string) => void
+  openEditorDocument: (loaded: LoadedDocument) => void
+  updateEditorHtml: (html: string) => void
+  updateEditorSheets: (sheets: SheetData[]) => void
+  updateEditorText: (text: string) => void
+  setActiveSheet: (index: number) => void
+  setEditorDirection: (direction: 'rtl' | 'ltr') => void
+  closeEditor: () => void
+  markEditorSaved: (path: string, name?: string) => void
 }
 
 export const useApp = create<AppState & AppActions>((set, get) => ({
@@ -127,7 +142,7 @@ export const useApp = create<AppState & AppActions>((set, get) => ({
   selectedPages: [],
   currentPage: 1,
 
-  wordDoc: null,
+  editorDoc: null,
   passwordPrompt: null,
 
   t: (key, vars) => translate(get().settings.language, key, vars),
@@ -336,20 +351,64 @@ export const useApp = create<AppState & AppActions>((set, get) => ({
     set({ passwordPrompt: null })
   },
 
-  setWordDoc(doc) {
-    set({ wordDoc: doc })
+  openEditorDocument(loaded) {
+    set({
+      editorDoc: {
+        source: loaded,
+        html: loaded.html ?? '',
+        sheets: loaded.sheets ?? [],
+        text: loaded.text ?? '',
+        activeSheet: 0,
+        direction: loaded.direction,
+        dirty: false
+      }
+    })
   },
 
-  updateWordHtml(html) {
-    const doc = get().wordDoc
-    if (!doc) return
-    set({ wordDoc: { ...doc, html, dirty: true } })
+  updateEditorHtml(html) {
+    const doc = get().editorDoc
+    if (!doc || doc.html === html) return
+    set({ editorDoc: { ...doc, html, dirty: true } })
   },
 
-  markWordSaved(path, name) {
-    const doc = get().wordDoc
+  updateEditorSheets(sheets) {
+    const doc = get().editorDoc
     if (!doc) return
-    set({ wordDoc: { ...doc, path, name: name ?? doc.name, dirty: false } })
+    set({ editorDoc: { ...doc, sheets, dirty: true } })
+  },
+
+  updateEditorText(text) {
+    const doc = get().editorDoc
+    if (!doc || doc.text === text) return
+    set({ editorDoc: { ...doc, text, dirty: true } })
+  },
+
+  setActiveSheet(index) {
+    const doc = get().editorDoc
+    if (!doc) return
+    set({ editorDoc: { ...doc, activeSheet: index } })
+  },
+
+  setEditorDirection(direction) {
+    const doc = get().editorDoc
+    if (!doc) return
+    set({ editorDoc: { ...doc, direction, dirty: true } })
+  },
+
+  closeEditor() {
+    set({ editorDoc: null })
+  },
+
+  markEditorSaved(path, name) {
+    const doc = get().editorDoc
+    if (!doc) return
+    set({
+      editorDoc: {
+        ...doc,
+        dirty: false,
+        source: { ...doc.source, path, name: name ?? doc.source.name }
+      }
+    })
     void get().refreshRecents()
   }
 }))

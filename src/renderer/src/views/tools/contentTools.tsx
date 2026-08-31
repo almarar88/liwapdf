@@ -3,6 +3,7 @@ import { FileDown, FileText, Image as ImageIcon, Paperclip } from 'lucide-react'
 import { useApp } from '../../store/app'
 import {
   Button,
+  Bytes,
   Card,
   Checkbox,
   ColorInput,
@@ -14,7 +15,7 @@ import {
   TextInput
 } from '../../components/ui'
 import { FILTERS, pickFiles, pickOneFile, saveBatch, saveBytes, normalizeImage } from '../../lib/files'
-import { formatBytes, stripExtension } from '../../lib/format'
+import { stripExtension } from '../../lib/format'
 import * as ops from '../../lib/pdf/ops'
 import { extractImages, readOutline, type OutlineNode } from '../../lib/pdf/render'
 import { diffLines, documentTextLines } from '../../lib/convert'
@@ -669,7 +670,7 @@ export function AttachmentsPanel({ onClose }: ToolPanelProps): React.JSX.Element
             <div className="list-row" key={`${file.name}-${index}`}>
               <div className="grow">
                 <div className="title">{file.name}</div>
-                <div className="sub">{formatBytes(file.size)}</div>
+                <div className="sub"><Bytes value={file.size} /></div>
               </div>
             </div>
           ))}

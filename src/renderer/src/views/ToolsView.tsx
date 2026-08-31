@@ -14,6 +14,7 @@ import {
   ResizePanel,
   CropPanel
 } from './tools/pageTools'
+import { CompressAnyPanel } from './tools/compressTool'
 import {
   CompressPanel,
   ProtectPanel,
@@ -45,6 +46,7 @@ const PANELS: Record<ToolId, (props: { onClose: () => void }) => React.JSX.Eleme
   resize: ResizePanel,
   crop: CropPanel,
   compress: CompressPanel,
+  compressAny: CompressAnyPanel,
   protect: ProtectPanel,
   unlock: UnlockPanel,
   optimize: OptimizePanel,

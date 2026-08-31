@@ -14,12 +14,14 @@ import {
   Trash2,
   Sparkles,
   WifiOff,
-  Lock
+  Lock,
+  FileSpreadsheet,
+  Minimize2
 } from 'lucide-react'
 import { useApp } from '../store/app'
 import { useDocumentActions } from '../hooks/useDocumentActions'
-import { Button, Card, Dropzone, Empty, useSpotlight } from '../components/ui'
-import { formatBytes, formatRelativeTime } from '../lib/format'
+import { Button, Bytes, Card, Dropzone, Empty, useSpotlight } from '../components/ui'
+import { formatRelativeTime } from '../lib/format'
 import { TOOL_COUNT } from './toolRegistry'
 
 export function HomeView(): React.JSX.Element {
@@ -33,13 +35,15 @@ export function HomeView(): React.JSX.Element {
 
   const quick = [
     { icon: <FileText size={19} />, label: t('action.openPdf'), run: () => void openDialog() },
-    { icon: <FileType2 size={19} />, label: t('word.newDoc'), run: () => navigate('word') },
+    { icon: <FileType2 size={19} />, label: t('editor.new.rich'), run: () => navigate('editor') },
     { icon: <Combine size={19} />, label: t('tool.merge'), run: () => navigate('tools') },
     { icon: <Scissors size={19} />, label: t('tool.split'), run: () => navigate('tools') },
     { icon: <Shrink size={19} />, label: t('tool.compress'), run: () => navigate('tools') },
     { icon: <Images size={19} />, label: t('convert.pdfToImages'), run: () => navigate('convert') },
     { icon: <Droplets size={19} />, label: t('tool.watermark'), run: () => navigate('tools') },
-    { icon: <ShieldCheck size={19} />, label: t('tool.protect'), run: () => navigate('tools') }
+    { icon: <ShieldCheck size={19} />, label: t('tool.protect'), run: () => navigate('tools') },
+    { icon: <FileSpreadsheet size={19} />, label: t('editor.new.sheet'), run: () => navigate('editor') },
+    { icon: <Minimize2 size={19} />, label: t('tool.compressAny'), run: () => navigate('tools') }
   ]
 
   return (
@@ -163,7 +167,7 @@ export function HomeView(): React.JSX.Element {
                 <div className="grow">
                   <div className="title">{file.name}</div>
                   <div className="sub truncate" title={file.path}>
-                    {formatBytes(file.size)} · {formatRelativeTime(file.openedAt, language)}
+                    <Bytes value={file.size} /> · {formatRelativeTime(file.openedAt, language)}
                   </div>
                 </div>
                 <Button size="sm" onClick={() => void openPaths([file.path])}>

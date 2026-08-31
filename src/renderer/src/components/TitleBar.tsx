@@ -12,7 +12,7 @@ export function TitleBar({
 }): React.JSX.Element {
   const [maximized, setMaximized] = useState(false)
   const doc = useApp((state) => state.doc)
-  const wordDoc = useApp((state) => state.wordDoc)
+  const editorDoc = useApp((state) => state.editorDoc)
   const undo = useApp((state) => state.undo)
   const redo = useApp((state) => state.redo)
   const undoDepth = useApp((state) => state.undoStack.length)
@@ -27,9 +27,9 @@ export function TitleBar({
     return window.alcode.window.onState((state) => setMaximized(state.maximized))
   }, [])
 
-  const active = doc ?? wordDoc
-  const activeName = doc?.name ?? wordDoc?.name
-  const dirty = Boolean(active && 'dirty' in active && active.dirty)
+  const activeName = doc?.name ?? editorDoc?.source.name
+  const dirty = Boolean(doc?.dirty || editorDoc?.dirty)
+  const hasDocument = Boolean(doc || editorDoc)
 
   return (
     <div className={`titlebar${isMac ? ' mac' : ''}`}>
@@ -66,7 +66,7 @@ export function TitleBar({
           variant="ghost"
           icon
           title={t('action.save')}
-          disabled={!active}
+          disabled={!hasDocument}
           onClick={onSave}
         >
           <Save size={15} />

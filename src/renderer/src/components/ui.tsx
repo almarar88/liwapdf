@@ -10,6 +10,7 @@ import {
 } from 'react'
 import { Check, X, AlertCircle, Info, CheckCircle2, Loader2 } from 'lucide-react'
 import { useApp } from '../store/app'
+import { formatBytes } from '../lib/format'
 
 /* ------------------------------------------------------------------ button */
 
@@ -540,6 +541,14 @@ export function Card({
       {children}
     </div>
   )
+}
+
+/**
+ * Renders a byte size as an isolated LTR run. Without this, "328 B" reorders
+ * to "B 328" inside the Arabic (RTL) interface.
+ */
+export function Bytes({ value }: { value: number }): React.JSX.Element {
+  return <span dir="ltr">{formatBytes(value)}</span>
 }
 
 /** Tracks the pointer so the tool tiles can light up under the cursor. */

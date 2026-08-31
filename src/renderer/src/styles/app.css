@@ -628,3 +628,108 @@ html[dir='rtl'] .toolbar .select { background-position: 8px 12px, 13px 12px; }
 .diff-line { padding: 2px 10px; border-radius: var(--r-xs); font-family: var(--font-mono); font-size: var(--text-sm); }
 .diff-line.add { background: color-mix(in srgb, var(--green) 16%, transparent); }
 .diff-line.del { background: color-mix(in srgb, var(--red) 16%, transparent); }
+
+/* ============================================================================
+   Universal document editor
+   ========================================================================== */
+
+.editor-body { display: flex; flex: 1; min-height: 0; }
+.editor-body.with-nav { display: grid; grid-template-columns: 232px 1fr; }
+.editor-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; flex: 1; }
+.editor-nav { padding: 12px 8px; }
+.editor-nav .nav-item { font-size: var(--text-sm); padding: 6px 10px; }
+
+.rich-shell, .code-shell, .sheet-shell {
+  display: flex; flex-direction: column; flex: 1; min-height: 0;
+}
+
+.toolbar.sub {
+  padding: 5px 14px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--hairline-soft);
+}
+
+.color-chip {
+  width: 28px; height: 28px; padding: 2px; flex: none; cursor: pointer;
+  border: 1px solid var(--hairline); border-radius: 6px; background: var(--surface-solid);
+}
+
+/* ------------------------------------------------------------ spreadsheet */
+
+.sheet-toolbar { flex-wrap: wrap; }
+.sheet-scroll { flex: 1; min-height: 0; overflow: auto; background: var(--surface-solid); }
+
+.sheet-grid { border-collapse: separate; border-spacing: 0; table-layout: fixed; }
+.sheet-grid th, .sheet-grid td {
+  border-inline-end: 1px solid var(--hairline-soft);
+  border-block-end: 1px solid var(--hairline-soft);
+  padding: 0;
+}
+.sheet-grid thead th, .sheet-grid .row-head {
+  position: sticky; z-index: 2;
+  background: var(--surface-sunken);
+  color: var(--fg-3);
+  font-size: var(--text-xs); font-weight: 600;
+  text-align: center; user-select: none; cursor: pointer;
+}
+.sheet-grid thead th { top: 0; height: 26px; min-width: 128px; }
+.sheet-grid .row-head { inset-inline-start: 0; width: 52px; min-width: 52px; z-index: 3; }
+.sheet-grid thead th.active, .sheet-grid .row-head.active { background: var(--accent-soft); color: var(--accent); }
+.sheet-grid .corner {
+  position: sticky; inset-inline-start: 0; top: 0; z-index: 4;
+  width: 52px; background: var(--surface-sunken);
+}
+.sheet-grid td { background: var(--surface-solid); }
+.sheet-grid td.selected { background: var(--accent-soft); }
+.sheet-grid input {
+  width: 100%; height: 30px; padding: 0 8px;
+  border: none; outline: none; background: transparent; color: var(--fg);
+  font: inherit;
+}
+.sheet-grid input.cursor {
+  box-shadow: inset 0 0 0 2px var(--accent);
+  border-radius: 2px;
+  background: var(--surface-solid);
+}
+
+.sheet-tabs {
+  display: flex; align-items: center; gap: 4px; flex-wrap: wrap;
+  padding: 5px 12px;
+  border-top: 1px solid var(--hairline-soft);
+  background: var(--sidebar);
+  font-size: var(--text-sm);
+}
+.sheet-tab {
+  padding: 4px 12px; border-radius: var(--r-sm);
+  color: var(--fg-2); font-size: var(--text-sm); font-weight: 550;
+  display: inline-flex; align-items: center; gap: 5px;
+  transition: background var(--dur-fast), color var(--dur-fast);
+}
+.sheet-tab:hover { background: var(--surface-2); color: var(--fg); }
+.sheet-tab.active { background: var(--accent-soft); color: var(--accent); }
+.sheet-tab.add { padding: 4px 9px; }
+
+/* ------------------------------------------------------------------- code */
+
+.code-body {
+  flex: 1; min-height: 0; display: flex;
+  background: var(--surface-solid);
+  font-family: var(--font-mono);
+  line-height: 1.6;
+}
+.code-gutter {
+  flex: none; overflow: hidden; padding: 14px 10px 14px 14px;
+  text-align: end; color: var(--fg-3);
+  background: var(--surface-sunken);
+  border-inline-end: 1px solid var(--hairline-soft);
+  user-select: none; direction: ltr;
+  font-variant-numeric: tabular-nums;
+}
+.code-area {
+  flex: 1; min-width: 0;
+  padding: 14px 16px;
+  border: none; outline: none; resize: none;
+  background: transparent; color: var(--fg);
+  font: inherit; line-height: inherit;
+  tab-size: 2;
+}

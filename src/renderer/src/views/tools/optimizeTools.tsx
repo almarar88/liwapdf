@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import { ShieldCheck } from 'lucide-react'
 import { useApp } from '../../store/app'
-import { Button, Card, Checkbox, Field, Select, Switch, TextInput } from '../../components/ui'
+import { Button, Bytes, Card, Checkbox, Field, Select, Switch, TextInput } from '../../components/ui'
 import { FILTERS, pickOneFile, saveBytes } from '../../lib/files'
-import { formatBytes, stripExtension } from '../../lib/format'
+import { formatBytes, ltr, stripExtension } from '../../lib/format'
 import * as ops from '../../lib/pdf/ops'
 import { compressPdf, type CompressionLevel } from '../../lib/pdf/compress'
 import { useRunner, type ToolPanelProps } from './shared'
@@ -43,7 +43,7 @@ export function CompressPanel({ onClose }: ToolPanelProps): React.JSX.Element {
       <Card style={{ background: 'var(--surface-2)' }}>
         <div className="row between">
           <span className="muted">{t('msg.sizeBefore')}</span>
-          <strong className="mono">{formatBytes(doc.bytes.byteLength)}</strong>
+          <strong className="mono"><Bytes value={doc.bytes.byteLength} /></strong>
         </div>
       </Card>
 
@@ -61,8 +61,8 @@ export function CompressPanel({ onClose }: ToolPanelProps): React.JSX.Element {
             const percent = result.before > 0 ? Math.round((saved / result.before) * 100) : 0
             notify({
               kind: 'success',
-              title: `${t('msg.sizeAfter')}: ${formatBytes(result.after)}`,
-              message: `${t('msg.reduction')}: ${formatBytes(saved)} (${percent}%)`
+              title: `${t('msg.sizeAfter')}: ${ltr(formatBytes(result.after))}`,
+              message: `${t('msg.reduction')}: ${ltr(formatBytes(saved))} (${percent}%)`
             })
             onClose()
           })
@@ -221,8 +221,8 @@ export function OptimizePanel({ onClose }: ToolPanelProps): React.JSX.Element {
             await applyPdfBytes(next)
             notify({
               kind: 'success',
-              title: `${t('msg.sizeAfter')}: ${formatBytes(next.byteLength)}`,
-              message: `${t('msg.sizeBefore')}: ${formatBytes(before)}`
+              title: `${t('msg.sizeAfter')}: ${ltr(formatBytes(next.byteLength))}`,
+              message: `${t('msg.sizeBefore')}: ${ltr(formatBytes(before))}`
             })
             onClose()
           })

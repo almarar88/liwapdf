@@ -31,7 +31,7 @@ const PRIMARY: NavEntry[] = [
 ]
 
 const SECONDARY: NavEntry[] = [
-  { route: 'word', labelKey: 'nav.word', icon: <FileType2 size={17} /> },
+  { route: 'editor', labelKey: 'nav.editor', icon: <FileType2 size={17} /> },
   { route: 'convert', labelKey: 'nav.convert', icon: <Repeat2 size={17} /> },
   { route: 'tools', labelKey: 'nav.tools', icon: <Wrench size={17} /> }
 ]

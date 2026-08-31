@@ -3,6 +3,7 @@ import { ArrowDown, ArrowUp, FileText, Plus, Trash2 } from 'lucide-react'
 import { useApp } from '../../store/app'
 import {
   Button,
+  Bytes,
   Card,
   Checkbox,
   Field,
@@ -61,7 +62,7 @@ export function MergePanel({ onClose }: ToolPanelProps): React.JSX.Element {
               <FileText size={16} className="muted" />
               <div className="grow">
                 <div className="title">{file.name}</div>
-                <div className="sub">{formatBytes(file.size)}</div>
+                <div className="sub"><Bytes value={file.size} /></div>
               </div>
               <Button size="sm" variant="ghost" icon onClick={() => move(index, -1)}>
                 <ArrowUp size={14} />

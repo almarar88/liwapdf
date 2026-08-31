@@ -9,6 +9,7 @@ import {
   Ruler,
   Crop,
   Shrink,
+  Minimize2,
   ShieldCheck,
   ShieldOff,
   Wand2,
@@ -37,6 +38,7 @@ export type ToolId =
   | 'resize'
   | 'crop'
   | 'compress'
+  | 'compressAny'
   | 'protect'
   | 'unlock'
   | 'optimize'
@@ -76,6 +78,7 @@ export const TOOLS: ToolDescriptor[] = [
   { id: 'crop', group: 'pages', titleKey: 'tool.crop', descriptionKey: 'tool.crop.d', icon: <Crop size={19} />, needsDocument: true },
 
   { id: 'compress', group: 'optimize', titleKey: 'tool.compress', descriptionKey: 'tool.compress.d', icon: <Shrink size={19} />, needsDocument: true },
+  { id: 'compressAny', group: 'optimize', titleKey: 'tool.compressAny', descriptionKey: 'tool.compressAny.d', icon: <Minimize2 size={19} />, needsDocument: false },
   { id: 'protect', group: 'optimize', titleKey: 'tool.protect', descriptionKey: 'tool.protect.d', icon: <ShieldCheck size={19} />, needsDocument: true },
   { id: 'unlock', group: 'optimize', titleKey: 'tool.unlock', descriptionKey: 'tool.unlock.d', icon: <ShieldOff size={19} />, needsDocument: false },
   { id: 'optimize', group: 'optimize', titleKey: 'tool.optimize', descriptionKey: 'tool.optimize.d', icon: <Wand2 size={19} />, needsDocument: true },

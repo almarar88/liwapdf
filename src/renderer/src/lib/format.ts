@@ -8,6 +8,15 @@ export function formatBytes(bytes: number, digits = 1): string {
   return `${value.toFixed(index === 0 ? 0 : digits)} ${units[index]}`
 }
 
+/**
+ * Wraps a value in Unicode isolate marks so it keeps its own direction inside
+ * a bidirectional string. Needed for sizes like "6.6 KB" in Arabic toasts,
+ * which otherwise render as "KB 6.6".
+ */
+export function ltr(value: string): string {
+  return `\u2066${value}\u2069`
+}
+
 export function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max)
 }
