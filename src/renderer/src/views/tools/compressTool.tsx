@@ -142,7 +142,9 @@ export function CompressAnyPanel({ onClose }: ToolPanelProps): React.JSX.Element
         variant="primary"
         disabled={!file || target === 'none'}
         onClick={() =>
-          void run(t('msg.working'), async (report) => {
+          void run(
+            t('msg.working'),
+            async (report, signal) => {
             const outcome = await compressFile(
               file!.name,
               file!.bytes,
@@ -152,10 +154,12 @@ export function CompressAnyPanel({ onClose }: ToolPanelProps): React.JSX.Element
                 grayscale,
                 rasterizePdf,
                 convertPngToJpeg,
-                onProgress: report
+                onProgress: report,
+                signal
               },
               isCurrentPdf ? doc?.password : undefined
             )
+            if (signal.aborted) return
             setResult(outcome)
 
             if (outcome.keptOriginal) {
@@ -184,7 +188,9 @@ export function CompressAnyPanel({ onClose }: ToolPanelProps): React.JSX.Element
             if (!saved.saved) return
             onClose()
             return saved.path
-          })
+            },
+            { cancellable: rasterizePdf }
+          )
         }
       >
         <Minimize2 size={15} />

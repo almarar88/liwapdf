@@ -526,7 +526,26 @@ export function BusyVeil(): React.JSX.Element | null {
           </div>
         </div>
       ) : null}
+      {busy.cancel ? <CancelBusyButton onCancel={busy.cancel} /> : null}
     </motion.div>
+  )
+}
+
+/** The stop button on the busy veil, once the job has said it can be stopped. */
+function CancelBusyButton({ onCancel }: { onCancel: () => void }): React.JSX.Element {
+  const t = useApp((state) => state.t)
+  const [stopping, setStopping] = useState(false)
+  return (
+    <Button
+      size="sm"
+      disabled={stopping}
+      onClick={() => {
+        setStopping(true)
+        onCancel()
+      }}
+    >
+      {stopping ? t('action.stopping') : t('action.cancel')}
+    </Button>
   )
 }
 

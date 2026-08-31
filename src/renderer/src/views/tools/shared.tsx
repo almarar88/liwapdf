@@ -9,21 +9,39 @@ export interface ToolPanelProps {
   onClose: () => void
 }
 
-/** Wraps a tool action with the busy veil, error reporting and a success toast. */
+/**
+ * Wraps a tool action with the busy veil, error reporting and a success toast.
+ *
+ * The action is handed an AbortSignal. A Cancel button appears on the veil
+ * only when the caller passes `cancellable`, so the button is never offered
+ * for work that would ignore it.
+ */
 export function useRunner(): (
   label: string,
-  action: (report: (done: number, total: number) => void) => Promise<string | void>
+  action: (
+    report: (done: number, total: number) => void,
+    signal: AbortSignal
+  ) => Promise<string | void>,
+  options?: { cancellable?: boolean }
 ) => Promise<void> {
   const store = useApp
   return useCallback(
-    async (label, action) => {
+    async (label, action, options) => {
       const state = store.getState()
-      state.setBusy({ label, progress: null })
+      const controller = new AbortController()
+      const cancel = options?.cancellable ? (): void => controller.abort() : undefined
+      state.setBusy({ label, progress: null, cancel })
       try {
         const message = await action((done, total) => {
-          store.getState().setBusy({ label, progress: total > 0 ? done / total : null })
-        })
+          store.getState().setBusy({
+            label,
+            progress: total > 0 ? done / total : null,
+            cancel
+          })
+        }, controller.signal)
         store.getState().setBusy(null)
+        // A cancelled job is not a failure and not a success; it just stops.
+        if (controller.signal.aborted) return
         if (message !== undefined) {
           store.getState().notify({
             kind: 'success',
@@ -32,7 +50,7 @@ export function useRunner(): (
           })
         }
       } catch (error) {
-        store.getState().reportError(error)
+        if (!controller.signal.aborted) store.getState().reportError(error)
       } finally {
         store.getState().setBusy(null)
       }

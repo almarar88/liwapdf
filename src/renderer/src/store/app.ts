@@ -77,6 +77,12 @@ export interface EditorDoc {
 export interface BusyState {
   label: string
   progress: number | null
+  /**
+   * Present when the running job can be stopped. Long jobs — OCR over a
+   * hundred pages, a rasterising compress — need a way out that is not
+   * killing the app.
+   */
+  cancel?: () => void
 }
 
 const HISTORY_LIMIT = 12

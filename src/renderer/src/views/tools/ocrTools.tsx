@@ -1,9 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { FileDown, ScanText, Sparkles } from 'lucide-react'
 import { useApp } from '../../store/app'
 import { Button, Checkbox, Field, Select } from '../../components/ui'
 import { saveText } from '../../lib/files'
-import { makeSearchable, recognizeDocument, type OcrLanguage } from '../../lib/ocr'
+import { makeSearchable, recognizeDocument, releaseOcr, type OcrLanguage } from '../../lib/ocr'
 import { documentBaseName } from '../../hooks/useDocumentActions'
 import { parsePageRange } from '../../lib/format'
 import { RangeField, useRunner, type ToolPanelProps } from './shared'
@@ -30,6 +30,10 @@ export function OcrPanel({ onClose }: ToolPanelProps): React.JSX.Element {
   const [dpi, setDpi] = useState<(typeof DPI_OPTIONS)[number]>('300')
   const [range, setRange] = useState('')
   const [searchable, setSearchable] = useState(true)
+
+  // The recogniser holds its language models in memory — around 40 MB — which
+  // is worth keeping between pages of one job and not worth keeping after it.
+  useEffect(() => () => void releaseOcr(), [])
 
   if (!doc) return <p className="muted">{t('msg.noDocument')}</p>
 
@@ -68,45 +72,53 @@ export function OcrPanel({ onClose }: ToolPanelProps): React.JSX.Element {
         <Button
           variant="primary"
           onClick={() =>
-            void run(t('ocr.working'), async (report) => {
+            void run(
+              t('ocr.working'),
+              async (report, signal) => {
               if (searchable) {
-                const result = await makeSearchable(doc.bytes, {
+                  const result = await makeSearchable(doc.bytes, {
+                    language,
+                    dpi: Number(dpi),
+                    pages: pagesFor(),
+                    password: doc.password,
+                    signal,
+                    onProgress: (done, total) => report(done, total)
+                  })
+                  if (signal.aborted) return
+                  if (result.placedWords === 0) {
+                    notify({ kind: 'info', title: t('ocr.nothingFound') })
+                    return
+                  }
+                  await applyPdfBytes(result.bytes)
+                  onClose()
+                  return t('ocr.placed', { n: result.placedWords })
+                }
+
+                const pages = await recognizeDocument(doc.bytes, {
                   language,
                   dpi: Number(dpi),
                   pages: pagesFor(),
                   password: doc.password,
+                  signal,
                   onProgress: (done, total) => report(done, total)
                 })
-                if (result.placedWords === 0) {
+                if (signal.aborted) return
+                const text = pages
+                  .map((page) => `--- ${t('msg.pages')} ${page.pageNumber} ---\n${page.text.trim()}`)
+                  .join('\n\n')
+                if (!text.replace(/[-\s]|---/g, '')) {
                   notify({ kind: 'info', title: t('ocr.nothingFound') })
                   return
                 }
-                await applyPdfBytes(result.bytes)
+                const outcome = await saveText(text, `${documentBaseName(doc.name)}-ocr.txt`, [
+                  { name: 'file.text', extensions: ['txt'] }
+                ])
+                if (!outcome.saved) return
                 onClose()
-                return t('ocr.placed', { n: result.placedWords })
-              }
-
-              const pages = await recognizeDocument(doc.bytes, {
-                language,
-                dpi: Number(dpi),
-                pages: pagesFor(),
-                password: doc.password,
-                onProgress: (done, total) => report(done, total)
-              })
-              const text = pages
-                .map((page) => `--- ${t('msg.pages')} ${page.pageNumber} ---\n${page.text.trim()}`)
-                .join('\n\n')
-              if (!text.replace(/[-\s]|---/g, '')) {
-                notify({ kind: 'info', title: t('ocr.nothingFound') })
-                return
-              }
-              const outcome = await saveText(text, `${documentBaseName(doc.name)}-ocr.txt`, [
-                { name: 'file.text', extensions: ['txt'] }
-              ])
-              if (!outcome.saved) return
-              onClose()
-              return outcome.path
-            })
+                return outcome.path
+              },
+              { cancellable: true }
+            )
           }
         >
           {searchable ? <Sparkles size={15} /> : <FileDown size={15} />}

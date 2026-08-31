@@ -25,6 +25,8 @@ export interface UniversalCompressOptions {
   /** Re-encode PNG photos as JPEG when that is smaller. */
   convertPngToJpeg: boolean
   onProgress?: (done: number, total: number) => void
+  /** Honoured by the PDF rasteriser, which is the slow path. */
+  signal?: AbortSignal
 }
 
 export interface UniversalCompressResult {
@@ -73,7 +75,8 @@ export async function compressFile(
         level: options.level,
         grayscale: options.grayscale,
         rasterize: options.rasterizePdf,
-        onProgress: options.onProgress
+        onProgress: options.onProgress,
+        signal: options.signal
       },
       password
     )

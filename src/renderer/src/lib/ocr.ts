@@ -267,6 +267,7 @@ export async function makeSearchable(
 
   try {
     for (const page of recognized) {
+      if (options.signal?.aborted) break
       const target = pages[page.pageNumber - 1]
       if (!target) continue
       const rendered = await proxy.getPage(page.pageNumber)

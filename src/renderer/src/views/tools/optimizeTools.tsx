@@ -50,22 +50,28 @@ export function CompressPanel({ onClose }: ToolPanelProps): React.JSX.Element {
       <Button
         variant="primary"
         onClick={() =>
-          void run(t('msg.working'), async (report) => {
-            const result = await compressPdf(
-              doc.bytes,
-              { level, grayscale, rasterize, onProgress: report },
-              doc.password
-            )
-            await applyPdfBytes(result.bytes)
-            const saved = Math.max(0, result.before - result.after)
-            const percent = result.before > 0 ? Math.round((saved / result.before) * 100) : 0
-            notify({
-              kind: 'success',
-              title: `${t('msg.sizeAfter')}: ${ltr(formatBytes(result.after))}`,
-              message: `${t('msg.reduction')}: ${ltr(formatBytes(saved))} (${percent}%)`
-            })
-            onClose()
-          })
+          void run(
+            t('msg.working'),
+            async (report, signal) => {
+              const result = await compressPdf(
+                doc.bytes,
+                { level, grayscale, rasterize, onProgress: report, signal },
+                doc.password
+              )
+              if (signal.aborted) return
+              await applyPdfBytes(result.bytes)
+              const saved = Math.max(0, result.before - result.after)
+              const percent = result.before > 0 ? Math.round((saved / result.before) * 100) : 0
+              notify({
+                kind: 'success',
+                title: `${t('msg.sizeAfter')}: ${ltr(formatBytes(result.after))}`,
+                message: `${t('msg.reduction')}: ${ltr(formatBytes(saved))} (${percent}%)`
+              })
+              onClose()
+            },
+            // Only the rasterising path is long enough to be worth stopping.
+            { cancellable: rasterize }
+          )
         }
       >
         {t('tool.compress')}
