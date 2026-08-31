@@ -5,7 +5,7 @@ import { Button, Checkbox, Field, Select } from '../../components/ui'
 import { saveText } from '../../lib/files'
 import { makeSearchable, recognizeDocument, releaseOcr, type OcrLanguage } from '../../lib/ocr'
 import { documentBaseName } from '../../hooks/useDocumentActions'
-import { parsePageRange } from '../../lib/format'
+import { ltr, parsePageRange } from '../../lib/format'
 import { RangeField, useRunner, type ToolPanelProps } from './shared'
 
 const LANGUAGES: OcrLanguage[] = ['ara+eng', 'ara', 'eng']
@@ -58,7 +58,7 @@ export function OcrPanel({ onClose }: ToolPanelProps): React.JSX.Element {
         <Select
           value={dpi}
           onChange={(value) => setDpi(value as (typeof DPI_OPTIONS)[number])}
-          options={DPI_OPTIONS.map((value) => ({ value, label: `${value} DPI` }))}
+          options={DPI_OPTIONS.map((value) => ({ value, label: ltr(`${value} DPI`) }))}
         />
       </Field>
 

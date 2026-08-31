@@ -774,5 +774,8 @@ textarea:focus-visible,
   outline: 2px solid var(--accent) !important;
   outline-offset: 2px;
 }
+/* The dialog container takes focus on open so its title is announced; the ring
+   belongs on the controls inside it, not on the panel itself. */
+.modal:focus, .modal:focus-visible { outline: none !important; }
 .thumb:focus-visible { outline-offset: 1px; }
 .slider:focus-visible { outline-offset: 4px; }

@@ -351,10 +351,10 @@ export function Modal({
       }
     }
 
-    const timer = window.setTimeout(() => {
-      const items = focusables()
-      ;(items[0] ?? panelRef.current)?.focus()
-    }, 40)
+    // Focus the dialog itself rather than its first control: a screen reader
+    // then announces the title before anything else, and Tab still steps
+    // straight into the panel.
+    const timer = window.setTimeout(() => panelRef.current?.focus(), 40)
 
     window.addEventListener('keydown', onKey)
     return () => {
