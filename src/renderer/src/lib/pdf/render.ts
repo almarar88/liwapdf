@@ -1,6 +1,6 @@
 import { pdfjs, type PDFDocumentProxy } from './pdfjs'
 import { canvasToBlob, blobToBytes } from './text-raster'
-import { normalizeForSearch } from '../text/encoding'
+import { detectDirection, normalizeForSearch } from '../text/encoding'
 
 export interface RenderedPage {
   canvas: HTMLCanvasElement
@@ -88,14 +88,21 @@ export async function extractText(document_: PDFDocumentProxy): Promise<PageText
 
     const lines = [...rows.entries()]
       .sort((a, b) => b[0] - a[0])
-      .map(([, parts]) =>
-        parts
-          .sort((a, b) => a.x - b.x)
-          .map((part) => part.text)
-          .join('')
+      .map(([, parts]) => {
+        // A producer lays an Arabic line out right to left, so sorting its
+        // fragments by ascending x reverses the sentence. Decide the row's own
+        // direction and sort accordingly — and join with a space, because an
+        // empty join fuses adjacent fragments into words that never existed.
+        const rightToLeft =
+          detectDirection(parts.map((part) => part.text).join(' ')) === 'rtl'
+        return parts
+          .sort((a, b) => (rightToLeft ? b.x - a.x : a.x - b.x))
+          .map((part) => part.text.trim())
+          .filter((part) => part.length > 0)
+          .join(' ')
           .replace(/\s+/g, ' ')
           .trim()
-      )
+      })
       .filter((line) => line.length > 0)
 
     pages.push({ pageNumber, lines })

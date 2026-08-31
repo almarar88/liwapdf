@@ -150,6 +150,21 @@ function isDateFormat(format: string | undefined): boolean {
 }
 
 /**
+ * Rewrites Arabic-Indic and Persian digits, the Arabic decimal separator and
+ * the Arabic thousands separator into their ASCII equivalents, so a number
+ * typed in Arabic is stored as a number. The glyphs the user typed stay in
+ * `cell.text`.
+ */
+export function foldNumerals(value: string): string {
+  return value
+    .replace(/[٠-٩]/g, (digit) => String(digit.charCodeAt(0) - 0x0660))
+    .replace(/[۰-۹]/g, (digit) => String(digit.charCodeAt(0) - 0x06f0))
+    .replace(/٫/g, '.')
+    .replace(/٬/g, '')
+    .replace(/٪/g, '%')
+}
+
+/**
  * Turns what the user typed back into a typed cell. Mirrors the rules every
  * spreadsheet uses: a leading '=' is a formula, a bare number is numeric, and
  * anything else stays text — so IDs like "007" are not silently renumbered.
@@ -163,7 +178,9 @@ export function inferCell(text: string, previous?: SheetCell): SheetCell {
   }
 
   // Preserve leading zeros and any explicit sign/format the user typed.
-  const numeric = trimmed.replace(/,/g, '')
+  // Arabic-Indic digits are digits: typing ١٢٣٤ used to store text with no
+  // value, so SUM and AVERAGE reported zero and Excel received a string.
+  const numeric = foldNumerals(trimmed).replace(/,/g, '')
   if (
     /^[-+]?\d+(\.\d+)?$/.test(numeric) &&
     !(numeric.length > 1 && /^0\d/.test(numeric.replace(/^[-+]/, '')))

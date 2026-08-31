@@ -21,6 +21,7 @@ import { useDocumentActions } from '../hooks/useDocumentActions'
 import { Button, Empty, Segmented, TextInput } from '../components/ui'
 import { PdfPageView } from '../components/PdfPageView'
 import { Thumbnail } from '../components/Thumbnail'
+import { PrintDialog } from './PrintDialog'
 import { readOutline, searchDocument, type OutlineNode, type SearchHit } from '../lib/pdf/render'
 import { clamp } from '../lib/format'
 
@@ -45,6 +46,7 @@ export function ViewerView(): React.JSX.Element {
   const [hits, setHits] = useState<SearchHit[] | null>(null)
   const [searching, setSearching] = useState(false)
   const [hitIndex, setHitIndex] = useState(0)
+  const [printOpen, setPrintOpen] = useState(false)
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const [naturalSizes, setNaturalSizes] = useState<{ width: number; height: number }[]>([])
@@ -364,7 +366,7 @@ export function ViewerView(): React.JSX.Element {
           icon
           title={t('action.print')}
           aria-label={t('action.print')}
-          onClick={() => void window.alcode.fs.saveTempAndOpen(doc.name, doc.bytes)}
+          onClick={() => setPrintOpen(true)}
         >
           <Printer size={15} />
         </Button>
@@ -533,6 +535,8 @@ export function ViewerView(): React.JSX.Element {
           )}
         </div>
       </div>
+
+      <PrintDialog open={printOpen} onClose={() => setPrintOpen(false)} />
     </div>
   )
 }

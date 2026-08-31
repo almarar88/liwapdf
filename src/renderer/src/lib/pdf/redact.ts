@@ -26,9 +26,10 @@ import {
   type Rect,
   type Splice
 } from './content-stream'
+import { normalizeForSearch } from '../text/encoding'
 import { load, save, type PdfBytes } from './ops'
 import { openForRender } from './pdfjs'
-import { renderPageToBytes } from './render'
+import { foldWithOffsets, renderPageToBytes } from './render'
 
 export interface RedactRegion {
   pageIndex: number
@@ -108,13 +109,169 @@ export async function applyRedactions(
   }
   onProgress?.(1)
 
+  // Honest by construction: true means the survivor check actually ran and
+  // anything it found was flattened, not merely that the edit was attempted.
+  const verified = await findSurvivingText(output, byPage, password).then(
+    (remaining) => remaining.length === 0,
+    () => false
+  )
+
   return {
     bytes: output,
     removedRuns,
     removedAnnotations,
     rasterizedPages: survivors,
-    verified: true
+    verified
   }
+}
+
+export interface TextMatch {
+  pageIndex: number
+  /** The matched text as it appears in the document. */
+  text: string
+  /** Enough of the line either side to recognise the hit. */
+  context: string
+  region: RedactRegion
+}
+
+/**
+ * Finds every occurrence of a query and returns a redaction region for each.
+ *
+ * Dragging one box per instance is unusable for an ID number that appears on
+ * four hundred pages, which is the case redaction is actually for. Matching
+ * goes through the same Arabic folding as the app's search, so a query written
+ * without tashkeel still finds the tashkeel'd occurrences.
+ */
+export async function findTextRegions(
+  bytes: PdfBytes,
+  query: string,
+  options: { regex?: boolean; password?: string; limit?: number } = {}
+): Promise<TextMatch[]> {
+  const source = query.trim()
+  if (!source) return []
+
+  let pattern: RegExp | null = null
+  if (options.regex) {
+    try {
+      pattern = new RegExp(source, 'giu')
+    } catch {
+      throw new Error('invalid-pattern')
+    }
+  }
+  const needle = pattern ? '' : normalizeForSearch(source)
+  if (!pattern && !needle) return []
+
+  const document = await openForRender(bytes, options.password)
+  const matches: TextMatch[] = []
+  const limit = options.limit ?? 5000
+
+  try {
+    for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
+      if (matches.length >= limit) break
+      const page = await document.getPage(pageNumber)
+      const viewport = page.getViewport({ scale: 1 })
+      const content = await page.getTextContent()
+
+      interface Piece {
+        start: number
+        end: number
+        x: number
+        y: number
+        width: number
+        height: number
+        rtl: boolean
+      }
+      const pieces: Piece[] = []
+      let pageText = ''
+
+      for (const item of content.items) {
+        if (!('str' in item)) continue
+        const text = item.str
+        const [, , , , tx, ty] = item.transform as number[]
+        const height = Math.max(item.height, 1)
+        if (text.length > 0) {
+          pieces.push({
+            start: pageText.length,
+            end: pageText.length + text.length,
+            x: tx,
+            y: ty,
+            width: Math.max(item.width, 0),
+            height,
+            rtl: /[؀-ۿ֑-ֿ]/.test(text)
+          })
+        }
+        pageText += text
+        if ((item as { hasEOL?: boolean }).hasEOL) pageText += '\n'
+      }
+
+      const ranges: [number, number][] = []
+      if (pattern) {
+        pattern.lastIndex = 0
+        let found = pattern.exec(pageText)
+        while (found && ranges.length < limit) {
+          if (found[0].length > 0) ranges.push([found.index, found.index + found[0].length])
+          if (pattern.lastIndex === found.index) pattern.lastIndex += 1
+          found = pattern.exec(pageText)
+        }
+      } else {
+        const { folded, offsets } = foldWithOffsets(pageText)
+        let cursor = folded.indexOf(needle)
+        while (cursor !== -1 && ranges.length < limit) {
+          ranges.push([
+            offsets[cursor] ?? 0,
+            offsets[cursor + needle.length] ?? pageText.length
+          ])
+          cursor = folded.indexOf(needle, cursor + Math.max(1, needle.length))
+        }
+      }
+
+      for (const [start, end] of ranges) {
+        const covering = pieces.filter((piece) => piece.start < end && piece.end > start)
+        if (covering.length === 0) continue
+
+        let left = Infinity
+        let right = -Infinity
+        let bottom = Infinity
+        let top = -Infinity
+        for (const piece of covering) {
+          const length = Math.max(1, piece.end - piece.start)
+          // Narrow to the matched characters only for left-to-right runs; for
+          // RTL the reported advance does not map onto logical offsets, and
+          // covering the whole run is the safe direction to be wrong in.
+          const from = piece.rtl ? 0 : Math.max(0, start - piece.start) / length
+          const to = piece.rtl ? 1 : Math.min(length, end - piece.start) / length
+          const pad = piece.width / length / 2
+          const x0 = piece.x + piece.width * from - pad
+          const x1 = piece.x + piece.width * to + pad
+          left = Math.min(left, x0)
+          right = Math.max(right, x1)
+          bottom = Math.min(bottom, piece.y - piece.height * 0.25)
+          top = Math.max(top, piece.y + piece.height)
+        }
+
+        const corners = viewport.convertToViewportRectangle([left, bottom, right, top]) as number[]
+        const x = Math.min(corners[0], corners[2])
+        const y = Math.min(corners[1], corners[3])
+        matches.push({
+          pageIndex: pageNumber - 1,
+          text: pageText.slice(start, end),
+          context: pageText.slice(Math.max(0, start - 30), end + 30).replace(/\s+/g, ' ').trim(),
+          region: {
+            pageIndex: pageNumber - 1,
+            x: x / viewport.width,
+            y: y / viewport.height,
+            width: Math.abs(corners[2] - corners[0]) / viewport.width,
+            height: Math.abs(corners[3] - corners[1]) / viewport.height
+          }
+        })
+      }
+      page.cleanup()
+    }
+  } finally {
+    await document.destroy().catch(() => undefined)
+  }
+
+  return matches
 }
 
 function groupByPage(regions: RedactRegion[]): Map<number, RedactRegion[]> {

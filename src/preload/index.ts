@@ -4,6 +4,8 @@ import type {
   OpenDialogOptions,
   PdfPrintOptions,
   PickedFile,
+  PrinterOption,
+  PrintJobOptions,
   RecentFile,
   SaveDialogOptions,
   SaveResult,
@@ -24,9 +26,7 @@ const api = {
       ipcRenderer.invoke('fs:write', path, data),
     writeText: (path: string, text: string): Promise<void> =>
       ipcRenderer.invoke('fs:writeText', path, text),
-    exists: (path: string): Promise<boolean> => ipcRenderer.invoke('fs:exists', path),
-    saveTempAndOpen: (name: string, data: Uint8Array): Promise<string> =>
-      ipcRenderer.invoke('fs:saveTempAndOpen', name, data)
+    exists: (path: string): Promise<boolean> => ipcRenderer.invoke('fs:exists', path)
   },
   /** Electron 32+ no longer exposes File.path; this is the supported route. */
   pathForFile: (file: File): string => webUtils.getPathForFile(file),
@@ -60,7 +60,9 @@ const api = {
   },
   print: {
     html: (html: string, options: PdfPrintOptions = {}): Promise<Uint8Array> =>
-      ipcRenderer.invoke('print:html', html, options)
+      ipcRenderer.invoke('print:html', html, options),
+    job: (options: PrintJobOptions): Promise<boolean> => ipcRenderer.invoke('print:job', options),
+    printers: (): Promise<PrinterOption[]> => ipcRenderer.invoke('print:printers')
   },
   theme: {
     isDark: (): Promise<boolean> => ipcRenderer.invoke('theme:isDark'),

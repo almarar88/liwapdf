@@ -160,6 +160,30 @@ export function isRtlText(text: string): boolean {
   return /[֑-߿ࡰ-࢟ࢠ-ࣿיִ-﷿ﹰ-﻿]/.test(text)
 }
 
+/** Arabic-Indic and Extended Arabic-Indic digits, which live in the Arabic block. */
+const ARABIC_DIGITS = /[\u0660-\u0669\u06F0-\u06F9]/
+
+/**
+ * Puts a run into the character order the shaper expects.
+ *
+ * pdf-lib calls `font.layout(text, features)` without fontkit's `direction`
+ * argument, so fontkit detects the script itself — and Arabic-Indic digits sit
+ * in the Arabic block, so a run of nothing but digits is detected as Arabic and
+ * shaped right to left. UAX#9 puts those digits at an *even* embedding level
+ * inside an Arabic paragraph, precisely because a number reads left to right,
+ * so the shaper reverses a run the bidi pass had already ordered correctly:
+ * page number \u0661\u0662 came out \u0662\u0661, and a ten-digit ID came out backwards both on
+ * the page and in every extractor.
+ *
+ * Pre-reversing an even-level Arabic-digit run cancels that, which is the only
+ * lever available short of forking the embedder. Odd-level runs really are
+ * right to left and are left for the shaper to reverse.
+ */
+function shapedOrder(run: DirectionalRun): string {
+  if (run.rtl || !ARABIC_DIGITS.test(run.text)) return run.text
+  return [...run.text].reverse().join('')
+}
+
 /* --------------------------------------------------------------- drawing */
 
 export interface SmartTextOptions {
@@ -222,7 +246,7 @@ export async function drawSmartText(
     if (run.text.trim()) {
       // Rotation is applied per run about the line's origin so a rotated
       // watermark keeps its runs on one baseline.
-      page.drawText(run.text, {
+      page.drawText(shapedOrder(run), {
         x: x + advance * cos,
         y: y + advance * sin,
         size: options.size,
@@ -343,8 +367,13 @@ export async function drawInvisibleText(
   text: string,
   box: { x: number; y: number; width: number; height: number }
 ): Promise<void> {
-  const value = text.trim()
-  if (!value || box.width <= 0 || box.height <= 0) return
+  const trimmed = text.trim()
+  if (!trimmed || box.width <= 0 || box.height <= 0) return
+
+  // One showText with one text matrix, so the string has to be in visual order
+  // already — and an OCR'd Arabic-Indic number needs the same un-reversal the
+  // visible path does, or a search for the ID finds nothing.
+  const value = layoutRuns(trimmed, isRtlText(trimmed)).map(shapedOrder).join('') || trimmed
 
   const font = await fontFor(fonts, value, false)
   // Cap-height rather than the full box: OCR boxes include ascender and

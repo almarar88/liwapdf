@@ -33,6 +33,7 @@ import { CodeEditor } from './editor/CodeEditor'
 import { exportTargetsFor, formatInfo, FORMATS, type DocumentFormat } from '../lib/documents/formats'
 import { htmlToPlainText } from '../lib/documents/write'
 import { inferCell, type SheetData } from '../lib/documents/sheets'
+import { replacePattern, substituteAll, type ReplaceOptions } from '../lib/documents/find'
 import { clamp } from '../lib/format'
 import { TEMPLATES } from './editor/templates'
 
@@ -404,12 +405,6 @@ function ImagePane({ dataUrl, name }: { dataUrl: string; name: string }): React.
 
 /* ------------------------------------------------------- find & replace */
 
-interface ReplaceOptions {
-  regex: boolean
-  caseSensitive: boolean
-  wholeWord: boolean
-}
-
 function FindReplaceModal({
   open,
   onClose,
@@ -485,21 +480,15 @@ function applyReplace(
   options: ReplaceOptions,
   targets: ReplaceTargets
 ): number {
-  let pattern: RegExp
-  try {
-    const source = options.regex ? find : escapeRegExp(find)
-    const body = options.wholeWord ? `\\b(?:${source})\\b` : source
-    pattern = new RegExp(body, options.caseSensitive ? 'g' : 'gi')
-  } catch {
-    return 0
-  }
+  const pattern = replacePattern(find, options)
+  if (!pattern) return 0
 
   let count = 0
-  const substitute = (value: string): string =>
-    value.replace(pattern, (match) => {
-      count += 1
-      return replace
-    })
+  const substitute = (value: string): string => {
+    const result = substituteAll(value, pattern, replace)
+    count += result.count
+    return result.text
+  }
 
   if (kind === 'code') {
     targets.setText(substitute(targets.text))
@@ -534,10 +523,6 @@ function applyReplace(
   }
   targets.setHtml(container.innerHTML)
   return count
-}
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
 /* ---------------------------------------------------------------- misc */

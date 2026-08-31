@@ -366,12 +366,13 @@ export function AnnotateView(): React.JSX.Element {
       const report = result.redaction
       if (report) {
         notify({
-          kind: 'success',
-          title: t('msg.redacted'),
+          kind: report.verified ? 'success' : 'info',
+          title: t(report.verified ? 'msg.redacted' : 'redact.unverified'),
           message:
             t('msg.redactedDetail')
               .replace('{runs}', String(report.removedRuns))
               .replace('{annots}', String(report.removedAnnotations)) +
+            (report.verified ? ` ${t('redact.reportVerified')}` : '') +
             (report.rasterizedPages.length > 0
               ? ' ' +
                 t('msg.redactedFlattened').replace(

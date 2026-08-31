@@ -34,6 +34,7 @@ import {
   AttachmentsPanel
 } from './tools/contentTools'
 import { OcrPanel } from './tools/ocrTools'
+import { RedactPanel } from './tools/redactTools'
 
 const PANELS: Record<ToolId, (props: { onClose: () => void }) => React.JSX.Element> = {
   merge: MergePanel,
@@ -61,7 +62,8 @@ const PANELS: Record<ToolId, (props: { onClose: () => void }) => React.JSX.Eleme
   compare: ComparePanel,
   bookmarks: BookmarksPanel,
   attachments: AttachmentsPanel,
-  ocr: OcrPanel
+  ocr: OcrPanel,
+  redact: RedactPanel
 }
 
 export function ToolsView(): React.JSX.Element {

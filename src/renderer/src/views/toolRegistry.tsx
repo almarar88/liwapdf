@@ -24,7 +24,8 @@ import {
   GitCompare,
   ListTree,
   Paperclip,
-  ScanText
+  ScanText,
+  EyeOff
 } from 'lucide-react'
 import type { TranslationKey } from '../i18n'
 
@@ -55,6 +56,7 @@ export type ToolId =
   | 'bookmarks'
   | 'attachments'
   | 'ocr'
+  | 'redact'
 
 export type ToolGroup = 'pages' | 'optimize' | 'content'
 
@@ -83,6 +85,7 @@ export const TOOLS: ToolDescriptor[] = [
   { id: 'compressAny', group: 'optimize', titleKey: 'tool.compressAny', descriptionKey: 'tool.compressAny.d', icon: <Minimize2 size={19} />, needsDocument: false },
   { id: 'protect', group: 'optimize', titleKey: 'tool.protect', descriptionKey: 'tool.protect.d', icon: <ShieldCheck size={19} />, needsDocument: true },
   { id: 'unlock', group: 'optimize', titleKey: 'tool.unlock', descriptionKey: 'tool.unlock.d', icon: <ShieldOff size={19} />, needsDocument: false },
+  { id: 'redact', group: 'optimize', titleKey: 'tool.redact', descriptionKey: 'tool.redact.d', icon: <EyeOff size={19} />, needsDocument: true },
   { id: 'optimize', group: 'optimize', titleKey: 'tool.optimize', descriptionKey: 'tool.optimize.d', icon: <Wand2 size={19} />, needsDocument: true },
   { id: 'metadata', group: 'optimize', titleKey: 'tool.metadata', descriptionKey: 'tool.metadata.d', icon: <Info size={19} />, needsDocument: true },
 

@@ -10,13 +10,14 @@ import {
 } from 'electron'
 import { readFile, writeFile, mkdir, stat, unlink } from 'node:fs/promises'
 import { basename, dirname, extname, join, resolve } from 'node:path'
-import { tmpdir } from 'node:os'
 import { randomUUID } from 'node:crypto'
 import {
   AppSettings,
   OpenDialogOptions,
   PdfPrintOptions,
   PickedFile,
+  PrinterOption,
+  PrintJobOptions,
   RecentFile,
   SaveDialogOptions,
   SaveResult
@@ -62,34 +63,6 @@ const PAGE_SIZES: Record<string, { width: number; height: number }> = {
   Legal: { width: 8.5, height: 14 },
   Tabloid: { width: 11, height: 17 }
 }
-
-/** Types "open in the system viewer" may hand to the OS. Never executables. */
-const OPENABLE_EXTENSIONS = new Set([
-  '.pdf',
-  '.docx',
-  '.doc',
-  '.rtf',
-  '.odt',
-  '.txt',
-  '.md',
-  '.html',
-  '.csv',
-  '.tsv',
-  '.xlsx',
-  '.xls',
-  '.ods',
-  '.pptx',
-  '.epub',
-  '.json',
-  '.xml',
-  '.png',
-  '.jpg',
-  '.jpeg',
-  '.webp',
-  '.gif',
-  '.bmp',
-  '.zip'
-])
 
 function withTimeout<T>(work: Promise<T>, ms: number, label: string): Promise<T> {
   return new Promise<T>((settle, fail) => {
@@ -185,6 +158,88 @@ async function htmlToPdf(html: string, options: PdfPrintOptions = {}): Promise<U
       'render'
     )
     return new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
+  } finally {
+    if (offscreen && !offscreen.isDestroyed()) offscreen.destroy()
+    await unlink(file).catch(() => undefined)
+    await printSession.clearStorageData().catch(() => undefined)
+  }
+}
+
+/**
+ * Sends a document to a real printer.
+ *
+ * "Print" used to write a temp copy and hand it to the OS file handler — which,
+ * since this app registers itself for .pdf, was frequently Alcode, so Print
+ * re-opened the file. The pages are rasterised by the renderer and laid out
+ * here at their exact page size, then printed through the same hardened
+ * offscreen window the PDF exporter uses: no scripting, a throwaway session
+ * that cancels every non-local request, and guaranteed teardown.
+ */
+async function printPages(options: PrintJobOptions): Promise<boolean> {
+  if (options.pages.length === 0) return false
+
+  const first = options.pages[0]
+  const body = options.pages
+    .map(
+      (page) =>
+        `<div class="sheet"><img src="${page.dataUrl}" width="${page.widthPt}" height="${page.heightPt}" /></div>`
+    )
+    .join('')
+  const html =
+    `<!doctype html><html><head><meta charset="utf-8"><style>` +
+    `@page{size:${first.widthPt}pt ${first.heightPt}pt;margin:0}` +
+    `html,body{margin:0;padding:0;background:#fff}` +
+    `.sheet{page-break-after:always;break-after:page;display:block;line-height:0}` +
+    `.sheet:last-child{page-break-after:auto;break-after:auto}` +
+    `img{display:block}` +
+    `</style></head><body>${body}</body></html>`
+
+  const dir = join(app.getPath('userData'), 'render')
+  await mkdir(dir, { recursive: true })
+  const token = randomUUID()
+  const file = join(dir, `${token}.html`)
+  await writeFile(file, html, 'utf8')
+
+  const partition = `print-${token}`
+  const printSession = session.fromPartition(partition)
+  printSession.webRequest.onBeforeRequest({ urls: ['*://*/*'] }, (details, callback) =>
+    callback({ cancel: !/^(file|data|blob):/i.test(details.url) })
+  )
+
+  let offscreen: BrowserWindow | null = null
+  try {
+    offscreen = new BrowserWindow({
+      show: false,
+      width: Math.ceil(first.widthPt),
+      height: Math.ceil(first.heightPt),
+      webPreferences: {
+        javascript: false,
+        sandbox: true,
+        contextIsolation: true,
+        nodeIntegration: false,
+        webSecurity: true,
+        partition
+      }
+    })
+    offscreen.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+    const window_ = offscreen
+    await withTimeout(window_.loadFile(file), 30_000, 'load')
+    await new Promise((done) => setTimeout(done, 150))
+
+    return await new Promise<boolean>((resolve) => {
+      window_.webContents.print(
+        {
+          silent: options.silent ?? false,
+          printBackground: true,
+          color: options.color ?? true,
+          landscape: options.landscape ?? false,
+          copies: Math.max(1, options.copies ?? 1),
+          deviceName: options.deviceName,
+          margins: { marginType: 'none' }
+        },
+        (success) => resolve(success)
+      )
+    })
   } finally {
     if (offscreen && !offscreen.isDestroyed()) offscreen.destroy()
     await unlink(file).catch(() => undefined)
@@ -306,23 +361,6 @@ export function registerIpc(
     }
   })
 
-  ipcMain.handle(
-    'fs:saveTempAndOpen',
-    async (_e, name: string, data: Uint8Array): Promise<string> => {
-      // `name` comes from a document title, which can contain path separators.
-      // basename() keeps the write inside the temp directory, and the
-      // extension allowlist keeps "open with the system handler" from turning
-      // into "run this".
-      const safe = basename(name).replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_') || 'document'
-      const extension = extname(safe).toLowerCase()
-      if (!OPENABLE_EXTENSIONS.has(extension)) throw new Error('unsupported-preview-type')
-      const file = join(tmpdir(), `alcode-${randomUUID()}-${safe}`)
-      await writeFile(file, Buffer.from(data))
-      await shell.openPath(file)
-      return file
-    }
-  )
-
   ipcMain.handle('shell:reveal', async (_e, path: string): Promise<void> => {
     shell.showItemInFolder(path)
   })
@@ -374,6 +412,21 @@ export function registerIpc(
   ipcMain.handle('print:html', async (_e, html: string, options: PdfPrintOptions) =>
     htmlToPdf(html, options)
   )
+
+  ipcMain.handle('print:job', async (_e, options: PrintJobOptions): Promise<boolean> =>
+    printPages(options)
+  )
+
+  ipcMain.handle('print:printers', async (): Promise<PrinterOption[]> => {
+    const window = liveWindow()
+    if (!window) return []
+    const printers = await window.webContents.getPrintersAsync()
+    return printers.map((printer) => ({
+      name: printer.name,
+      displayName: printer.displayName || printer.name,
+      isDefault: printer.isDefault
+    }))
+  })
 
   /* --------------------------------------------------------------- window */
 
