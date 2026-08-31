@@ -147,7 +147,7 @@ export function ViewerView(): React.JSX.Element {
     <div className="view flush" style={{ display: 'flex', flexDirection: 'column' }}>
       <div className="toolbar">
         <Button size="sm" icon variant="ghost" onClick={() => goToPage(currentPage - 1)}>
-          <ChevronRight size={16} style={{ transform: 'scaleX(var(--flip, 1))' }} />
+          <ChevronRight size={16} />
         </Button>
         <div className="row" style={{ gap: 6 }}>
           <input

@@ -59,7 +59,7 @@ portable:
   artifactName: Alcode-Editor-${version}-Portable.${ext}
 
 mac:
-  icon: build/icon.png
+  icon: build/icon.icns
   category: public.app-category.productivity
   darkModeSupport: true
   artifactName: Alcode-Editor-${version}-${arch}.${ext}

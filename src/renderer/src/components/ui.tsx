@@ -376,7 +376,14 @@ export function Dropzone({
         event.preventDefault()
         setOver(false)
         const paths = Array.from(event.dataTransfer.files)
-          .map((file) => window.alcode.pathForFile(file))
+          .map((file) => {
+            try {
+              return window.alcode.pathForFile(file)
+            } catch {
+              // Not a real file on disk (dragged text, a URL, a browser image).
+              return ''
+            }
+          })
           .filter((path): path is string => Boolean(path))
           .filter((path) => !accept || accept.some((ext) => path.toLowerCase().endsWith(ext)))
         if (paths.length > 0) onFiles(paths)
