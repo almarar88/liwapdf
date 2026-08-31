@@ -17,18 +17,20 @@ import {
   PDFSignature,
   PDFTextField,
   StandardFonts,
+  TextAlignment,
   degrees,
   rgb,
   PDFFont,
   type PDFImage
 } from '@cantoo/pdf-lib'
-import { hexToRgb, PAGE_PRESETS, MM_TO_PT, stripExtension } from '../format'
+import { hexToRgb, needsComplexShaping, PAGE_PRESETS, MM_TO_PT, stripExtension } from '../format'
 import {
   drawSmartText,
   isRtlText,
   measureSmartText,
   prepareFonts,
   toArabicIndicDigits,
+  toVisualOrder,
   type FontSet
 } from './typography'
 
@@ -1401,11 +1403,23 @@ export async function fillFormFields(
   const form = document.getForm()
   const skipped: { name: string; reason: string }[] = []
 
+  // A form's default appearance font is Helvetica on essentially every
+  // government form there is, and WinAnsi cannot encode a single Arabic
+  // letter — so writing an Arabic value threw, and the field was reported
+  // skipped for a reason no user could act on. Embed a face that can hold the
+  // text instead. Amiri covers Latin too, so one font serves the whole form.
+  const needsUnicode = Object.values(values).some((value) => needsComplexShaping(value))
+  const appearanceFont = needsUnicode ? await (await prepareFonts(document)).unicode() : undefined
+
   for (const [name, value] of Object.entries(values)) {
     try {
       const field = form.getField(name)
       if (field instanceof PDFTextField) {
-        field.setText(value)
+        field.setText(toVisualOrder(value))
+        // An Arabic value in a left-aligned box reads as though it were
+        // indented from the wrong edge, which on a printed form looks wrong
+        // even when every letter is right.
+        if (isRtlText(value)) field.setAlignment(TextAlignment.Right)
       } else if (field instanceof PDFCheckBox) {
         if (value === 'true') field.check()
         else field.uncheck()
@@ -1426,16 +1440,29 @@ export async function fillFormFields(
     }
   }
 
+  // Build the appearance streams here, with the font chosen above, and then
+  // tell both flatten and save not to build them again: their own default
+  // pass runs with the form's original font and would undo this.
+  try {
+    form.updateFieldAppearances(appearanceFont)
+  } catch (error) {
+    skipped.push({ name: '', reason: (error as Error)?.message ?? 'appearance-failed' })
+  }
+
   let flattened = false
   if (flatten) {
     try {
-      form.flatten()
+      form.flatten({ updateFieldAppearances: false })
       flattened = true
     } catch (error) {
       skipped.push({ name: '', reason: (error as Error)?.message ?? 'flatten-failed' })
     }
   }
-  return { bytes: await save(document), skipped, flattened }
+  return {
+    bytes: await document.save({ useObjectStreams: true, updateFieldAppearances: false }),
+    skipped,
+    flattened
+  }
 }
 
 export async function flattenForms(bytes: PdfBytes, password?: string): Promise<FormFillResult> {

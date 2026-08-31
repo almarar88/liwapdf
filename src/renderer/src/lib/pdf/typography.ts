@@ -184,6 +184,31 @@ function shapedOrder(run: DirectionalRun): string {
   return [...run.text].reverse().join('')
 }
 
+/**
+ * Reorders a whole line the way a single text-showing operator needs it.
+ *
+ * Anything that hands a string to pdf-lib in one piece — a form field's
+ * appearance stream, the invisible OCR layer — gets no bidi pass of its own:
+ * the shaper reverses each script run it recognises and nothing reorders the
+ * runs against each other. Running the line through the same layout the
+ * drawing path uses, then concatenating, is what makes a mixed Arabic and
+ * Latin value come out reading correctly.
+ */
+export function toVisualOrder(text: string): string {
+  if (!text) return text
+  const rightToLeft = isRtlText(text)
+  const runs = layoutRuns(text, rightToLeft)
+  if (runs.length === 0) return text
+  if (!rightToLeft) return runs.map((run) => run.text).join('')
+
+  // Unlike the drawing path, which calls the shaper once per run, this hands
+  // it the whole line — so it detects Arabic for all of it and reverses every
+  // glyph it emits, a Latin word inside the sentence included. Pre-reversing
+  // the left-to-right runs cancels that; the right-to-left ones are left for
+  // the shaper to reverse itself, which is what it gets right.
+  return runs.map((run) => (run.rtl ? run.text : [...run.text].reverse().join(''))).join('')
+}
+
 /* --------------------------------------------------------------- drawing */
 
 export interface SmartTextOptions {
@@ -373,7 +398,7 @@ export async function drawInvisibleText(
   // One showText with one text matrix, so the string has to be in visual order
   // already — and an OCR'd Arabic-Indic number needs the same un-reversal the
   // visible path does, or a search for the ID finds nothing.
-  const value = layoutRuns(trimmed, isRtlText(trimmed)).map(shapedOrder).join('') || trimmed
+  const value = toVisualOrder(trimmed)
 
   const font = await fontFor(fonts, value, false)
   // Cap-height rather than the full box: OCR boxes include ascender and
