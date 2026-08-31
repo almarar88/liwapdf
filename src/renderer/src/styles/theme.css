@@ -1,3 +1,19 @@
+/* The app bundles Amiri for PDF output; using it in the UI too means Arabic
+   looks the same on a Windows box with no Arabic system font as it does on a
+   Mac, and as it does in the exported document. */
+@font-face {
+  font-family: 'Alcode Amiri';
+  src: url('../assets/fonts/Amiri-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Alcode Amiri';
+  src: url('../assets/fonts/Amiri-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-display: swap;
+}
+
 /* ============================================================================
    Alcode Editor — design tokens
    A restrained, Apple-inspired system: hairline borders, generous radii,
@@ -11,7 +27,7 @@
   --font-ui: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display',
     'Segoe UI Variable Text', 'Segoe UI', system-ui, 'Helvetica Neue', Arial, sans-serif;
   --font-ar: 'SF Arabic', 'Geeza Pro', 'Dubai', 'Segoe UI', 'Noto Naskh Arabic', 'Traditional Arabic',
-    var(--font-ui);
+    'Alcode Amiri', var(--font-ui);
   --font-mono: 'SF Mono', 'JetBrains Mono', 'Cascadia Mono', ui-monospace, Menlo, Consolas, monospace;
 
   --text-xs: 11px;
@@ -45,6 +61,10 @@
   --accent-soft: rgba(10, 132, 255, 0.14);
   --accent-ring: rgba(10, 132, 255, 0.32);
   --accent-contrast: #ffffff;
+  /* The accent is a fill colour, not a text colour: at 14% opacity behind it
+     the pure hue only reaches ~3:1. --accent-text is the same hue darkened
+     until label text on --accent-soft clears WCAG AA. */
+  --accent-text: #0059c2;
 
   /* Semantic */
   --green: #30a14e;
@@ -65,7 +85,7 @@
   --hairline-soft: rgba(15, 20, 35, 0.06);
   --fg: #10131a;
   --fg-2: #4a5160;
-  --fg-3: #7b8394;
+  --fg-3: #5f6878;
   --fg-inv: #ffffff;
   --canvas: #dfe2e9;
 
@@ -105,29 +125,57 @@
 :root[data-accent='blue'] {
   --accent: #0a84ff; --accent-strong: #0060df;
   --accent-soft: rgba(10, 132, 255, 0.14); --accent-ring: rgba(10, 132, 255, 0.32);
+  --accent-text: #0059c2;
 }
 :root[data-accent='purple'] {
   --accent: #8b5cf6; --accent-strong: #6d34e8;
   --accent-soft: rgba(139, 92, 246, 0.16); --accent-ring: rgba(139, 92, 246, 0.34);
+  --accent-text: #6428d4;
 }
 :root[data-accent='pink'] {
   --accent: #ff2d78; --accent-strong: #db1259;
   --accent-soft: rgba(255, 45, 120, 0.14); --accent-ring: rgba(255, 45, 120, 0.3);
+  --accent-text: #b8004a;
 }
 :root[data-accent='green'] {
   --accent: #22a565; --accent-strong: #15804b;
   --accent-soft: rgba(34, 165, 101, 0.16); --accent-ring: rgba(34, 165, 101, 0.3);
+  --accent-text: #136b41;
 }
 :root[data-accent='orange'] {
   --accent: #ff8a00; --accent-strong: #dd6f00;
   --accent-soft: rgba(255, 138, 0, 0.16); --accent-ring: rgba(255, 138, 0, 0.3);
+  --accent-text: #8a4a00;
 }
 :root[data-accent='graphite'] {
   --accent: #5a6474; --accent-strong: #3d4553;
   --accent-soft: rgba(90, 100, 116, 0.16); --accent-ring: rgba(90, 100, 116, 0.3);
+  --accent-text: #3d4553;
 }
 
-:root[data-reduce-motion='true'] * {
+/* On a dark surface the soft fill is dark too, so the plain accent is already
+   the readable choice; this must come after the accent blocks to win. */
+:root[data-theme='dark'] { --accent-text: var(--accent); }
+
+:root[data-reduce-motion='true'] *,
+:root[data-reduce-motion='true'] *::before,
+:root[data-reduce-motion='true'] *::after {
   animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
   transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
 }
+
+/* The OS setting applies on its own; the attribute above is the in-app opt-in
+   for people whose OS does not expose one. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+

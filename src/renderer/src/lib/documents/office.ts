@@ -247,6 +247,9 @@ export async function htmlToOdt(html: string, rightToLeft: boolean): Promise<Uin
   xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0"
   xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0"
   xmlns:fo="urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0"
+  xmlns:draw="urn:oasis:names:tc:opendocument:xmlns:drawing:1.0"
+  xmlns:svg="urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0"
+  xmlns:xlink="http://www.w3.org/1999/xlink"
   office:version="1.3">
  <office:automatic-styles>
   <style:style style:name="Bold" style:family="text"><style:text-properties fo:font-weight="bold"/></style:style>
@@ -402,7 +405,14 @@ export async function pptxToHtml(bytes: Uint8Array): Promise<OfficeReadResult> {
       )
       .filter((line) => line.length > 0)
 
-    const notesFile = zip.file(`ppt/notesSlides/notesSlide${slide.index}.xml`)
+    // Notes are matched through the slide's relationship file, not by index:
+    // slideN.xml is not required to pair with notesSlideN.xml, and after a
+    // slide is deleted in PowerPoint the numbering diverges — which silently
+    // attached the wrong speaker notes to the wrong slide.
+    const notesPath = await notesPathFor(zip, parser, slide.index)
+    const notesFile = notesPath
+      ? zip.file(notesPath)
+      : zip.file(`ppt/notesSlides/notesSlide${slide.index}.xml`)
     let notes = ''
     if (notesFile) {
       const notesXml = parser.parseFromString(await notesFile.async('string'), 'application/xml')
@@ -423,6 +433,29 @@ export async function pptxToHtml(bytes: Uint8Array): Promise<OfficeReadResult> {
   }
 
   return { html: sections.join('\n'), warnings: ['pptx-text-only'] }
+}
+
+/** Follows slideN.xml.rels to whichever notesSlide it actually points at. */
+async function notesPathFor(
+  zip: JSZip,
+  parser: DOMParser,
+  index: number
+): Promise<string | null> {
+  const relationships = zip.file(`ppt/slides/_rels/slide${index}.xml.rels`)
+  if (!relationships) return null
+  try {
+    const xml = parser.parseFromString(await relationships.async('string'), 'application/xml')
+    for (const entry of Array.from(xml.getElementsByTagNameNS('*', 'Relationship'))) {
+      const type = entry.getAttribute('Type') ?? ''
+      if (!type.endsWith('/notesSlide')) continue
+      const target = entry.getAttribute('Target')
+      if (!target) continue
+      return resolveZipPath('ppt/slides/', target)
+    }
+  } catch {
+    return null
+  }
+  return null
 }
 
 /* ------------------------------------------------------------------- EPUB */
@@ -454,19 +487,80 @@ export async function epubToHtml(bytes: Uint8Array): Promise<OfficeReadResult> {
     .filter((path): path is string => Boolean(path))
 
   const chapters: string[] = []
+  // Illustrations are half of what a book is, and a relative `src` inside a
+  // zip resolves to nothing once the chapter is lifted out of it — so each
+  // referenced image is inlined as a data URL, up to a budget that keeps a
+  // heavily illustrated book from exhausting memory.
+  let imageBudget = 24 * 1024 * 1024
+  const inlined = new Map<string, string>()
+  let droppedImages = 0
+
   for (const path of spine.slice(0, 200)) {
     const file = zip.file(path)
     if (!file) continue
     const raw = await file.async('string')
     const bodyMatch = /<body[^>]*>([\s\S]*?)<\/body>/i.exec(raw)
-    if (bodyMatch) chapters.push(bodyMatch[1])
+    if (!bodyMatch) continue
+
+    const directory = path.includes('/') ? path.slice(0, path.lastIndexOf('/') + 1) : ''
+    let body = bodyMatch[1]
+
+    for (const reference of collectImageSources(body)) {
+      if (/^(data|https?):/i.test(reference)) continue
+      const resolved = resolveZipPath(directory, reference)
+      let dataUrl = inlined.get(resolved)
+      if (dataUrl === undefined) {
+        const entry = zip.file(resolved)
+        if (!entry) continue
+        const data = await entry.async('base64')
+        const cost = Math.ceil((data.length * 3) / 4)
+        if (cost > imageBudget) {
+          droppedImages += 1
+          continue
+        }
+        imageBudget -= cost
+        dataUrl = `data:${mimeFromName(resolved)};base64,${data}`
+        inlined.set(resolved, dataUrl)
+      }
+      body = body.split(reference).join(dataUrl)
+    }
+
+    chapters.push(body)
   }
 
   const title = opf.getElementsByTagNameNS('*', 'title')[0]?.textContent?.trim()
+  const warnings: string[] = []
+  if (chapters.length === 0) warnings.push('epub-empty')
+  if (droppedImages > 0) warnings.push('epub-images-dropped')
   return {
     html: (title ? `<h1>${escapeHtml(title)}</h1>` : '') + chapters.join('\n<hr />\n'),
-    warnings: chapters.length === 0 ? ['epub-empty'] : []
+    warnings
   }
+}
+
+/** Every `src`/`xlink:href` an EPUB chapter points an image at. */
+function collectImageSources(html: string): string[] {
+  const found = new Set<string>()
+  const pattern = /<(?:img|image)\b[^>]*?(?:xlink:href|href|src)\s*=\s*["']([^"']+)["']/gi
+  let match: RegExpExecArray | null
+  while ((match = pattern.exec(html)) !== null) {
+    if (match[1]) found.add(match[1])
+  }
+  return [...found]
+}
+
+/** Resolves an EPUB-relative href against its chapter's folder. */
+function resolveZipPath(directory: string, reference: string): string {
+  const target = reference.split(/[?#]/)[0]
+  if (target.startsWith('/')) return target.slice(1)
+  const parts = (directory + target).split('/')
+  const stack: string[] = []
+  for (const part of parts) {
+    if (part === '' || part === '.') continue
+    if (part === '..') stack.pop()
+    else stack.push(part)
+  }
+  return stack.join('/')
 }
 
 /* -------------------------------------------------------- legacy .doc */

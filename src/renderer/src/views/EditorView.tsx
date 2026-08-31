@@ -32,6 +32,7 @@ import { SheetEditor } from './editor/SheetEditor'
 import { CodeEditor } from './editor/CodeEditor'
 import { exportTargetsFor, formatInfo, FORMATS, type DocumentFormat } from '../lib/documents/formats'
 import { htmlToPlainText } from '../lib/documents/write'
+import { inferCell, type SheetData } from '../lib/documents/sheets'
 import { clamp } from '../lib/format'
 import { TEMPLATES } from './editor/templates'
 
@@ -44,6 +45,7 @@ export function EditorView(): React.JSX.Element {
   const setActiveSheet = useApp((state) => state.setActiveSheet)
   const setDirection = useApp((state) => state.setEditorDirection)
   const closeEditor = useApp((state) => state.closeEditor)
+  const confirmDiscard = useApp((state) => state.confirmDiscard)
   const notify = useApp((state) => state.notify)
   const { openDialog, exportEditorAs, newDocument } = useDocumentActions()
 
@@ -149,7 +151,13 @@ export function EditorView(): React.JSX.Element {
           <FileDown size={15} />
           {formatInfo(defaultTarget(doc.source.kind))?.label}
         </Button>
-        <Button size="sm" variant="ghost" icon title={t('editor.closeDoc')} onClick={closeEditor}>
+        <Button
+          size="sm"
+          variant="ghost"
+          icon
+          title={t('editor.closeDoc')}
+          onClick={() => void confirmDiscard().then((ok) => ok && closeEditor())}
+        >
           <X size={15} />
         </Button>
       </div>
@@ -177,7 +185,7 @@ export function EditorView(): React.JSX.Element {
               direction={doc.direction}
               zoom={zoom}
               spellCheck={spellCheck}
-              documentKey={`${doc.source.name}|${doc.source.path ?? ''}|${doc.source.format}`}
+              documentKey={doc.id}
               onChange={updateHtml}
             />
           )}
@@ -207,7 +215,7 @@ export function EditorView(): React.JSX.Element {
         ) : null}
         <span style={{ marginInlineStart: 'auto' }}>
           {doc.dirty ? '● ' : ''}
-          {doc.source.name}
+          <bdi>{doc.source.name}</bdi>
         </span>
       </div>
 
@@ -461,10 +469,10 @@ function FindReplaceModal({
 interface ReplaceTargets {
   html: string
   text: string
-  sheets: { name: string; rows: string[][] }[]
+  sheets: SheetData[]
   setHtml: (value: string) => void
   setText: (value: string) => void
-  setSheets: (value: { name: string; rows: string[][] }[]) => void
+  setSheets: (value: SheetData[]) => void
 }
 
 function applyReplace(
@@ -499,7 +507,12 @@ function applyReplace(
     targets.setSheets(
       targets.sheets.map((sheet) => ({
         ...sheet,
-        rows: sheet.rows.map((row) => row.map((cell) => substitute(cell)))
+        rows: sheet.rows.map((row) =>
+          row.map((cell) => {
+            const next = substitute(cell.text)
+            return next === cell.text ? cell : inferCell(next, cell)
+          })
+        )
       }))
     )
     return count

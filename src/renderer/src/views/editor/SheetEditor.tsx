@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ArrowDownAZ,
   ArrowUpAZ,
@@ -9,7 +9,14 @@ import {
 } from 'lucide-react'
 import { useApp } from '../../store/app'
 import { Button } from '../../components/ui'
-import { columnLabel, trimGrid, type SheetData } from '../../lib/documents/sheets'
+import {
+  columnLabel,
+  emptyCell,
+  inferCell,
+  numericValue,
+  type SheetCell,
+  type SheetData
+} from '../../lib/documents/sheets'
 
 interface SheetEditorProps {
   sheets: SheetData[]
@@ -25,8 +32,18 @@ interface CellRef {
   column: number
 }
 
+const ROW_HEIGHT = 27
+const COLUMN_WIDTH = 116
+const OVERSCAN = 6
+
 /**
  * A spreadsheet grid built on plain inputs.
+ *
+ * Only the rows and columns inside the scroll window are mounted: a controlled
+ * `<input>` per cell is cheap until a workbook has fifty thousand of them, at
+ * which point every keystroke re-renders the lot. Editing is likewise kept
+ * local until the cell is left, so typing costs one component render rather
+ * than a full-grid clone through the store.
  *
  * Values are strings throughout — the point is faithful editing and export,
  * not a formula engine — but the status bar still totals whatever numeric
@@ -43,18 +60,75 @@ export function SheetEditor({
   const t = useApp((state) => state.t)
   const [cursor, setCursor] = useState<CellRef>({ row: 0, column: 0 })
   const [anchor, setAnchor] = useState<CellRef | null>(null)
+  const [draft, setDraft] = useState<{ row: number; column: number; value: string } | null>(null)
+
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const [window_, setWindow] = useState({ top: 0, left: 0, height: 600, width: 900 })
 
   const sheet = sheets[activeSheet] ?? sheets[0]
-  const rows = sheet?.rows ?? []
-  const columnCount = Math.max(1, ...rows.map((row) => row.length))
+  const rows = useMemo(() => sheet?.rows ?? [], [sheet])
+  const columnCount = useMemo(
+    () => Math.max(1, ...rows.map((row) => row.length)),
+    [rows]
+  )
 
+  const rowHeight = ROW_HEIGHT * zoom
+  const columnWidth = COLUMN_WIDTH * zoom
+
+  useEffect(() => {
+    const container = scrollRef.current
+    if (!container) return undefined
+    let frame = 0
+    const sync = (): void => {
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(() =>
+        setWindow({
+          top: container.scrollTop,
+          left: Math.abs(container.scrollLeft),
+          height: container.clientHeight,
+          width: container.clientWidth
+        })
+      )
+    }
+    sync()
+    container.addEventListener('scroll', sync, { passive: true })
+    const observer = new ResizeObserver(sync)
+    observer.observe(container)
+    return () => {
+      container.removeEventListener('scroll', sync)
+      observer.disconnect()
+      cancelAnimationFrame(frame)
+    }
+  }, [])
+
+  const firstRow = Math.max(0, Math.floor(window_.top / rowHeight) - OVERSCAN)
+  const lastRow = Math.min(
+    rows.length - 1,
+    Math.ceil((window_.top + window_.height) / rowHeight) + OVERSCAN
+  )
+  const firstColumn = Math.max(0, Math.floor(window_.left / columnWidth) - 2)
+  const lastColumn = Math.min(
+    columnCount - 1,
+    Math.ceil((window_.left + window_.width) / columnWidth) + 2
+  )
+
+  // Counting filled cells is O(cells); doing it on every keystroke is what a
+  // 20,000-row sheet cannot afford, so it only re-runs when the grid itself
+  // changes identity.
   const stats = useMemo(() => {
-    const trimmed = trimGrid(rows)
-    const filled = trimmed.reduce(
-      (total, row) => total + row.filter((cell) => cell !== '').length,
-      0
-    )
-    return { rows: trimmed.length, columns: trimmed[0]?.length ?? 0, filled }
+    let filled = 0
+    let lastRowWithData = -1
+    let lastColumnWithData = -1
+    for (let r = 0; r < rows.length; r += 1) {
+      for (let c = 0; c < rows[r].length; c += 1) {
+        if (rows[r][c]?.text !== '') {
+          filled += 1
+          if (r > lastRowWithData) lastRowWithData = r
+          if (c > lastColumnWithData) lastColumnWithData = c
+        }
+      }
+    }
+    return { rows: lastRowWithData + 1, columns: lastColumnWithData + 1, filled }
   }, [rows])
 
   const selection = useMemo(() => {
@@ -67,8 +141,8 @@ export function SheetEditor({
     const numbers: number[] = []
     for (let row = top; row <= bottom; row += 1) {
       for (let column = left; column <= right; column += 1) {
-        const value = Number((rows[row]?.[column] ?? '').replace(/[,\s]/g, ''))
-        if (Number.isFinite(value) && (rows[row]?.[column] ?? '') !== '') numbers.push(value)
+        const value = numericValue(rows[row]?.[column])
+        if (value !== null) numbers.push(value)
       }
     }
     if (numbers.length === 0) return null
@@ -80,17 +154,29 @@ export function SheetEditor({
     onChange(sheets.map((item, index) => (index === activeSheet ? next : item)))
   }
 
-  const setCell = (row: number, column: number, value: string): void => {
-    const grid = rows.map((current) => [...current])
-    while (grid.length <= row) grid.push(new Array(columnCount).fill(''))
-    while (grid[row].length <= column) grid[row].push('')
-    grid[row][column] = value
+  /** Copy-on-write of the affected row only — the rest of the grid is shared. */
+  const commitCell = (row: number, column: number, value: string): void => {
+    const existing = rows[row]?.[column]
+    if (existing && existing.text === value) return
+    const grid = [...rows]
+    while (grid.length <= row) grid.push(Array.from({ length: columnCount }, emptyCell))
+    const line = [...grid[row]]
+    while (line.length <= column) line.push(emptyCell())
+    // Re-infer the type from what was typed, keeping the previous number format.
+    line[column] = inferCell(value, line[column])
+    grid[row] = line
     mutate({ ...sheet, rows: grid })
   }
 
+  const flushDraft = (): void => {
+    if (!draft) return
+    commitCell(draft.row, draft.column, draft.value)
+    setDraft(null)
+  }
+
   const addRow = (at = rows.length): void => {
-    const grid = rows.map((current) => [...current])
-    grid.splice(at, 0, new Array(columnCount).fill(''))
+    const grid = [...rows]
+    grid.splice(at, 0, Array.from({ length: columnCount }, emptyCell))
     mutate({ ...sheet, rows: grid })
   }
 
@@ -99,8 +185,8 @@ export function SheetEditor({
       ...sheet,
       rows: rows.map((row) => {
         const copy = [...row]
-        while (copy.length < columnCount) copy.push('')
-        copy.splice(at, 0, '')
+        while (copy.length < columnCount) copy.push(emptyCell())
+        copy.splice(at, 0, emptyCell())
         return copy
       })
     })
@@ -108,7 +194,7 @@ export function SheetEditor({
 
   const deleteRow = (at: number): void => {
     if (rows.length <= 1) return
-    const grid = rows.map((current) => [...current])
+    const grid = [...rows]
     grid.splice(at, 1)
     mutate({ ...sheet, rows: grid })
   }
@@ -122,26 +208,35 @@ export function SheetEditor({
     // The first row is treated as a header and stays put.
     const [header, ...body] = rows
     const sorted = [...body].sort((left, right) => {
-      const a = left[column] ?? ''
-      const b = right[column] ?? ''
-      const numericA = Number(a.replace(/[,\s]/g, ''))
-      const numericB = Number(b.replace(/[,\s]/g, ''))
-      const bothNumeric = a !== '' && b !== '' && Number.isFinite(numericA) && Number.isFinite(numericB)
-      const comparison = bothNumeric ? numericA - numericB : a.localeCompare(b, undefined, { numeric: true })
+      const numericA = numericValue(left[column])
+      const numericB = numericValue(right[column])
+      const comparison =
+        numericA !== null && numericB !== null
+          ? numericA - numericB
+          : (left[column]?.text ?? '').localeCompare(right[column]?.text ?? '', undefined, { numeric: true })
       return ascending ? comparison : -comparison
     })
     mutate({ ...sheet, rows: [header, ...sorted] })
   }
 
-  const onCellKeyDown = (event: React.KeyboardEvent, row: number, column: number): void => {
-    const move = (nextRow: number, nextColumn: number): void => {
-      event.preventDefault()
-      const target = document.querySelector<HTMLInputElement>(
-        `[data-cell="${nextRow}-${nextColumn}"]`
-      )
+  const focusCell = (row: number, column: number): void => {
+    setCursor({ row, column })
+    requestAnimationFrame(() => {
+      const target = document.querySelector<HTMLInputElement>(`[data-cell="${row}-${column}"]`)
       target?.focus()
       target?.select()
-      setCursor({ row: nextRow, column: nextColumn })
+    })
+  }
+
+  const onCellKeyDown = (event: React.KeyboardEvent, row: number, column: number): void => {
+    const move = (nextRow: number, nextColumn: number): void => {
+      // Only swallow the key when the move actually goes somewhere. At the
+      // last cell Tab must be allowed through, or the grid is a keyboard trap
+      // with no way out but the mouse.
+      if (nextRow === row && nextColumn === column) return
+      event.preventDefault()
+      flushDraft()
+      focusCell(nextRow, nextColumn)
       if (!event.shiftKey) setAnchor(null)
     }
 
@@ -151,6 +246,8 @@ export function SheetEditor({
       move(Math.max(row - 1, 0), column)
     } else if (event.key === 'Tab') {
       move(row, event.shiftKey ? Math.max(column - 1, 0) : Math.min(column + 1, columnCount - 1))
+    } else if (event.key === 'Escape') {
+      setDraft(null)
     } else if (event.key === 'Delete' && event.ctrlKey) {
       event.preventDefault()
       deleteRow(row)
@@ -158,6 +255,11 @@ export function SheetEditor({
   }
 
   if (!sheet) return <div className="empty">{t('msg.noDocument')}</div>
+
+  const visibleRows: number[] = []
+  for (let row = firstRow; row <= lastRow; row += 1) visibleRows.push(row)
+  const visibleColumns: number[] = []
+  for (let column = firstColumn; column <= lastColumn; column += 1) visibleColumns.push(column)
 
   return (
     <div className="sheet-shell">
@@ -198,6 +300,7 @@ export function SheetEditor({
           variant="ghost"
           onClick={() => sortByColumn(cursor.column, true)}
           title={t('sheet.sortAsc')}
+          aria-label={t('sheet.sortAsc')}
         >
           <ArrowUpAZ size={15} />
         </Button>
@@ -206,44 +309,66 @@ export function SheetEditor({
           variant="ghost"
           onClick={() => sortByColumn(cursor.column, false)}
           title={t('sheet.sortDesc')}
+          aria-label={t('sheet.sortDesc')}
         >
           <ArrowDownAZ size={15} />
         </Button>
 
         <span className="spacer" />
-        <span className="mono muted">
+        <span className="mono muted" dir="ltr">
           {columnLabel(cursor.column)}
           {cursor.row + 1}
         </span>
       </div>
 
-      <div className="sheet-scroll" dir={direction}>
-        <table className="sheet-grid" style={{ fontSize: `${13 * zoom}px` }}>
-          <thead>
-            <tr>
-              <th className="corner" />
-              {Array.from({ length: columnCount }, (_, column) => (
-                <th
-                  key={column}
-                  className={column === cursor.column ? 'active' : ''}
-                  onClick={() => setCursor((current) => ({ ...current, column }))}
-                >
-                  {columnLabel(column)}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row, rowIndex) => (
-              <tr key={rowIndex}>
-                <th
-                  className={`row-head${rowIndex === cursor.row ? ' active' : ''}`}
+      <div className="sheet-scroll" dir={direction} ref={scrollRef}>
+        <div
+          className="sheet-canvas"
+          style={{
+            height: rows.length * rowHeight + rowHeight,
+            width: columnCount * columnWidth + 52 * zoom,
+            fontSize: `${13 * zoom}px`
+          }}
+          role="grid"
+          aria-rowcount={rows.length}
+          aria-colcount={columnCount}
+        >
+          <div className="sheet-head" style={{ height: rowHeight }}>
+            <div className="sheet-corner" style={{ width: 52 * zoom, height: rowHeight }} />
+            {visibleColumns.map((column) => (
+              <div
+                key={column}
+                className={`sheet-col-head${column === cursor.column ? ' active' : ''}`}
+                style={{
+                  insetInlineStart: 52 * zoom + column * columnWidth,
+                  width: columnWidth,
+                  height: rowHeight
+                }}
+                onClick={() => setCursor((current) => ({ ...current, column }))}
+              >
+                {columnLabel(column)}
+              </div>
+            ))}
+          </div>
+
+          {visibleRows.map((rowIndex) => {
+            const row = rows[rowIndex] ?? []
+            return (
+              <div
+                key={rowIndex}
+                className="sheet-row"
+                style={{ top: rowHeight + rowIndex * rowHeight, height: rowHeight }}
+                role="row"
+              >
+                <div
+                  className={`sheet-row-head${rowIndex === cursor.row ? ' active' : ''}`}
+                  style={{ width: 52 * zoom, height: rowHeight }}
                   onClick={() => setCursor((current) => ({ ...current, row: rowIndex }))}
                 >
                   {rowIndex + 1}
-                </th>
-                {Array.from({ length: columnCount }, (_, column) => {
-                  const value = row[column] ?? ''
+                </div>
+                {visibleColumns.map((column) => {
+                  const cell = row[column] ?? EMPTY
                   const isCursor = cursor.row === rowIndex && cursor.column === column
                   const inSelection =
                     anchor !== null &&
@@ -251,15 +376,29 @@ export function SheetEditor({
                     rowIndex <= Math.max(anchor.row, cursor.row) &&
                     column >= Math.min(anchor.column, cursor.column) &&
                     column <= Math.max(anchor.column, cursor.column)
+                  const editing =
+                    draft !== null && draft.row === rowIndex && draft.column === column
 
                   return (
-                    <td key={column} className={inSelection && !isCursor ? 'selected' : ''}>
+                    <div
+                      key={column}
+                      className={`sheet-cell${inSelection && !isCursor ? ' selected' : ''}`}
+                      style={{
+                        insetInlineStart: 52 * zoom + column * columnWidth,
+                        width: columnWidth,
+                        height: rowHeight
+                      }}
+                      role="gridcell"
+                    >
                       <input
                         data-cell={`${rowIndex}-${column}`}
                         className={isCursor ? 'cursor' : ''}
-                        value={value}
+                        value={editing ? draft.value : cell.text}
+                        title={cell.formula ? '=' + cell.formula : undefined}
+                        aria-label={`${columnLabel(column)}${rowIndex + 1}`}
                         dir="auto"
                         onFocus={() => setCursor({ row: rowIndex, column })}
+                        onBlur={flushDraft}
                         onMouseDown={(event) => {
                           if (event.shiftKey) {
                             if (!anchor) setAnchor(cursor)
@@ -267,16 +406,18 @@ export function SheetEditor({
                             setAnchor({ row: rowIndex, column })
                           }
                         }}
-                        onChange={(event) => setCell(rowIndex, column, event.target.value)}
+                        onChange={(event) =>
+                          setDraft({ row: rowIndex, column, value: event.target.value })
+                        }
                         onKeyDown={(event) => onCellKeyDown(event, rowIndex, column)}
                       />
-                    </td>
+                    </div>
                   )
                 })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+              </div>
+            )
+          })}
+        </div>
       </div>
 
       <div className="sheet-tabs">
@@ -302,10 +443,11 @@ export function SheetEditor({
         <button
           className="sheet-tab add"
           title={t('sheet.newSheet')}
+          aria-label={t('sheet.newSheet')}
           onClick={() => {
             onChange([
               ...sheets,
-              { name: `Sheet${sheets.length + 1}`, rows: Array.from({ length: 24 }, () => new Array(8).fill('')) }
+              { name: `Sheet${sheets.length + 1}`, rows: Array.from({ length: 24 }, () => Array.from({ length: 8 }, emptyCell)) }
             ])
             onActiveSheetChange(sheets.length)
           }}
@@ -316,6 +458,7 @@ export function SheetEditor({
           <button
             className="sheet-tab"
             title={t('sheet.deleteSheet')}
+            aria-label={t('sheet.deleteSheet')}
             onClick={() => {
               onChange(sheets.filter((_, index) => index !== activeSheet))
               onActiveSheetChange(Math.max(0, activeSheet - 1))
@@ -327,19 +470,22 @@ export function SheetEditor({
 
         <span className="spacer" style={{ marginInlineStart: 'auto' }} />
         <span className="muted">
-          {stats.rows} {t('sheet.rows')} · {stats.columns} {t('sheet.columns')} · {stats.filled}{' '}
-          {t('sheet.cells')}
+          <span dir="ltr">{stats.rows}</span> {t('sheet.rows')} ·{' '}
+          <span dir="ltr">{stats.columns}</span> {t('sheet.columns')} ·{' '}
+          <span dir="ltr">{stats.filled}</span> {t('sheet.cells')}
         </span>
         {selection ? (
           <span className="muted" style={{ marginInlineStart: 14 }}>
-            {t('sheet.sum')} {formatNumber(selection.sum)} · {t('sheet.average')}{' '}
-            {formatNumber(selection.average)}
+            {t('sheet.sum')} <span dir="ltr">{formatNumber(selection.sum)}</span> ·{' '}
+            {t('sheet.average')} <span dir="ltr">{formatNumber(selection.average)}</span>
           </span>
         ) : null}
       </div>
     </div>
   )
 }
+
+const EMPTY: SheetCell = { text: '' }
 
 function formatNumber(value: number): string {
   return Number.isInteger(value) ? String(value) : value.toFixed(2)

@@ -20,6 +20,7 @@ export function CodeEditor({ text, format, zoom, onChange }: CodeEditorProps): R
   const t = useApp((state) => state.t)
   const notify = useApp((state) => state.notify)
   const [wrap, setWrap] = useState(true)
+  const [tabEscapes, setTabEscapes] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const gutterRef = useRef<HTMLDivElement>(null)
 
@@ -71,8 +72,25 @@ export function CodeEditor({ text, format, zoom, onChange }: CodeEditorProps): R
     onChange(text.replace(/\n\s*\n+/g, '\n').replace(/[ \t]+$/gm, ''))
   }
 
+  /**
+   * Tab inserts an indent, which makes the textarea a keyboard trap: once
+   * focus is inside, nothing but a mouse gets it out again. Escape arms the
+   * standard escape hatch — the next Tab leaves instead of indenting — and
+   * Shift+Tab always leaves, since it never inserted anything anyway.
+   */
   const onKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>): void => {
-    if (event.key !== 'Tab') return
+    if (event.key === 'Escape') {
+      setTabEscapes(true)
+      return
+    }
+    if (event.key !== 'Tab') {
+      if (tabEscapes) setTabEscapes(false)
+      return
+    }
+    if (tabEscapes || event.shiftKey) {
+      setTabEscapes(false)
+      return
+    }
     event.preventDefault()
     const textarea = event.currentTarget
     const { selectionStart, selectionEnd, value } = textarea
@@ -104,7 +122,10 @@ export function CodeEditor({ text, format, zoom, onChange }: CodeEditorProps): R
           {t('code.wrap')}
         </Button>
         <span className="spacer" />
-        <span className="muted mono">
+        <span className="muted" style={{ fontSize: 'var(--text-xs)' }}>
+          {t('code.tabHint')}
+        </span>
+        <span className="muted mono" dir="ltr">
           {lineCount} {t('code.lines')}
         </span>
       </div>

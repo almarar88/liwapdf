@@ -56,8 +56,42 @@ interface RecentsShape {
 let settingsStore: JsonStore<AppSettings> | null = null
 let recentsStore: JsonStore<RecentsShape> | null = null
 
+const THEMES: AppSettings['theme'][] = ['light', 'dark', 'system']
+const LANGUAGES: AppSettings['language'][] = ['ar', 'en']
+
+/**
+ * Settings come off disk as whatever JSON happens to be in the file — a
+ * hand-edited or half-written one included — and `theme` in particular is fed
+ * straight to `nativeTheme.themeSource`, which throws on an unexpected value
+ * and would take the app down at startup. Coerce at the boundary instead of
+ * trusting the declared type.
+ */
+export function coerceSettings(raw: unknown): AppSettings {
+  const source = (raw ?? {}) as Partial<Record<keyof AppSettings, unknown>>
+  return {
+    theme: THEMES.includes(source.theme as AppSettings['theme'])
+      ? (source.theme as AppSettings['theme'])
+      : DEFAULT_SETTINGS.theme,
+    language: LANGUAGES.includes(source.language as AppSettings['language'])
+      ? (source.language as AppSettings['language'])
+      : DEFAULT_SETTINGS.language,
+    accent: typeof source.accent === 'string' ? source.accent : DEFAULT_SETTINGS.accent,
+    reduceMotion:
+      typeof source.reduceMotion === 'boolean' ? source.reduceMotion : DEFAULT_SETTINGS.reduceMotion,
+    defaultExportDir:
+      typeof source.defaultExportDir === 'string' ? source.defaultExportDir : null,
+    rememberSession:
+      typeof source.rememberSession === 'boolean'
+        ? source.rememberSession
+        : DEFAULT_SETTINGS.rememberSession
+  }
+}
+
 export function settings(): JsonStore<AppSettings> {
-  if (!settingsStore) settingsStore = new JsonStore<AppSettings>('settings.json', { ...DEFAULT_SETTINGS })
+  if (!settingsStore) {
+    settingsStore = new JsonStore<AppSettings>('settings.json', { ...DEFAULT_SETTINGS })
+    settingsStore.replace(coerceSettings(settingsStore.get()))
+  }
   return settingsStore
 }
 

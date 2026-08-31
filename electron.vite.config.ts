@@ -12,7 +12,12 @@ export default defineConfig({
   preload: {
     plugins: [externalizeDepsPlugin()],
     build: {
-      rollupOptions: { input: { index: resolve(__dirname, 'src/preload/index.ts') } }
+      rollupOptions: {
+        input: { index: resolve(__dirname, 'src/preload/index.ts') },
+        // A sandboxed renderer can only load a CommonJS preload, and the
+        // sandbox is worth far more than ESM in a 100-line bridge file.
+        output: { format: 'cjs', entryFileNames: '[name].cjs' }
+      }
     }
   },
   renderer: {

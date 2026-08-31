@@ -34,9 +34,14 @@ export function OrganizeView(): React.JSX.Element {
   const [order, setOrder] = useState<number[]>([])
   const dragIndex = useRef<number | null>(null)
 
+  // Keyed on the document's identity, not on two of its numbers: a different
+  // file with the same page count and version would otherwise inherit the
+  // previous document's page order.
+  const documentKey = doc ? `${doc.id}:${doc.version}` : null
   useEffect(() => {
     if (doc) setOrder(Array.from({ length: doc.pageCount }, (_, index) => index))
-  }, [doc?.pageCount, doc?.version])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [documentKey])
 
   if (!doc) {
     return (
@@ -276,7 +281,16 @@ export function OrganizeView(): React.JSX.Element {
             version={doc.version}
             selectable
             selected={selected.includes(pageIndex)}
+            label={t('organize.pageTile', { page: String(pageIndex + 1) })}
             onClick={() => togglePageSelection(pageIndex)}
+            onMove={(direction) => {
+              const target = position + direction
+              if (target < 0 || target >= order.length) return
+              const next = [...order]
+              const [moved] = next.splice(position, 1)
+              next.splice(target, 0, moved)
+              applyOrder(next)
+            }}
             draggable
             onDragStart={() => {
               dragIndex.current = position

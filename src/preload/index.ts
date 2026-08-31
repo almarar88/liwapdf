@@ -32,7 +32,6 @@ const api = {
   pathForFile: (file: File): string => webUtils.getPathForFile(file),
   shell: {
     reveal: (path: string): Promise<void> => ipcRenderer.invoke('shell:reveal', path),
-    open: (path: string): Promise<void> => ipcRenderer.invoke('shell:open', path),
     external: (url: string): Promise<void> => ipcRenderer.invoke('shell:external', url)
   },
   clipboard: {

@@ -136,12 +136,31 @@ export function hexToRgb(hex: string): { r: number; g: number; b: number } {
 }
 
 /**
- * True when the string contains characters the PDF base-14 fonts cannot
- * encode (Arabic, CJK, emoji...). Such text is rasterized instead, which also
- * gives us correct Arabic shaping for free via the browser's text engine.
+ * The 27 characters WinAnsiEncoding provides above Latin-1 — curly quotes, the
+ * dashes, the euro sign and friends.
+ */
+const WIN_ANSI_EXTRA =
+  '\u20AC\u201A\u0192\u201E\u2026\u2020\u2021\u02C6\u2030\u0160\u2039\u0152\u017D' +
+  '\u2018\u2019\u201C\u201D\u2022\u2013\u2014\u02DC\u2122\u0161\u203A\u0153\u017E\u0178'
+
+/**
+ * True when the text needs an embedded Unicode font rather than one of the
+ * base-14 ones.
+ *
+ * The test is "can WinAnsiEncoding represent every character", which is not the
+ * same as "is it Latin-1": U+0080-U+009F are C1 controls with no WinAnsi glyph
+ * at all, and pdf-lib throws when asked to encode one. Treating them as safe
+ * made a stray control character in a watermark or header crash the export.
  */
 export function needsComplexShaping(text: string): boolean {
-  return /[^ -ÿ]/.test(text)
+  for (const character of text) {
+    const code = character.codePointAt(0) ?? 0
+    if (code >= 0x20 && code <= 0x7e) continue
+    if (code >= 0xa0 && code <= 0xff) continue
+    if (WIN_ANSI_EXTRA.includes(character)) continue
+    return true
+  }
+  return false
 }
 
 export function escapeHtml(value: string): string {

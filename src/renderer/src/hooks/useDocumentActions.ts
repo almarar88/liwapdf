@@ -4,6 +4,7 @@ import { FILTERS, pickFiles, saveBytes, type FileFilter } from '../lib/files'
 import { readDocument, sanitize } from '../lib/documents/read'
 import { exportDocument, canSaveInPlace } from '../lib/documents/write'
 import { formatInfo, type DocumentFormat, ALL_READABLE_EXTENSIONS } from '../lib/documents/formats'
+import { emptyGrid } from '../lib/documents/sheets'
 import { markdownToHtml } from '../lib/markdown'
 import { stripExtension } from '../lib/format'
 
@@ -16,18 +17,25 @@ export interface DocumentActions {
   newDocument: (kind: 'rich' | 'sheet' | 'code', template?: string) => void
 }
 
-/** Every readable extension, offered as one filter plus per-family filters. */
-export const OPEN_FILTERS: FileFilter[] = [
-  { name: 'All supported documents', extensions: [...ALL_READABLE_EXTENSIONS] },
-  { name: 'PDF', extensions: ['pdf'] },
-  { name: 'Word', extensions: ['docx', 'doc', 'rtf', 'odt'] },
-  { name: 'Spreadsheets', extensions: ['xlsx', 'xls', 'ods', 'csv', 'tsv'] },
-  { name: 'Presentations', extensions: ['pptx', 'ppsx'] },
-  { name: 'Text & code', extensions: ['txt', 'md', 'html', 'json', 'xml', 'yml', 'csv', 'log'] },
-  { name: 'Books', extensions: ['epub'] },
-  { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'] },
-  { name: 'All files', extensions: ['*'] }
-]
+/**
+ * Every readable extension, offered as one filter plus per-family filters.
+ *
+ * Names are translation keys: `pickFiles` resolves them against the current
+ * language, so the OS dialog stops being English-only in an Arabic UI.
+ */
+export function openFilters(): FileFilter[] {
+  return [
+    { name: 'file.supported', extensions: [...ALL_READABLE_EXTENSIONS] },
+    { name: 'file.pdf', extensions: ['pdf'] },
+    { name: 'file.word', extensions: ['docx', 'doc', 'rtf', 'odt'] },
+    { name: 'file.sheets', extensions: ['xlsx', 'xls', 'ods', 'csv', 'tsv'] },
+    { name: 'file.slides', extensions: ['pptx', 'ppsx'] },
+    { name: 'file.code', extensions: ['txt', 'md', 'html', 'json', 'xml', 'yml', 'csv', 'log'] },
+    { name: 'file.books', extensions: ['epub'] },
+    { name: 'file.images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'] },
+    { name: 'file.all', extensions: ['*'] }
+  ]
+}
 
 /**
  * The single place that knows how to turn a file on disk into the right editor,
@@ -70,6 +78,7 @@ export function useDocumentActions(): DocumentActions {
 
   const openPaths = useCallback(
     async (paths: string[]): Promise<void> => {
+      if (!(await store.getState().confirmDiscard())) return
       for (const path of paths) {
         try {
           const file = await window.alcode.fs.read(path)
@@ -84,7 +93,8 @@ export function useDocumentActions(): DocumentActions {
   )
 
   const openDialog = useCallback(async (): Promise<void> => {
-    const files = await pickFiles(OPEN_FILTERS, true)
+    if (!(await store.getState().confirmDiscard())) return
+    const files = await pickFiles(openFilters(), true)
     for (const file of files) {
       await openBytes(file.name, file.data, file.path)
     }
@@ -185,12 +195,7 @@ export function useDocumentActions(): DocumentActions {
           path: null,
           format: 'xlsx',
           kind: 'sheet',
-          sheets: [
-            {
-              name: 'Sheet1',
-              rows: Array.from({ length: 24 }, () => new Array(8).fill(''))
-            }
-          ],
+          sheets: [{ name: 'Sheet1', rows: emptyGrid(24, 8) }],
           direction: rightToLeft ? 'rtl' : 'ltr',
           warnings: [],
           originalBytes: new Uint8Array()
@@ -257,7 +262,9 @@ function announceSaved(path: string): void {
 const WARNING_MESSAGES: Record<string, Parameters<ReturnType<typeof useApp.getState>['t']>[0]> = {
   'doc-text-only': 'msg.legacyDocNote',
   'pptx-text-only': 'msg.slidesTextNote',
-  'unknown-format-as-text': 'msg.openedAsText'
+  'unknown-format-as-text': 'msg.openedAsText',
+  'sheet-truncated': 'msg.sheetTruncated',
+  'epub-images-dropped': 'msg.epubImagesDropped'
 }
 
 function blankRichTemplate(rightToLeft: boolean): string {

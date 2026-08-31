@@ -128,6 +128,9 @@ function bodyFor(request: ExportRequest, html: string): string {
 
 /** Formats a document can be saved back to in place, keeping its own type. */
 export function canSaveInPlace(document_: LoadedDocument): boolean {
+  // Writing a partially-read document back over the original would destroy the
+  // rows or content the reader could not hold.
+  if (document_.truncated) return false
   return ['docx', 'rtf', 'odt', 'txt', 'md', 'html', 'csv', 'tsv', 'xlsx', 'ods', 'json', 'xml', 'code'].includes(
     document_.format
   )

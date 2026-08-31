@@ -58,7 +58,7 @@ export function decodeText(bytes: Uint8Array): DecodedText {
     } catch {
       continue
     }
-    const score = scoreText(text)
+    const score = scoreText(text) + scriptFitAdjustment(encoding, text)
     if (!best || score > best.score) best = { text, encoding, score }
   }
 
@@ -106,34 +106,99 @@ export function isValidUtf8(bytes: Uint8Array): boolean {
 }
 
 /**
- * Rewards letters and common punctuation, punishes replacement characters and
- * isolated control bytes. The correct legacy encoding scores highest because
- * the wrong one scatters accented Latin noise through Arabic text.
+ * Scores how plausible a decoding is, judging the *decoding* rather than the
+ * script. An earlier version rewarded Arabic and Cyrillic while penalising the
+ * whole U+0080-U+00FF block, which made Windows-1252 unwinnable — every
+ * accented Western European file decoded as mojibake.
+ *
+ * The signals that actually separate a right decoding from a wrong one are:
+ * replacement characters, C1 control codes (the classic mojibake tell, since
+ * no real text contains them), stray control bytes, and words that mix scripts.
  */
 function scoreText(text: string): number {
-  let score = 0
   const sample = text.slice(0, 8000)
+  let score = 0
+
   for (const character of sample) {
     const code = character.codePointAt(0) ?? 0
-    if (character === '�') {
-      score -= 12
-    } else if (code >= 0x0600 && code <= 0x06ff) {
-      score += 4 // Arabic
-    } else if (code >= 0x0590 && code <= 0x05ff) {
-      score += 3 // Hebrew
-    } else if (code >= 0x0400 && code <= 0x04ff) {
-      score += 3 // Cyrillic
-    } else if (/[A-Za-z]/.test(character)) {
-      score += 2
-    } else if (/[\s.,;:!?()[\]{}"'\-–—/@#%&*+=<>|\\0-9]/.test(character)) {
-      score += 1
+
+    if (character === '\uFFFD') {
+      score -= 20
+    } else if (code >= 0x80 && code <= 0x9f) {
+      // C1 controls: valid in no natural text, produced constantly by decoding
+      // UTF-8 or CP1256 bytes as Latin-1.
+      score -= 10
     } else if (code < 0x20 && character !== '\n' && character !== '\r' && character !== '\t') {
-      score -= 8
-    } else if (code >= 0x80 && code <= 0xff) {
-      score -= 2 // stray Latin-1 supplement is the classic mojibake signature
+      score -= 10
+    } else if (LETTER.test(character)) {
+      score += 2
+    } else if (SPACE_OR_PUNCTUATION.test(character)) {
+      score += 1
+    } else {
+      score -= 1
     }
   }
-  return score
+
+  return score - mixedScriptPenalty(sample)
+}
+
+/**
+ * A codepage exists to carry a particular script. A CP1256 decode that yields
+ * no Arabic at all is the wrong codepage even when the bytes happen to produce
+ * plausible letters — CP1256 and CP1252 agree on most accented Latin, so
+ * without this a French file would be reported as Arabic-encoded.
+ */
+function scriptFitAdjustment(encoding: DetectedEncoding, text: string): number {
+  const sample = text.slice(0, 4000)
+  const countIn = (from: number, to: number): number => {
+    let total = 0
+    for (const character of sample) {
+      const code = character.codePointAt(0) ?? 0
+      if (code >= from && code <= to) total += 1
+    }
+    return total
+  }
+
+  if (encoding === 'windows-1256' || encoding === 'iso-8859-6') {
+    return countIn(0x600, 0x6ff) > 0 ? 0 : -400
+  }
+  if (encoding === 'windows-1251') {
+    return countIn(0x400, 0x4ff) > 0 ? 0 : -400
+  }
+  return 0
+}
+
+const LETTER = /\p{L}|\p{M}/u
+const SPACE_OR_PUNCTUATION = /[\s\p{N}\p{P}\p{S}]/u
+
+/**
+ * A word whose letters come from two different scripts is almost always a
+ * decoding artefact — "Ø§Ù„Ø³" style Latin-1 noise, or Arabic bytes read as
+ * Cyrillic. Real bilingual text separates scripts at word boundaries.
+ */
+function mixedScriptPenalty(text: string): number {
+  let penalty = 0
+  for (const word of text.split(/[\s\p{P}]+/u).slice(0, 1200)) {
+    if (word.length < 2) continue
+    const scripts = new Set<string>()
+    for (const character of word) {
+      const script = scriptOf(character.codePointAt(0) ?? 0)
+      if (script) scripts.add(script)
+    }
+    if (scripts.size > 1) penalty += 6
+  }
+  return penalty
+}
+
+function scriptOf(code: number): string | null {
+  if ((code >= 0x41 && code <= 0x5a) || (code >= 0x61 && code <= 0x7a)) return 'latin'
+  if (code >= 0xc0 && code <= 0x24f) return 'latin'
+  if (code >= 0x600 && code <= 0x6ff) return 'arabic'
+  if (code >= 0x750 && code <= 0x77f) return 'arabic'
+  if (code >= 0x590 && code <= 0x5ff) return 'hebrew'
+  if (code >= 0x400 && code <= 0x4ff) return 'cyrillic'
+  if (code >= 0x370 && code <= 0x3ff) return 'greek'
+  return null
 }
 
 const RTL_RANGE = /[֐-׿؀-ۿ܀-ݏݐ-ݿࢠ-ࣿﭐ-﷿ﹰ-﻿]/
@@ -163,4 +228,35 @@ export function containsArabic(text: string): boolean {
 export function normalizeArabicPresentation(text: string): string {
   if (!/[ﭐ-﷿ﹰ-﻿]/.test(text)) return text
   return text.normalize('NFKC').replace(/‏|‎/g, '')
+}
+
+/**
+ * Folds an Arabic string to a form that compares equal across the spelling
+ * variations readers do not distinguish. Without this, searching a PDF for
+ * "الاسم" misses "الأسم", and any word carrying tashkeel never matches.
+ *
+ * Applied to both the query and the haystack, never to stored content.
+ */
+export function normalizeArabicForSearch(text: string): string {
+  return (
+    normalizeArabicPresentation(text)
+      // Tashkeel (harakat), superscript alef, and the tatweel stretch glyph
+      // carry no lexical weight for search.
+      .replace(/[ً-ْٰـۖ-ۭ]/g, '')
+      // Hamza-carrier and alef variants users type interchangeably.
+      .replace(/[آأإٱٲٳ]/g, 'ا')
+      .replace(/ى/g, 'ي')
+      .replace(/ة/g, 'ه')
+      .replace(/[ؤ]/g, 'و')
+      .replace(/[ئ]/g, 'ي')
+      // Arabic-Indic and extended Arabic-Indic digits fold to Western.
+      .replace(/[٠-٩]/g, (digit) => String(digit.charCodeAt(0) - 0x0660))
+      .replace(/[۰-۹]/g, (digit) => String(digit.charCodeAt(0) - 0x06f0))
+      .toLowerCase()
+  )
+}
+
+/** Case- and script-folded form used for all in-app text search. */
+export function normalizeForSearch(text: string): string {
+  return normalizeArabicForSearch(text).normalize('NFKC')
 }

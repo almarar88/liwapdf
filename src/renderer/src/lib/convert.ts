@@ -6,6 +6,7 @@ import {
   TextRun
 } from 'docx'
 import type { PdfPrintOptions } from '@shared/types'
+import { sanitizeForPrint } from './documents/sanitize'
 import { openForRender } from './pdf/pdfjs'
 import { extractText, renderPageToBytes, scaleForDpi } from './pdf/render'
 import { imagesToPdf as buildPdfFromImages, type NamedBytes } from './pdf/ops'
@@ -160,7 +161,10 @@ export interface HtmlPdfSettings extends PdfPrintOptions {
 }
 
 export async function htmlToPdf(html: string, settings: HtmlPdfSettings): Promise<Uint8Array> {
-  const page = buildPrintableHtml(html, {
+  // The HTML converter hands over a user-picked .html file verbatim, so this
+  // is the last point before it becomes a live page. Remote references are
+  // dropped as well as scripts: a generated PDF must not phone home.
+  const page = buildPrintableHtml(sanitizeForPrint(html), {
     title: settings.title,
     rightToLeft: settings.rightToLeft
   })
@@ -190,7 +194,10 @@ export async function textFileToPdf(
 ): Promise<Uint8Array> {
   const rightToLeft = needsComplexShaping(text.slice(0, 4000))
   const page = asMarkdown
-    ? buildPrintableHtml(markdownToHtml(text), { title: stripExtension(name), rightToLeft })
+    ? buildPrintableHtml(sanitizeForPrint(markdownToHtml(text)), {
+        title: stripExtension(name),
+        rightToLeft
+      })
     : buildPlainTextHtml(text, { title: stripExtension(name), rightToLeft })
 
   return window.alcode.print.html(page, {

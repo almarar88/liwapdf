@@ -1,11 +1,17 @@
 import {
+  PDFArray,
   PDFButton,
   PDFCheckBox,
+  PDFDict,
   PDFDocument,
   PDFDropdown,
+  PDFName,
+  PDFNumber,
+  PDFObjectCopier,
   PDFOptionList,
   PDFPage,
   PDFRadioGroup,
+  PDFRef,
   PDFSignature,
   PDFTextField,
   StandardFonts,
@@ -14,8 +20,15 @@ import {
   PDFFont,
   type PDFImage
 } from '@cantoo/pdf-lib'
-import { hexToRgb, needsComplexShaping, PAGE_PRESETS, MM_TO_PT, stripExtension } from '../format'
-import { rasterizeText } from './text-raster'
+import { hexToRgb, PAGE_PRESETS, MM_TO_PT, stripExtension } from '../format'
+import {
+  drawSmartText,
+  isRtlText,
+  measureSmartText,
+  prepareFonts,
+  toArabicIndicDigits,
+  type FontSet
+} from './typography'
 
 export type PdfBytes = Uint8Array
 
@@ -33,13 +46,41 @@ export class PdfPasswordError extends Error {
 
 /* -------------------------------------------------------------- loading */
 
+/**
+ * Security state captured at load time, so an edit can put the protection back.
+ * pdf-lib strips the handler when it decrypts, and saving would otherwise emit
+ * an unprotected file over the user's confidential original.
+ */
+export interface DocumentSecurity {
+  wasEncrypted: boolean
+}
+
+const securityByDocument = new WeakMap<PDFDocument, DocumentSecurity>()
+
+export function securityOf(document: PDFDocument): DocumentSecurity {
+  return securityByDocument.get(document) ?? { wasEncrypted: false }
+}
+
 export async function load(bytes: PdfBytes, password?: string): Promise<PDFDocument> {
   try {
-    return await PDFDocument.load(bytes.slice(), {
+    const document = await PDFDocument.load(bytes.slice(), {
       password,
-      ignoreEncryption: true,
+      // Only bypass the encryption check when a password was actually given.
+      // Otherwise an encrypted file must raise, not load as ciphertext.
+      ignoreEncryption: password !== undefined,
       updateMetadata: false
     })
+
+    if (password !== undefined) {
+      // The decrypt path leaves a dangling /Encrypt reference behind, which
+      // makes the very next load of the output fail with "Password incorrect".
+      const trailer = document.context.trailerInfo as { Encrypt?: unknown }
+      const wasEncrypted = trailer.Encrypt !== undefined || document.isEncrypted
+      delete trailer.Encrypt
+      securityByDocument.set(document, { wasEncrypted })
+    }
+
+    return document
   } catch (error) {
     const message = String((error as Error)?.message ?? '')
     if (/password|encrypt/i.test(message)) throw new PdfPasswordError()
@@ -55,7 +96,13 @@ export async function create(): Promise<PDFDocument> {
   return PDFDocument.create()
 }
 
-/** Runs a mutation over a document and returns the fresh bytes. */
+/**
+ * Runs a mutation over a document and returns the fresh bytes.
+ *
+ * Editing a protected file necessarily decrypts it: pdf-lib cannot mutate
+ * ciphertext in place. The output is therefore unprotected, which callers must
+ * surface rather than silently writing over the user's confidential original.
+ */
 export async function edit(
   bytes: PdfBytes,
   password: string | undefined,
@@ -64,6 +111,17 @@ export async function edit(
   const document = await load(bytes, password)
   await mutate(document)
   return save(document)
+}
+
+/** True when this document came off disk encrypted. */
+export async function isProtected(bytes: PdfBytes, password?: string): Promise<boolean> {
+  try {
+    const document = await load(bytes, password)
+    return securityOf(document).wasEncrypted
+  } catch (error) {
+    if (error instanceof PdfPasswordError) return true
+    return false
+  }
 }
 
 /* ---------------------------------------------------------- page layout */
@@ -211,34 +269,73 @@ export async function splitDocument(
   return output
 }
 
+/**
+ * Splits a document into parts that each fit inside a byte budget.
+ *
+ * The obvious loop — "add a page, save the whole thing, check the size" —
+ * re-parses and re-serialises the entire source once per page, which is
+ * 45,150 page copies on a 300-page file where 300 would do. Instead each page
+ * is priced once on its own, the parts are packed from those prices, and only
+ * the finished parts are serialised. Sharing (a font used by every page) makes
+ * the per-page price an over-estimate, so a packed part can only come out
+ * smaller than predicted; the one case that needs correcting is a part that
+ * still overshoots, which is walked back a page at a time.
+ */
 export async function splitBySize(
   bytes: PdfBytes,
   baseName: string,
   maxBytes: number,
-  password?: string
+  password?: string,
+  onProgress?: (fraction: number) => void
 ): Promise<NamedBytes[]> {
-  const document = await load(bytes, password)
-  const total = document.getPageCount()
+  const source = await load(bytes, password)
+  const total = source.getPageCount()
   const base = stripExtension(baseName)
-  const parts: NamedBytes[] = []
+  if (total === 0) return []
 
-  let current: number[] = []
-  let lastGood: PdfBytes | null = null
-
+  const prices: number[] = []
   for (let index = 0; index < total; index += 1) {
-    const candidate = [...current, index]
-    const rendered = await reorderPages(bytes, candidate, password)
-    if (rendered.byteLength > maxBytes && current.length > 0) {
-      parts.push({ name: `${base}-part${parts.length + 1}.pdf`, bytes: lastGood! })
-      current = [index]
-      lastGood = await reorderPages(bytes, current, password)
-    } else {
-      current = candidate
-      lastGood = rendered
-    }
+    const probe = await PDFDocument.create()
+    const [page] = await probe.copyPages(source, [index])
+    probe.addPage(page)
+    prices.push((await probe.save({ useObjectStreams: true })).byteLength)
+    onProgress?.((index / total) * 0.5)
   }
-  if (current.length > 0 && lastGood) {
-    parts.push({ name: `${base}-part${parts.length + 1}.pdf`, bytes: lastGood })
+
+  const groups: number[][] = []
+  let current: number[] = []
+  let running = 0
+  for (let index = 0; index < total; index += 1) {
+    if (current.length > 0 && running + prices[index] > maxBytes) {
+      groups.push(current)
+      current = []
+      running = 0
+    }
+    current.push(index)
+    running += prices[index]
+  }
+  if (current.length > 0) groups.push(current)
+
+  const parts: NamedBytes[] = []
+  const queue = [...groups]
+  let rendered = 0
+  while (queue.length > 0) {
+    const group = queue.shift()!
+    const output = await PDFDocument.create()
+    const copied = await output.copyPages(source, group)
+    for (const page of copied) output.addPage(page)
+    await carryMetadata(source, output)
+    const saved = await save(output)
+
+    // Over budget with room to shed: put the tail back and try again.
+    if (saved.byteLength > maxBytes && group.length > 1) {
+      const keep = Math.max(1, Math.floor(group.length * (maxBytes / saved.byteLength)))
+      queue.unshift(group.slice(0, keep), group.slice(keep))
+      continue
+    }
+    parts.push({ name: `${base}-part${parts.length + 1}.pdf`, bytes: saved })
+    rendered += 1
+    onProgress?.(0.5 + Math.min(1, rendered / Math.max(groups.length, 1)) * 0.5)
   }
   return parts
 }
@@ -250,6 +347,159 @@ export async function reversePages(bytes: PdfBytes, password?: string): Promise<
 
 /* -------------------------------------------------------- page geometry */
 
+/**
+ * Where and how to stamp a source page inside a target rectangle so it comes
+ * out the way a reader saw it.
+ *
+ * Embedding a page copies its content stream, which is stored *unrotated*: a
+ * scanner's landscape page carries /Rotate 90 and portrait content. Ignoring
+ * that turns every scan sideways, so the placement re-applies the rotation and
+ * measures the fit against the displayed dimensions.
+ */
+interface Placement {
+  x: number
+  y: number
+  width: number
+  height: number
+  rotate: number
+  /** Maps source user space to target page space, for annotation rectangles. */
+  matrix: { a: number; b: number; c: number; d: number; e: number; f: number }
+}
+
+function placePage(
+  page: PDFPage,
+  embedded: { width: number; height: number },
+  cell: { x: number; y: number; width: number; height: number }
+): Placement {
+  const box = page.getCropBox?.() ?? page.getMediaBox()
+  const rotation = ((page.getRotation().angle % 360) + 360) % 360
+  const swapped = rotation === 90 || rotation === 270
+
+  const displayWidth = swapped ? embedded.height : embedded.width
+  const displayHeight = swapped ? embedded.width : embedded.height
+  const scale = Math.min(cell.width / displayWidth, cell.height / displayHeight)
+  const contentWidth = embedded.width * scale
+  const contentHeight = embedded.height * scale
+  const outWidth = displayWidth * scale
+  const outHeight = displayHeight * scale
+  const px = cell.x + (cell.width - outWidth) / 2
+  const py = cell.y + (cell.height - outHeight) / 2
+
+  let x = px
+  let y = py
+  let rotate = 0
+  let a = 1
+  let b = 0
+  let c = 0
+  let d = 1
+  if (rotation === 90) {
+    x = px
+    y = py + contentWidth
+    rotate = -90
+    a = 0
+    b = -1
+    c = 1
+    d = 0
+  } else if (rotation === 180) {
+    x = px + contentWidth
+    y = py + contentHeight
+    rotate = 180
+    a = -1
+    b = 0
+    c = 0
+    d = -1
+  } else if (rotation === 270) {
+    x = px + contentHeight
+    y = py
+    rotate = 90
+    a = 0
+    b = 1
+    c = -1
+    d = 0
+  }
+
+  // Source user space -> normalized content space -> rotated -> placed.
+  const s = scale
+  return {
+    x,
+    y,
+    width: contentWidth,
+    height: contentHeight,
+    rotate,
+    matrix: {
+      a: s * a,
+      b: s * b,
+      c: s * c,
+      d: s * d,
+      e: x - box.x * s * a - box.y * s * c,
+      f: y - box.x * s * b - box.y * s * d
+    }
+  }
+}
+
+function boundingBoxOf(page: PDFPage): { left: number; bottom: number; right: number; top: number } {
+  const box = page.getCropBox?.() ?? page.getMediaBox()
+  return { left: box.x, bottom: box.y, right: box.x + box.width, top: box.y + box.height }
+}
+
+/**
+ * Carries a page's annotations onto its resized copy, rectangles transformed
+ * to match. Without this, resizing silently drops every link, comment and
+ * highlight in the document.
+ *
+ * Widgets are left behind on purpose: a form field without the AcroForm
+ * plumbing that owns it is worse than no field at all.
+ */
+function transferAnnotations(
+  source: PDFDocument,
+  output: PDFDocument,
+  from: PDFPage,
+  to: PDFPage,
+  placement: Placement
+): void {
+  const annots = from.node.Annots()
+  if (!(annots instanceof PDFArray) || annots.size() === 0) return
+
+  const copier = PDFObjectCopier.for(source.context, output.context)
+  const carried: PDFRef[] = []
+
+  for (let index = 0; index < annots.size(); index += 1) {
+    const dict = annots.lookupMaybe(index, PDFDict)
+    const rect = dict?.lookupMaybe(PDFName.of('Rect'), PDFArray)
+    if (!dict || !rect || rect.size() < 4) continue
+    if (dict.lookupMaybe(PDFName.of('Subtype'), PDFName)?.asString() === '/Widget') continue
+
+    const numbers = Array.from({ length: 4 }, (_, position) => {
+      const value = rect.lookupMaybe(position, PDFNumber)
+      return value ? value.asNumber() : 0
+    })
+    const m = placement.matrix
+    const corners = [
+      [numbers[0], numbers[1]],
+      [numbers[2], numbers[1]],
+      [numbers[2], numbers[3]],
+      [numbers[0], numbers[3]]
+    ].map(([x, y]) => [m.a * x + m.c * y + m.e, m.b * x + m.d * y + m.f])
+    const xs = corners.map((point) => point[0])
+    const ys = corners.map((point) => point[1])
+
+    let copied: PDFDict
+    try {
+      copied = copier.copy(dict) as PDFDict
+    } catch {
+      continue
+    }
+    copied.set(
+      PDFName.of('Rect'),
+      output.context.obj([Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)])
+    )
+    copied.delete(PDFName.of('P'))
+    carried.push(output.context.register(copied))
+  }
+
+  if (carried.length > 0) to.node.set(PDFName.of('Annots'), output.context.obj(carried))
+}
+
 export async function resizePages(
   bytes: PdfBytes,
   target: [number, number],
@@ -259,21 +509,23 @@ export async function resizePages(
   const output = await PDFDocument.create()
   const pages = source.getPages()
 
-  for (let index = 0; index < pages.length; index += 1) {
-    const embedded = await output.embedPage(pages[index])
+  for (const sourcePage of pages) {
+    const embedded = await output.embedPage(sourcePage, boundingBoxOf(sourcePage))
     const page = output.addPage(target)
-    const scale = Math.min(
-      target[0] / embedded.width,
-      target[1] / embedded.height
-    )
-    const width = embedded.width * scale
-    const height = embedded.height * scale
-    page.drawPage(embedded, {
-      x: (target[0] - width) / 2,
-      y: (target[1] - height) / 2,
-      width,
-      height
+    const placement = placePage(sourcePage, embedded, {
+      x: 0,
+      y: 0,
+      width: target[0],
+      height: target[1]
     })
+    page.drawPage(embedded, {
+      x: placement.x,
+      y: placement.y,
+      width: placement.width,
+      height: placement.height,
+      rotate: degrees(placement.rotate)
+    })
+    transferAnnotations(source, output, sourcePage, page, placement)
   }
   await carryMetadata(source, output)
   return save(output)
@@ -297,15 +549,28 @@ export async function cropPages(
     for (const index of indices) {
       const page = pages[index]
       if (!page) continue
-      const box = page.getMediaBox()
-      const left = (box.width * percents.start) / 100
-      const right = (box.width * percents.end) / 100
-      const top = (box.height * percents.top) / 100
-      const bottom = (box.height * percents.bottom) / 100
-      const width = Math.max(20, box.width - left - right)
-      const height = Math.max(20, box.height - top - bottom)
-      page.setCropBox(box.x + left, box.y + bottom, width, height)
-      page.setMediaBox(box.x + left, box.y + bottom, width, height)
+      // Crop percentages are what the user saw, so they are measured against
+      // the visible box and then rotated back into the page's own axes.
+      const box = page.getCropBox?.() ?? page.getMediaBox()
+      const rotation = ((page.getRotation().angle % 360) + 360) % 360
+      const trim = [
+        (percents.start ?? 0) / 100,
+        (percents.top ?? 0) / 100,
+        (percents.end ?? 0) / 100,
+        (percents.bottom ?? 0) / 100
+      ]
+      // Rotate the [left, top, right, bottom] fractions by the display angle.
+      const shift = rotation / 90
+      const [left, top, right, bottom] = [
+        trim[(0 + shift) % 4],
+        trim[(1 + shift) % 4],
+        trim[(2 + shift) % 4],
+        trim[(3 + shift) % 4]
+      ]
+      const width = Math.max(20, box.width * (1 - left - right))
+      const height = Math.max(20, box.height * (1 - top - bottom))
+      page.setCropBox(box.x + box.width * left, box.y + box.height * bottom, width, height)
+      page.setMediaBox(box.x + box.width * left, box.y + box.height * bottom, width, height)
     }
   })
 }
@@ -335,15 +600,23 @@ export async function nUpPages(
     const cellHeight = (sheetSize[1] - gap * (rows + 1)) / rows
 
     for (let slot = 0; slot < perSheet && start + slot < pages.length; slot += 1) {
-      const embedded = await output.embedPage(pages[start + slot])
+      const sourcePage = pages[start + slot]
+      const embedded = await output.embedPage(sourcePage, boundingBoxOf(sourcePage))
       const column = slot % columns
       const row = Math.floor(slot / columns)
-      const scale = Math.min(cellWidth / embedded.width, cellHeight / embedded.height)
-      const width = embedded.width * scale
-      const height = embedded.height * scale
-      const x = gap + column * (cellWidth + gap) + (cellWidth - width) / 2
-      const y = sheetSize[1] - gap - (row + 1) * cellHeight - row * gap + (cellHeight - height) / 2
-      sheet.drawPage(embedded, { x, y, width, height })
+      const placement = placePage(sourcePage, embedded, {
+        x: gap + column * (cellWidth + gap),
+        y: sheetSize[1] - gap - (row + 1) * cellHeight - row * gap,
+        width: cellWidth,
+        height: cellHeight
+      })
+      sheet.drawPage(embedded, {
+        x: placement.x,
+        y: placement.y,
+        width: placement.width,
+        height: placement.height,
+        rotate: degrees(placement.rotate)
+      })
     }
   }
   await carryMetadata(source, output)
@@ -363,22 +636,52 @@ export type Anchor =
   | 'bottomCenter'
   | 'bottomRight'
 
+/**
+ * The page area a reader actually sees: the MediaBox offset by its own origin
+ * and, when /Rotate is 90 or 270, with its width and height swapped. Overlays
+ * computed against getWidth()/getHeight() alone land off a rotated or offset
+ * page, which is what every scanner produces.
+ */
+export interface VisibleBox {
+  x: number
+  y: number
+  width: number
+  height: number
+  rotation: number
+}
+
+export function visibleBox(page: PDFPage): VisibleBox {
+  const box = page.getCropBox?.() ?? page.getMediaBox()
+  const rotation = ((page.getRotation().angle % 360) + 360) % 360
+  const swapped = rotation === 90 || rotation === 270
+  return {
+    x: box.x,
+    y: box.y,
+    width: swapped ? box.height : box.width,
+    height: swapped ? box.width : box.height,
+    rotation
+  }
+}
+
+/**
+ * Places a label of the given size inside the visible box, then maps the point
+ * back into unrotated page space so pdf-lib draws it where the reader sees it.
+ */
 function anchorPosition(
   anchor: Anchor,
-  pageWidth: number,
-  pageHeight: number,
+  box: VisibleBox,
   width: number,
   height: number,
   margin: number
-): { x: number; y: number } {
+): { x: number; y: number; rotate: number } {
   const horizontal: Record<string, number> = {
     Left: margin,
-    Center: (pageWidth - width) / 2,
-    Right: pageWidth - width - margin
+    Center: (box.width - width) / 2,
+    Right: box.width - width - margin
   }
   const vertical: Record<string, number> = {
-    top: pageHeight - height - margin,
-    middle: (pageHeight - height) / 2,
+    top: box.height - height - margin,
+    middle: (box.height - height) / 2,
     bottom: margin
   }
   const verticalKey = anchor.startsWith('top') ? 'top' : anchor.startsWith('bottom') ? 'bottom' : 'middle'
@@ -387,11 +690,26 @@ function anchorPosition(
     : anchor.endsWith('Right')
       ? 'Right'
       : 'Center'
-  return { x: horizontal[horizontalKey], y: vertical[verticalKey] }
+
+  const vx = horizontal[horizontalKey]
+  const vy = vertical[verticalKey]
+
+  // Undo the page rotation: a point (vx, vy) in reader space maps to these
+  // coordinates in the page's own space, and the label must be counter-rotated
+  // by the same angle to read upright.
+  switch (box.rotation) {
+    case 90:
+      return { x: box.x + vy, y: box.y + box.width - vx - width, rotate: -90 }
+    case 180:
+      return { x: box.x + box.width - vx - width, y: box.y + box.height - vy - height, rotate: 180 }
+    case 270:
+      return { x: box.x + box.height - vy - height, y: box.y + vx, rotate: 90 }
+    default:
+      return { x: box.x + vx, y: box.y + vy, rotate: 0 }
+  }
 }
 
 interface DrawTextArgs {
-  document: PDFDocument
   page: PDFPage
   text: string
   fontSize: number
@@ -401,64 +719,67 @@ interface DrawTextArgs {
   margin: number
   rotate?: number
   bold?: boolean
+  /** Base direction; inferred from the text when omitted. */
+  rtl?: boolean
   cache: OverlayCache
 }
 
-interface OverlayCache {
-  font?: PDFFont
-  boldFont?: PDFFont
+export interface OverlayCache {
+  fonts: FontSet
   images: Map<string, PDFImage>
 }
 
-export function newOverlayCache(): OverlayCache {
-  return { images: new Map() }
+export async function newOverlayCache(document: PDFDocument): Promise<OverlayCache> {
+  return { fonts: await prepareFonts(document), images: new Map() }
 }
 
 /**
- * Draws a label on a page, picking the representation that can actually show
- * the glyphs: vector base-14 text for Latin, a rasterized PNG otherwise.
+ * Draws a label on a page as real, selectable, searchable vector text — in any
+ * script. Arabic used to be rasterized to a PNG here; it is now shaped through
+ * an embedded font subset with proper bidirectional run ordering.
+ *
+ * The label is anchored inside the page's *visible* box and counter-rotated so
+ * it reads upright on a rotated page. Rotation pivots about the label's centre,
+ * so an anchored + rotated watermark stays where the anchor put it.
  */
 async function drawLabel(args: DrawTextArgs): Promise<void> {
-  const { document, page, text, fontSize, color, opacity, anchor, margin, rotate = 0 } = args
-  const width = page.getWidth()
-  const height = page.getHeight()
+  const { page, text, fontSize, color, opacity, anchor, margin, rotate = 0 } = args
+  if (!text.trim()) return
 
-  if (needsComplexShaping(text)) {
-    const key = `${text}|${fontSize}|${color}|${args.bold ? 1 : 0}`
-    let image = args.cache.images.get(key)
-    if (!image) {
-      const raster = rasterizeText(text, { fontSize, color, bold: args.bold })
-      image = await document.embedPng(raster.png)
-      args.cache.images.set(key, image)
-    }
-    const drawWidth = image.width / 4
-    const drawHeight = image.height / 4
-    const position = anchorPosition(anchor, width, height, drawWidth, drawHeight, margin)
-    page.drawImage(image, {
-      ...position,
-      width: drawWidth,
-      height: drawHeight,
-      opacity,
-      rotate: degrees(rotate)
-    })
-    return
-  }
-
-  const font =
-    args.bold
-      ? (args.cache.boldFont ??= await document.embedFont(StandardFonts.HelveticaBold))
-      : (args.cache.font ??= await document.embedFont(StandardFonts.Helvetica))
-  const textWidth = font.widthOfTextAtSize(text, fontSize)
-  const textHeight = font.heightAtSize(fontSize)
-  const position = anchorPosition(anchor, width, height, textWidth, textHeight, margin)
-  const { r, g, b } = hexToRgb(color)
-  page.drawText(text, {
-    ...position,
+  const box = visibleBox(page)
+  const rtl = args.rtl ?? isRtlText(text)
+  const measured = await measureSmartText(args.cache.fonts, text, {
     size: fontSize,
-    font,
-    color: rgb(r, g, b),
+    color,
+    bold: args.bold,
+    rtl
+  })
+
+  // A rotated label occupies a larger axis-aligned box; anchor against that so
+  // it cannot overhang the page edge.
+  const radians = (rotate * Math.PI) / 180
+  const cos = Math.abs(Math.cos(radians))
+  const sin = Math.abs(Math.sin(radians))
+  const boxWidth = measured.width * cos + measured.height * sin
+  const boxHeight = measured.width * sin + measured.height * cos
+
+  const placed = anchorPosition(anchor, box, boxWidth, boxHeight, margin)
+  const totalRotation = rotate + placed.rotate
+
+  // Rotate about the centre rather than the bottom-left corner pdf-lib uses.
+  const centreX = placed.x + boxWidth / 2
+  const centreY = placed.y + boxHeight / 2
+  const total = (totalRotation * Math.PI) / 180
+  const originX = centreX - (measured.width / 2) * Math.cos(total) + (measured.height / 2) * Math.sin(total)
+  const originY = centreY - (measured.width / 2) * Math.sin(total) - (measured.height / 2) * Math.cos(total)
+
+  await drawSmartText(page, args.cache.fonts, text, originX, originY, {
+    size: fontSize,
+    color,
     opacity,
-    rotate: degrees(rotate)
+    bold: args.bold,
+    rotate: totalRotation,
+    rtl
   })
 }
 
@@ -485,7 +806,7 @@ export async function addWatermark(
 ): Promise<PdfBytes> {
   const document = await load(bytes, password)
   const pages = document.getPages()
-  const cache = newOverlayCache()
+  const cache = await newOverlayCache(document)
 
   let image: PDFImage | undefined
   if (options.imageBytes) {
@@ -517,20 +838,20 @@ export async function addWatermark(
           }
         }
       } else {
-        const position = anchorPosition(
+        const placed = anchorPosition(
           options.anchor,
-          width,
-          height,
+          visibleBox(page),
           scaled.width,
           scaled.height,
           options.margin
         )
         page.drawImage(image, {
-          ...position,
+          x: placed.x,
+          y: placed.y,
           width: scaled.width,
           height: scaled.height,
           opacity: options.opacity,
-          rotate: degrees(options.rotation)
+          rotate: degrees(options.rotation + placed.rotate)
         })
       }
       continue
@@ -542,12 +863,11 @@ export async function addWatermark(
       const step = Math.max(120, options.fontSize * 7)
       for (let x = 0; x < width; x += step) {
         for (let y = 0; y < height; y += step) {
-          await drawTileText(document, page, options, x, y, cache)
+          await drawTileText(page, options, x, y, cache)
         }
       }
     } else {
       await drawLabel({
-        document,
         page,
         text: options.text,
         fontSize: options.fontSize,
@@ -565,7 +885,6 @@ export async function addWatermark(
 }
 
 async function drawTileText(
-  document: PDFDocument,
   page: PDFPage,
   options: WatermarkOptions,
   x: number,
@@ -573,40 +892,12 @@ async function drawTileText(
   cache: OverlayCache
 ): Promise<void> {
   const text = options.text!
-  if (needsComplexShaping(text)) {
-    const key = `${text}|${options.fontSize}|${options.color}|${options.bold ? 1 : 0}`
-    let image = cache.images.get(key)
-    if (!image) {
-      const raster = rasterizeText(text, {
-        fontSize: options.fontSize,
-        color: options.color,
-        bold: options.bold
-      })
-      image = await document.embedPng(raster.png)
-      cache.images.set(key, image)
-    }
-    page.drawImage(image, {
-      x,
-      y,
-      width: image.width / 4,
-      height: image.height / 4,
-      opacity: options.opacity,
-      rotate: degrees(options.rotation)
-    })
-    return
-  }
-  const font = (cache.font ??= await document.embedFont(
-    options.bold ? StandardFonts.HelveticaBold : StandardFonts.Helvetica
-  ))
-  const { r, g, b } = hexToRgb(options.color)
-  page.drawText(text, {
-    x,
-    y,
+  await drawSmartText(page, cache.fonts, text, x, y, {
     size: options.fontSize,
-    font,
-    color: rgb(r, g, b),
+    color: options.color,
     opacity: options.opacity,
-    rotate: degrees(options.rotation)
+    bold: options.bold,
+    rotate: options.rotation
   })
 }
 
@@ -622,14 +913,27 @@ export interface PageNumberOptions {
   bold: boolean
   skipFirst: boolean
   indices: number[]
-  arabicNumerals: boolean
+  /** Digit glyphs to use — independent of the template language. */
+  numerals: 'western' | 'arabic-indic'
+  /** Language of the words around the number, e.g. "Page" vs "صفحة". */
+  templateLanguage: 'ar' | 'en'
 }
 
-const ARABIC_DIGITS = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩']
-
-function localizeDigits(value: number, arabic: boolean): string {
-  const plain = String(value)
-  return arabic ? plain.replace(/\d/g, (digit) => ARABIC_DIGITS[Number(digit)]) : plain
+const NUMBER_TEMPLATES: Record<'ar' | 'en', Record<NumberFormat, string>> = {
+  ar: {
+    n: '{n}',
+    'n-of-total': '{n} / {total}',
+    'page-n': 'صفحة {n}',
+    'page-n-of-total': 'صفحة {n} من {total}',
+    'dash-n-dash': '- {n} -'
+  },
+  en: {
+    n: '{n}',
+    'n-of-total': '{n} / {total}',
+    'page-n': 'Page {n}',
+    'page-n-of-total': 'Page {n} of {total}',
+    'dash-n-dash': '- {n} -'
+  }
 }
 
 export async function addPageNumbers(
@@ -639,8 +943,10 @@ export async function addPageNumbers(
 ): Promise<PdfBytes> {
   const document = await load(bytes, password)
   const pages = document.getPages()
-  const cache = newOverlayCache()
+  const cache = await newOverlayCache(document)
   const total = options.indices.length
+  const localize = (value: number): string =>
+    options.numerals === 'arabic-indic' ? toArabicIndicDigits(value) : String(value)
 
   let counter = options.startAt
   for (const [position, index] of options.indices.entries()) {
@@ -650,27 +956,21 @@ export async function addPageNumbers(
       counter += 1
       continue
     }
-    const number = localizeDigits(counter, options.arabicNumerals)
-    const totalLabel = localizeDigits(total + options.startAt - 1, options.arabicNumerals)
-    const templates: Record<NumberFormat, string> = {
-      n: number,
-      'n-of-total': `${number} / ${totalLabel}`,
-      'page-n': options.arabicNumerals ? `صفحة ${number}` : `Page ${number}`,
-      'page-n-of-total': options.arabicNumerals
-        ? `صفحة ${number} من ${totalLabel}`
-        : `Page ${number} of ${totalLabel}`,
-      'dash-n-dash': `- ${number} -`
-    }
+
+    const label = NUMBER_TEMPLATES[options.templateLanguage][options.format]
+      .replace('{n}', localize(counter))
+      .replace('{total}', localize(total + options.startAt - 1))
+
     await drawLabel({
-      document,
       page,
-      text: templates[options.format],
+      text: label,
       fontSize: options.fontSize,
       color: options.color,
       opacity: 1,
       anchor: options.anchor,
       margin: options.margin,
       bold: options.bold,
+      rtl: options.templateLanguage === 'ar',
       cache
     })
     counter += 1
@@ -684,6 +984,7 @@ export interface HeaderFooterOptions {
   fontSize: number
   color: string
   margin: number
+  /** Logical alignment: "start" is the right edge for right-to-left text. */
   align: 'start' | 'center' | 'end'
   indices: number[]
 }
@@ -695,10 +996,16 @@ export async function addHeaderFooter(
 ): Promise<PdfBytes> {
   const document = await load(bytes, password)
   const pages = document.getPages()
-  const cache = newOverlayCache()
-  const anchorFor = (band: 'top' | 'bottom'): Anchor => {
-    const suffix = options.align === 'start' ? 'Left' : options.align === 'end' ? 'Right' : 'Center'
-    return `${band}${suffix}` as Anchor
+  const cache = await newOverlayCache(document)
+
+  // "start" and "end" are logical: they must resolve against the direction of
+  // the text being placed, not against the physical page edges.
+  const anchorFor = (band: 'top' | 'bottom', text: string): Anchor => {
+    if (options.align === 'center') return `${band}Center` as Anchor
+    const rtl = isRtlText(text)
+    const atStart = options.align === 'start'
+    const physical = atStart === rtl ? 'Right' : 'Left'
+    return `${band}${physical}` as Anchor
   }
 
   for (const index of options.indices) {
@@ -706,26 +1013,24 @@ export async function addHeaderFooter(
     if (!page) continue
     if (options.header.trim()) {
       await drawLabel({
-        document,
         page,
         text: options.header,
         fontSize: options.fontSize,
         color: options.color,
         opacity: 1,
-        anchor: anchorFor('top'),
+        anchor: anchorFor('top', options.header),
         margin: options.margin,
         cache
       })
     }
     if (options.footer.trim()) {
       await drawLabel({
-        document,
         page,
         text: options.footer,
         fontSize: options.fontSize,
         color: options.color,
         opacity: 1,
-        anchor: anchorFor('bottom'),
+        anchor: anchorFor('bottom', options.footer),
         margin: options.margin,
         cache
       })
@@ -760,65 +1065,70 @@ export async function addBackground(
   for (const index of options.indices) {
     const page = pages[index]
     if (!page) continue
-    const width = page.getWidth()
-    const height = page.getHeight()
-    // Painting behind existing content requires pushing our operators first.
-    if (options.color) {
-      const { r, g, b } = hexToRgb(options.color)
-      page.drawRectangle({
-        x: 0,
-        y: 0,
-        width,
-        height,
-        color: rgb(r, g, b),
-        opacity: options.opacity
-      })
-    }
-    if (image) {
-      const scale = Math.max(width / image.width, height / image.height)
-      page.drawImage(image, {
-        x: (width - image.width * scale) / 2,
-        y: (height - image.height * scale) / 2,
-        width: image.width * scale,
-        height: image.height * scale,
-        opacity: options.opacity
-      })
-    }
+    const box = page.getCropBox?.() ?? page.getMediaBox()
+
+    drawBehind(document, page, () => {
+      if (options.color) {
+        const { r, g, b } = hexToRgb(options.color)
+        page.drawRectangle({
+          x: box.x,
+          y: box.y,
+          width: box.width,
+          height: box.height,
+          color: rgb(r, g, b),
+          opacity: options.opacity
+        })
+      }
+      if (image) {
+        const scale = Math.max(box.width / image.width, box.height / image.height)
+        page.drawImage(image, {
+          x: box.x + (box.width - image.width * scale) / 2,
+          y: box.y + (box.height - image.height * scale) / 2,
+          width: image.width * scale,
+          height: image.height * scale,
+          opacity: options.opacity
+        })
+      }
+    })
   }
   return save(document)
 }
 
-export interface RedactRegion {
-  pageIndex: number
-  /** Normalized 0..1 coordinates with the origin at the page's top-left. */
-  x: number
-  y: number
-  width: number
-  height: number
+/**
+ * Runs a drawing callback and then moves what it drew underneath the page's
+ * existing content.
+ *
+ * pdf-lib always appends, so a "background" drawn the ordinary way paints over
+ * the document — at full opacity it erases the page. Content streams are
+ * concatenated in array order, so putting the new stream first is exactly what
+ * "behind" means, and pdf-lib already brackets its own operators in q/Q so the
+ * original content still starts from a clean graphics state.
+ */
+function drawBehind(document: PDFDocument, page: PDFPage, draw: () => void): void {
+  const existing = contentRefs(page)
+  draw()
+  const after = contentRefs(page)
+  if (after.length <= existing.length) return
+  const added = after.slice(existing.length)
+  page.node.set(PDFName.of('Contents'), document.context.obj([...added, ...existing]))
 }
 
-export async function applyRedactions(
-  bytes: PdfBytes,
-  regions: RedactRegion[],
-  password?: string
-): Promise<PdfBytes> {
-  return edit(bytes, password, (document) => {
-    const pages = document.getPages()
-    for (const region of regions) {
-      const page = pages[region.pageIndex]
-      if (!page) continue
-      const width = page.getWidth()
-      const height = page.getHeight()
-      page.drawRectangle({
-        x: region.x * width,
-        y: height - (region.y + region.height) * height,
-        width: region.width * width,
-        height: region.height * height,
-        color: rgb(0, 0, 0)
-      })
+function contentRefs(page: PDFPage): PDFRef[] {
+  const contents = page.node.get(PDFName.of('Contents'))
+  if (contents instanceof PDFRef) return [contents]
+  if (contents instanceof PDFArray) {
+    const refs: PDFRef[] = []
+    for (let index = 0; index < contents.size(); index += 1) {
+      const entry = contents.get(index)
+      if (entry instanceof PDFRef) refs.push(entry)
     }
-  })
+    return refs
+  }
+  return []
 }
+
+// Redaction destroys content rather than drawing over it, so it lives in
+// ./redact.ts — importing it here would make this module and that one circular.
 
 /* ------------------------------------------------------------ metadata */
 

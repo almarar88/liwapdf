@@ -304,13 +304,64 @@ export function Modal({
   footer?: ReactNode
   wide?: boolean
 }): React.JSX.Element {
+  const panelRef = useRef<HTMLDivElement>(null)
+  const returnFocusTo = useRef<HTMLElement | null>(null)
+  const headingId = useId()
+
+  /**
+   * A dialog has to hold focus while it is open: without this, tabbing out of
+   * a tool panel lands on the tiles behind the scrim, which are still clickable
+   * to a screen reader and invisible to everyone else.
+   */
   useEffect(() => {
     if (!open) return undefined
+    returnFocusTo.current = document.activeElement as HTMLElement | null
+
+    const focusables = (): HTMLElement[] =>
+      Array.from(
+        panelRef.current?.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        ) ?? []
+      ).filter((element) => element.offsetParent !== null || element === document.activeElement)
+
     const onKey = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') onClose()
+      if (event.key === 'Escape') {
+        onClose()
+        return
+      }
+      if (event.key !== 'Tab') return
+      const items = focusables()
+      if (items.length === 0) {
+        event.preventDefault()
+        panelRef.current?.focus()
+        return
+      }
+      const first = items[0]
+      const last = items[items.length - 1]
+      const active = document.activeElement as HTMLElement | null
+      if (!panelRef.current?.contains(active)) {
+        event.preventDefault()
+        ;(event.shiftKey ? last : first).focus()
+      } else if (event.shiftKey && active === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault()
+        first.focus()
+      }
     }
+
+    const timer = window.setTimeout(() => {
+      const items = focusables()
+      ;(items[0] ?? panelRef.current)?.focus()
+    }, 40)
+
     window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    return () => {
+      window.clearTimeout(timer)
+      window.removeEventListener('keydown', onKey)
+      returnFocusTo.current?.focus?.()
+    }
   }, [open, onClose])
 
   return (
@@ -327,14 +378,19 @@ export function Modal({
           }}
         >
           <motion.div
+            ref={panelRef}
             className={`modal${wide ? ' wide' : ''}`}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={headingId}
+            tabIndex={-1}
             initial={{ opacity: 0, scale: 0.96, y: 12 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.97, y: 8 }}
             transition={SPRING}
           >
             <div className="modal-head">
-              <h2>{title}</h2>
+              <h2 id={headingId}>{title}</h2>
               <button className="btn ghost icon sm close" onClick={onClose} aria-label="Close">
                 <X size={16} />
               </button>
@@ -426,7 +482,13 @@ export function Toasts(): React.JSX.Element {
             </span>
             <div className="t-body">
               <div className="t-title">{toast.title}</div>
-              {toast.message ? <div className="t-msg">{toast.message}</div> : null}
+              {/* Toast messages are usually file paths, which must not be
+                  reordered by the surrounding Arabic. */}
+              {toast.message ? (
+                <div className="t-msg">
+                  <bdi>{toast.message}</bdi>
+                </div>
+              ) : null}
               {toast.action ? (
                 <div style={{ marginTop: 8 }}>
                   <Button size="sm" onClick={toast.action.run}>

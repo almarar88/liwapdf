@@ -1,6 +1,15 @@
-import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell, clipboard } from 'electron'
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  nativeTheme,
+  session,
+  shell,
+  clipboard
+} from 'electron'
 import { readFile, writeFile, mkdir, stat, unlink } from 'node:fs/promises'
-import { basename, extname, join } from 'node:path'
+import { basename, dirname, extname, join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
 import { randomUUID } from 'node:crypto'
 import {
@@ -12,7 +21,7 @@ import {
   SaveDialogOptions,
   SaveResult
 } from '../shared/types'
-import { clearRecents, pushRecent, recents, settings } from './store'
+import { clearRecents, coerceSettings, pushRecent, recents, settings } from './store'
 
 let pendingOpenFile: string | null = null
 
@@ -32,6 +41,8 @@ function kindOf(path: string): RecentFile['kind'] {
 async function readAsPicked(path: string): Promise<PickedFile> {
   const [buffer, info] = await Promise.all([readFile(path), stat(path)])
   await recordRecent(path, info.size)
+  // Save-in-place writes back over a file the user themselves opened.
+  openedFiles.add(resolve(path))
   return {
     path,
     name: basename(path),
@@ -52,89 +63,235 @@ const PAGE_SIZES: Record<string, { width: number; height: number }> = {
   Tabloid: { width: 11, height: 17 }
 }
 
+/** Types "open in the system viewer" may hand to the OS. Never executables. */
+const OPENABLE_EXTENSIONS = new Set([
+  '.pdf',
+  '.docx',
+  '.doc',
+  '.rtf',
+  '.odt',
+  '.txt',
+  '.md',
+  '.html',
+  '.csv',
+  '.tsv',
+  '.xlsx',
+  '.xls',
+  '.ods',
+  '.pptx',
+  '.epub',
+  '.json',
+  '.xml',
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.webp',
+  '.gif',
+  '.bmp',
+  '.zip'
+])
+
+function withTimeout<T>(work: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((settle, fail) => {
+    const timer = setTimeout(() => fail(new Error(`print-timeout:${label}`)), ms)
+    work.then(
+      (value) => {
+        clearTimeout(timer)
+        settle(value)
+      },
+      (error) => {
+        clearTimeout(timer)
+        fail(error)
+      }
+    )
+  })
+}
+
 /**
- * Renders arbitrary HTML to PDF bytes using an offscreen Chromium window.
- * This is what powers Word/Markdown/HTML -> PDF conversion, fully offline.
+ * Renders HTML to PDF bytes using an offscreen Chromium window — this is what
+ * powers Word/Markdown/HTML -> PDF conversion, fully offline.
+ *
+ * The HTML reaching this function is not trustworthy: the "HTML to PDF"
+ * converter hands over a user-picked .html file verbatim, and mammoth's DOCX
+ * output can carry whatever the document author put in it. So the window it
+ * renders in is locked down rather than trusted:
+ *
+ * - `javascript: false` — nothing the printable templates produce needs script,
+ *   and without it the page cannot phone home, stall the print, or read files.
+ * - a throwaway session whose request filter cancels everything that is not
+ *   `file:`/`data:`/`blob:`, so the app's offline guarantee holds even for a
+ *   document stuffed with remote images and tracking pixels.
+ * - hard wall-clock limits on load and print, and teardown that cannot be
+ *   skipped, so one pathological file can never hang the renderer.
  */
 async function htmlToPdf(html: string, options: PdfPrintOptions = {}): Promise<Uint8Array> {
   const dir = join(app.getPath('userData'), 'render')
   await mkdir(dir, { recursive: true })
-  const file = join(dir, `${randomUUID()}.html`)
+  const token = randomUUID()
+  const file = join(dir, `${token}.html`)
   await writeFile(file, html, 'utf8')
 
-  const offscreen = new BrowserWindow({
-    show: false,
-    width: 1200,
-    height: 1600,
-    webPreferences: { offscreen: true, javascript: true, sandbox: true, contextIsolation: true }
+  const partition = `print-${token}`
+  const printSession = session.fromPartition(partition)
+  printSession.webRequest.onBeforeRequest({ urls: ['*://*/*'] }, (details, callback) => {
+    const local = /^(file|data|blob|devtools):/i.test(details.url)
+    callback({ cancel: !local })
   })
+  printSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false))
 
+  let offscreen: BrowserWindow | null = null
   try {
-    await offscreen.loadFile(file)
-    // Give webfonts and images a chance to settle before snapshotting.
-    await offscreen.webContents.executeJavaScript(
-      `new Promise((r) => { const done = () => setTimeout(r, 80);
-         if (document.fonts && document.fonts.ready) document.fonts.ready.then(done).catch(done); else done(); })`
-    )
-    const size = PAGE_SIZES[options.pageSize ?? 'A4'] ?? PAGE_SIZES.A4
-    const marginInches = (options.marginsMm ?? 18) / 25.4
-    const data = await offscreen.webContents.printToPDF({
-      landscape: options.landscape ?? false,
-      printBackground: options.printBackground ?? true,
-      displayHeaderFooter: options.headerFooter ?? false,
-      pageSize: { width: size.width, height: size.height },
-      margins: {
-        top: marginInches,
-        bottom: marginInches,
-        left: marginInches,
-        right: marginInches
+    offscreen = new BrowserWindow({
+      show: false,
+      width: 1200,
+      height: 1600,
+      webPreferences: {
+        offscreen: true,
+        javascript: false,
+        images: true,
+        webgl: false,
+        sandbox: true,
+        contextIsolation: true,
+        nodeIntegration: false,
+        webSecurity: true,
+        partition
       }
     })
+    offscreen.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+    offscreen.webContents.on('will-navigate', (event) => event.preventDefault())
+
+    const window_ = offscreen
+    await withTimeout(window_.loadFile(file), 20_000, 'load')
+    // With scripting off we cannot ask the page when its fonts settled, so we
+    // give the compositor a fixed, short grace period instead.
+    await new Promise((done) => setTimeout(done, 120))
+
+    const size = PAGE_SIZES[options.pageSize ?? 'A4'] ?? PAGE_SIZES.A4
+    const marginInches = (options.marginsMm ?? 18) / 25.4
+    const data = await withTimeout(
+      window_.webContents.printToPDF({
+        landscape: options.landscape ?? false,
+        printBackground: options.printBackground ?? true,
+        displayHeaderFooter: options.headerFooter ?? false,
+        pageSize: { width: size.width, height: size.height },
+        margins: {
+          top: marginInches,
+          bottom: marginInches,
+          left: marginInches,
+          right: marginInches
+        }
+      }),
+      60_000,
+      'render'
+    )
     return new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
   } finally {
-    offscreen.destroy()
+    if (offscreen && !offscreen.isDestroyed()) offscreen.destroy()
     await unlink(file).catch(() => undefined)
+    await printSession.clearStorageData().catch(() => undefined)
   }
 }
 
-export function registerIpc(getWindow: () => BrowserWindow | null): void {
+/**
+ * Paths the user has consented to write, collected from the save dialogs.
+ *
+ * Every legitimate write in the app follows a native Save/Choose-folder
+ * dialog, so gating `fs:write` on that consent costs nothing and removes the
+ * renderer's unrestricted write primitive: a compromised renderer (the process
+ * that parses every hostile file format the app opens) can no longer overwrite
+ * a shell profile or a startup script.
+ */
+const consentedFiles = new Set<string>()
+const consentedDirectories = new Set<string>()
+
+function grantWrite(path: string): void {
+  consentedFiles.add(resolve(path))
+  // Keep the set from growing without bound over a long session.
+  if (consentedFiles.size > 512) {
+    const oldest = consentedFiles.values().next().value
+    if (oldest) consentedFiles.delete(oldest)
+  }
+}
+
+function mayWrite(path: string): boolean {
+  const target = resolve(path)
+  if (consentedFiles.has(target)) return true
+  if (consentedDirectories.has(dirname(target))) return true
+  // Files the user opened may be saved back over themselves.
+  return openedFiles.has(target)
+}
+
+const openedFiles = new Set<string>()
+
+export function registerIpc(
+  getWindow: () => BrowserWindow | null,
+  rebuildMenu: () => void = () => undefined
+): void {
   /* ---------------------------------------------------------------- files */
 
-  ipcMain.handle('dialog:open', async (_e, options: OpenDialogOptions): Promise<PickedFile[]> => {
+  /** A window that has been closed is no longer a valid dialog parent. */
+  const liveWindow = (): BrowserWindow | undefined => {
     const window = getWindow()
-    const result = await dialog.showOpenDialog(window!, {
+    return window && !window.isDestroyed() ? window : undefined
+  }
+
+  ipcMain.handle('dialog:open', async (_e, options: OpenDialogOptions): Promise<PickedFile[]> => {
+    const parent = liveWindow()
+    const request = {
       title: options.title,
-      properties: options.multiple ? ['openFile', 'multiSelections'] : ['openFile'],
+      properties: (options.multiple
+        ? ['openFile', 'multiSelections']
+        : ['openFile']) as ('openFile' | 'multiSelections')[],
       filters: options.filters
-    })
+    }
+    const result = parent
+      ? await dialog.showOpenDialog(parent, request)
+      : await dialog.showOpenDialog(request)
     if (result.canceled) return []
     return Promise.all(result.filePaths.map(readAsPicked))
   })
 
   ipcMain.handle('dialog:save', async (_e, options: SaveDialogOptions): Promise<SaveResult> => {
-    const window = getWindow()
-    const result = await dialog.showSaveDialog(window!, {
+    const parent = liveWindow()
+    const request = {
       title: options.title,
       defaultPath: options.defaultName
         ? join(settings().get().defaultExportDir ?? app.getPath('documents'), options.defaultName)
         : undefined,
       filters: options.filters
-    })
+    }
+    const result = parent
+      ? await dialog.showSaveDialog(parent, request)
+      : await dialog.showSaveDialog(request)
+    if (!result.canceled && result.filePath) grantWrite(result.filePath)
     return { canceled: result.canceled, path: result.filePath }
   })
 
   ipcMain.handle('dialog:directory', async (): Promise<string | null> => {
-    const result = await dialog.showOpenDialog(getWindow()!, { properties: ['openDirectory', 'createDirectory'] })
-    return result.canceled ? null : (result.filePaths[0] ?? null)
+    const parent = liveWindow()
+    const request = { properties: ['openDirectory', 'createDirectory'] as const }
+    const result = parent
+      ? await dialog.showOpenDialog(parent, { properties: [...request.properties] })
+      : await dialog.showOpenDialog({ properties: [...request.properties] })
+    if (result.canceled) return null
+    const directory = result.filePaths[0] ?? null
+    if (directory) consentedDirectories.add(resolve(directory))
+    return directory
   })
 
-  ipcMain.handle('fs:read', async (_e, path: string): Promise<PickedFile> => readAsPicked(path))
+  ipcMain.handle('fs:read', async (_e, path: string): Promise<PickedFile> => {
+    const picked = await readAsPicked(path)
+    openedFiles.add(resolve(path))
+    return picked
+  })
 
   ipcMain.handle('fs:write', async (_e, path: string, data: Uint8Array): Promise<void> => {
+    if (!mayWrite(path)) throw new Error('write-not-permitted')
     await writeFile(path, Buffer.from(data))
   })
 
   ipcMain.handle('fs:writeText', async (_e, path: string, text: string): Promise<void> => {
+    if (!mayWrite(path)) throw new Error('write-not-permitted')
     await writeFile(path, text, 'utf8')
   })
 
@@ -150,7 +307,14 @@ export function registerIpc(getWindow: () => BrowserWindow | null): void {
   ipcMain.handle(
     'fs:saveTempAndOpen',
     async (_e, name: string, data: Uint8Array): Promise<string> => {
-      const file = join(tmpdir(), `alcode-${Date.now()}-${name}`)
+      // `name` comes from a document title, which can contain path separators.
+      // basename() keeps the write inside the temp directory, and the
+      // extension allowlist keeps "open with the system handler" from turning
+      // into "run this".
+      const safe = basename(name).replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_') || 'document'
+      const extension = extname(safe).toLowerCase()
+      if (!OPENABLE_EXTENSIONS.has(extension)) throw new Error('unsupported-preview-type')
+      const file = join(tmpdir(), `alcode-${randomUUID()}-${safe}`)
       await writeFile(file, Buffer.from(data))
       await shell.openPath(file)
       return file
@@ -159,10 +323,6 @@ export function registerIpc(getWindow: () => BrowserWindow | null): void {
 
   ipcMain.handle('shell:reveal', async (_e, path: string): Promise<void> => {
     shell.showItemInFolder(path)
-  })
-
-  ipcMain.handle('shell:open', async (_e, path: string): Promise<void> => {
-    await shell.openPath(path)
   })
 
   ipcMain.handle('shell:external', async (_e, url: string): Promise<void> => {
@@ -176,8 +336,12 @@ export function registerIpc(getWindow: () => BrowserWindow | null): void {
   ipcMain.handle('settings:get', (): AppSettings => settings().get())
 
   ipcMain.handle('settings:set', (_e, patch: Partial<AppSettings>): AppSettings => {
-    const next = settings().set(patch)
-    if (patch.theme) nativeTheme.themeSource = patch.theme
+    const before = settings().get()
+    const next = settings().replace(coerceSettings({ ...before, ...patch }))
+    nativeTheme.themeSource = next.theme
+    // The macOS menu bar is built from these strings, so it has to follow a
+    // language change rather than staying in whatever language it launched in.
+    if (next.language !== before.language) rebuildMenu()
     return next
   })
 
@@ -222,6 +386,9 @@ export function registerIpc(getWindow: () => BrowserWindow | null): void {
   ipcMain.handle('window:isMaximized', () => getWindow()?.isMaximized() ?? false)
 
   nativeTheme.on('updated', () => {
-    getWindow()?.webContents.send('theme:changed', nativeTheme.shouldUseDarkColors)
+    // The OS fires this whenever the system appearance changes, including
+    // after our window is gone — dereferencing a destroyed window here is a
+    // hard main-process crash.
+    liveWindow()?.webContents.send('theme:changed', nativeTheme.shouldUseDarkColors)
   })
 }

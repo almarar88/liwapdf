@@ -76,10 +76,12 @@ export function TitleBar({
       {activeName ? (
         <div className="doc-chip" title={activeName}>
           {dirty ? <span className="dot" /> : null}
-          <strong>{activeName}</strong>
+          {/* A Latin filename inside an Arabic chip reorders without an
+              isolate — "report.pdf ·" becomes "· report.pdf". */}
+          <strong><bdi>{activeName}</bdi></strong>
           {doc ? (
             <span>
-              · {doc.pageCount} {t('msg.pages')}
+              · <span dir="ltr">{doc.pageCount}</span> {t('msg.pages')}
             </span>
           ) : null}
         </div>

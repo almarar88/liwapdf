@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { AnimatePresence, motion } from 'framer-motion'
+import { AnimatePresence, MotionConfig, motion } from 'framer-motion'
 import {
   Combine,
   FileText,
@@ -58,7 +58,11 @@ export default function App(): React.JSX.Element {
       if (action === 'open') void openDialog()
       else if (action === 'save' || action === 'save-as') void saveActive()
       else if (action === 'palette') setPaletteOpen(true)
-      else if (action === 'close-doc') useApp.getState().closePdf()
+      else if (action === 'close-doc') {
+        void useApp.getState().confirmDiscard().then((ok) => {
+          if (ok) useApp.getState().closePdf()
+        })
+      }
     })
     const offNavigate = window.alcode.on.menuNavigate((target) => navigate(target as Route))
 
@@ -147,6 +151,9 @@ export default function App(): React.JSX.Element {
   }[route]
 
   return (
+    // framer-motion animates inline styles through the Web Animations API, so
+    // the CSS reduced-motion overrides never reach it — it has to be told.
+    <MotionConfig reducedMotion={reduceMotion ? 'always' : 'user'}>
     <div className="app">
       <TitleBar platform={platform} onSave={() => void saveActive()} />
 
@@ -171,8 +178,38 @@ export default function App(): React.JSX.Element {
 
       <CommandPalette commands={commands} />
       <PasswordDialog />
+      <ConfirmDialog />
       <Toasts />
     </div>
+    </MotionConfig>
+  )
+}
+
+/** The single blocking question the store can ask before a destructive action. */
+function ConfirmDialog(): React.JSX.Element {
+  const t = useApp((state) => state.t)
+  const prompt = useApp((state) => state.confirmPrompt)
+  const answer = useApp((state) => state.answerConfirm)
+
+  return (
+    <Modal
+      open={Boolean(prompt)}
+      onClose={() => answer(false)}
+      title={prompt?.title ?? ''}
+      footer={
+        <>
+          <Button onClick={() => answer(false)}>{t('action.cancel')}</Button>
+          <Button
+            variant={prompt?.danger ? 'danger' : 'primary'}
+            onClick={() => answer(true)}
+          >
+            {prompt?.confirmLabel ?? t('action.done')}
+          </Button>
+        </>
+      }
+    >
+      <p style={{ margin: 0, lineHeight: 1.7 }}>{prompt?.body}</p>
+    </Modal>
   )
 }
 

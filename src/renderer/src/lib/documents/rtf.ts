@@ -35,7 +35,7 @@ interface Paragraph {
   rtl: boolean
   listLevel: number
   isList: boolean
-  runs: { text: string; style: RunStyle }[]
+  runs: { text: string; style: RunStyle; image?: string }[]
 }
 
 export function rtfToHtml(bytes: Uint8Array): { html: string; direction: 'rtl' | 'ltr' } {
@@ -49,10 +49,27 @@ export function rtfToHtml(bytes: Uint8Array): { html: string; direction: 'rtl' |
   const paragraphs: Paragraph[] = []
   let current: Paragraph = newParagraph()
   let style: RunStyle = { ...DEFAULT_STYLE }
-  const stack: RunStyle[] = []
-  const groupIsSkipped: boolean[] = []
+
+  /**
+   * One entry per open brace. Skipping is a property of the group that turned
+   * it on, so it ends exactly when that group does — an earlier version reset
+   * a single `skipDepth` flag on the first closing brace it saw, which let the
+   * tail of a font table or an embedded object leak into the body text.
+   */
+  interface GroupState {
+    style: RunStyle
+    skip: boolean
+    /** \ucN: how many fallback characters follow each \uN. */
+    unicodeSkip: number
+  }
+  const groups: GroupState[] = []
+  let skip = false
+  let unicodeSkip = 1
+  /** Set by \*, meaning "the destination that follows is one we don't know". */
+  let optionalDestination = false
+  let picture: { type: 'png' | 'jpeg' | null; hex: string } | null = null
+
   let buffer = ''
-  let skipDepth = 0
   let rtlDetected = false
 
   const flushRun = (): void => {
@@ -66,21 +83,45 @@ export function rtfToHtml(bytes: Uint8Array): { html: string; direction: 'rtl' |
     current = newParagraph()
     current.rtl = style.rtl
   }
+  const emitPicture = (shot: { type: 'png' | 'jpeg' | null; hex: string }): void => {
+    if (!shot.type || shot.hex.length < 32) return
+    const clean = shot.hex.length % 2 === 0 ? shot.hex : shot.hex.slice(0, -1)
+    const bytes = new Uint8Array(clean.length / 2)
+    for (let position = 0; position < bytes.length; position += 1) {
+      bytes[position] = Number.parseInt(clean.slice(position * 2, position * 2 + 2), 16)
+    }
+    let binary = ''
+    for (let position = 0; position < bytes.length; position += 8192) {
+      binary += String.fromCharCode(...bytes.subarray(position, position + 8192))
+    }
+    flushRun()
+    current.runs.push({
+      text: '',
+      style: { ...style },
+      image: `data:image/${shot.type};base64,${btoa(binary)}`
+    })
+  }
 
   for (let index = 0; index < source.length; index += 1) {
     const character = source[index]
 
     if (character === '{') {
-      stack.push({ ...style })
-      groupIsSkipped.push(skipDepth > 0)
+      groups.push({ style: { ...style }, skip, unicodeSkip })
+      optionalDestination = false
       continue
     }
     if (character === '}') {
       flushRun()
-      const restored = stack.pop()
-      if (restored) style = restored
-      const wasSkipped = groupIsSkipped.pop()
-      if (skipDepth > 0 && !wasSkipped) skipDepth = 0
+      if (picture) {
+        emitPicture(picture)
+        picture = null
+      }
+      const restored = groups.pop()
+      if (restored) {
+        style = restored.style
+        skip = restored.skip
+        unicodeSkip = restored.unicodeSkip
+      }
       continue
     }
 
@@ -89,7 +130,15 @@ export function rtfToHtml(bytes: Uint8Array): { html: string; direction: 'rtl' |
 
       // Escaped literal characters.
       if (next === '\\' || next === '{' || next === '}') {
-        if (skipDepth === 0) buffer += next
+        if (!skip) buffer += next
+        index += 1
+        continue
+      }
+      // \* marks the following control word as a destination we are not
+      // expected to understand — its whole group must be dropped, not read as
+      // body text.
+      if (next === '*') {
+        optionalDestination = true
         index += 1
         continue
       }
@@ -97,7 +146,7 @@ export function rtfToHtml(bytes: Uint8Array): { html: string; direction: 'rtl' |
       if (next === "'") {
         const hex = source.slice(index + 2, index + 4)
         const byte = Number.parseInt(hex, 16)
-        if (Number.isFinite(byte) && skipDepth === 0) {
+        if (Number.isFinite(byte) && !skip && !picture) {
           buffer += fallbackDecoder
             ? fallbackDecoder.decode(new Uint8Array([byte]))
             : String.fromCharCode(byte)
@@ -106,7 +155,7 @@ export function rtfToHtml(bytes: Uint8Array): { html: string; direction: 'rtl' |
         continue
       }
       if (next === '~') {
-        if (skipDepth === 0) buffer += ' '
+        if (!skip) buffer += ' '
         index += 1
         continue
       }
@@ -125,24 +174,66 @@ export function rtfToHtml(bytes: Uint8Array): { html: string; direction: 'rtl' |
       const parameter = match[2] === undefined ? null : Number(match[2])
       index += match[0].length - 1
 
+      // Pictures are a destination, but one worth reading: the hex payload is
+      // a whole PNG or JPEG, which becomes an inline image instead of a gap.
+      if (word === 'pict') {
+        picture = { type: null, hex: '' }
+        optionalDestination = false
+        continue
+      }
+      if (picture) {
+        if (word === 'pngblip') picture.type = 'png'
+        else if (word === 'jpegblip') picture.type = 'jpeg'
+        continue
+      }
+
       // Destinations whose contents are metadata, not body text.
       if (
-        ['fonttbl', 'colortbl', 'stylesheet', 'info', 'pict', 'object', 'themedata',
+        optionalDestination ||
+        ['fonttbl', 'colortbl', 'stylesheet', 'info', 'object', 'themedata',
          'datastore', 'listtable', 'listoverridetable', 'generator', 'xmlnstbl',
          'filetbl', 'rsidtbl', 'mmathPr'].includes(word)
       ) {
-        skipDepth = 1
+        skip = true
+        optionalDestination = false
+        continue
+      }
+
+      if (word === 'uc' && parameter !== null) {
+        unicodeSkip = Math.max(0, Math.min(parameter, 32))
         continue
       }
       if (word === 'u' && parameter !== null) {
-        if (skipDepth === 0) {
+        if (!skip) {
           buffer += String.fromCodePoint(parameter < 0 ? parameter + 65536 : parameter)
         }
-        // \uN is followed by a fallback character to skip.
-        if (source[index + 1] === '?') index += 1
+        // \uN is followed by `unicodeSkip` fallback units for readers that
+        // cannot do Unicode. Each unit is one character, one \'xx escape, or
+        // one control word — skipping a fixed single '?' mangled every
+        // document whose producer set \uc2 or \uc0.
+        let remaining = unicodeSkip
+        let scan = index + 1
+        while (remaining > 0 && scan < source.length) {
+          if (source[scan] === ' ') {
+            scan += 1
+            continue
+          }
+          if (source[scan] === '\\' && source[scan + 1] === "'") {
+            scan += 4
+          } else if (source[scan] === '\\') {
+            const following = /^\\[a-zA-Z]+-?\d* ?/.exec(source.slice(scan))
+            scan += following ? following[0].length : 2
+          } else if (source[scan] === '{' || source[scan] === '}') {
+            break
+          } else {
+            scan += 1
+          }
+          remaining -= 1
+        }
+        index = scan - 1
         continue
       }
-      if (skipDepth > 0) continue
+      if (skip) continue
 
       switch (word) {
         case 'par':
@@ -229,7 +320,11 @@ export function rtfToHtml(bytes: Uint8Array): { html: string; direction: 'rtl' |
     }
 
     if (character === '\n' || character === '\r') continue
-    if (skipDepth === 0) buffer += character
+    if (picture) {
+      if (/[0-9a-fA-F]/.test(character)) picture.hex += character
+      continue
+    }
+    if (!skip) buffer += character
   }
   flushParagraph()
 
@@ -279,8 +374,12 @@ function renderParagraphs(paragraphs: Paragraph[], colors: string[]): string {
 
   for (const paragraph of paragraphs) {
     const inner = paragraph.runs
-      .filter((run) => run.text.length > 0)
-      .map((run) => renderRun(run.text, run.style, colors))
+      .filter((run) => run.text.length > 0 || run.image)
+      .map((run) =>
+        run.image
+          ? `<img src="${run.image}" alt="" style="max-width:100%" />`
+          : renderRun(run.text, run.style, colors)
+      )
       .join('')
 
     if (!inner.trim()) {

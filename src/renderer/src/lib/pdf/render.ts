@@ -1,5 +1,6 @@
 import { pdfjs, type PDFDocumentProxy } from './pdfjs'
 import { canvasToBlob, blobToBytes } from './text-raster'
+import { normalizeForSearch } from '../text/encoding'
 
 export interface RenderedPage {
   canvas: HTMLCanvasElement
@@ -111,23 +112,43 @@ export interface ExtractedImage {
   pageNumber: number
 }
 
-function objectFromPage(page: unknown, name: string): Promise<unknown> {
+function objectFromPage(page: unknown, name: string, timeoutMs: number): Promise<unknown> {
   return new Promise((resolve) => {
     const objects = (page as { objs: { get(id: string, cb: (value: unknown) => void): void } }).objs
-    try {
-      objects.get(name, resolve)
-    } catch {
-      resolve(null)
+    // The timer has to be cleared when the object does arrive — otherwise
+    // every image on the page keeps a live timeout, and a document whose
+    // objects never resolve stalls for the full budget once per object.
+    const timer = setTimeout(() => resolve(null), timeoutMs)
+    const settle = (value: unknown): void => {
+      clearTimeout(timer)
+      resolve(value)
     }
-    setTimeout(() => resolve(null), 4000)
+    try {
+      objects.get(name, settle)
+    } catch {
+      settle(null)
+    }
   })
 }
 
+export interface ExtractImagesOptions {
+  onProgress?: (done: number, total: number) => void
+  signal?: AbortSignal
+  /** Stops with whatever has been collected once this many ms have passed. */
+  deadlineMs?: number
+}
+
 /** Pulls embedded raster images out of every page as PNG bytes. */
-export async function extractImages(document_: PDFDocumentProxy): Promise<ExtractedImage[]> {
+export async function extractImages(
+  document_: PDFDocumentProxy,
+  options: ExtractImagesOptions = {}
+): Promise<ExtractedImage[]> {
   const results: ExtractedImage[] = []
+  const deadline = Date.now() + (options.deadlineMs ?? 120_000)
 
   for (let pageNumber = 1; pageNumber <= document_.numPages; pageNumber += 1) {
+    if (options.signal?.aborted || Date.now() > deadline) break
+    options.onProgress?.(pageNumber - 1, document_.numPages)
     const page = await document_.getPage(pageNumber)
     const operators = await page.getOperatorList()
     const seen = new Set<string>()
@@ -142,7 +163,7 @@ export async function extractImages(document_: PDFDocumentProxy): Promise<Extrac
       if (typeof argument !== 'string' || seen.has(argument)) continue
       seen.add(argument)
 
-      const raw = (await objectFromPage(page, argument)) as
+      const raw = (await objectFromPage(page, argument, 600)) as
         | { width: number; height: number; kind?: number; data?: Uint8ClampedArray; bitmap?: ImageBitmap }
         | null
       if (!raw?.width || !raw.height) continue
@@ -174,6 +195,7 @@ export async function extractImages(document_: PDFDocumentProxy): Promise<Extrac
     }
     page.cleanup()
   }
+  options.onProgress?.(document_.numPages, document_.numPages)
   return results
 }
 
@@ -260,7 +282,7 @@ export async function searchDocument(
   document_: PDFDocumentProxy,
   query: string
 ): Promise<SearchHit[]> {
-  const needle = query.trim().toLowerCase()
+  const needle = normalizeForSearch(query.trim())
   if (needle.length < 2) return []
   const hits: SearchHit[] = []
 
@@ -271,18 +293,39 @@ export async function searchDocument(
       .map((item) => ('str' in item ? item.str : ''))
       .join(' ')
       .replace(/\s+/g, ' ')
-    const haystack = text.toLowerCase()
 
-    let cursor = haystack.indexOf(needle)
+    // Fold per character so hit offsets still index into the original text —
+    // a whole-string fold would shift them wherever a character is dropped.
+    const { folded, offsets } = foldWithOffsets(text)
+
+    let cursor = folded.indexOf(needle)
     while (cursor !== -1 && hits.length < 400) {
+      const originalStart = offsets[cursor] ?? 0
+      const originalEnd = offsets[cursor + needle.length] ?? text.length
       hits.push({
         pageNumber,
-        index: cursor,
-        snippet: text.slice(Math.max(0, cursor - 42), cursor + needle.length + 42).trim()
+        index: originalStart,
+        snippet: text.slice(Math.max(0, originalStart - 42), originalEnd + 42).trim()
       })
-      cursor = haystack.indexOf(needle, cursor + needle.length)
+      cursor = folded.indexOf(needle, cursor + Math.max(1, needle.length))
     }
     page.cleanup()
   }
   return hits
+}
+
+/**
+ * Folds text for matching while keeping a map back to the original offsets, so
+ * a hit on normalised text can still be quoted from the text the user sees.
+ */
+function foldWithOffsets(text: string): { folded: string; offsets: number[] } {
+  let folded = ''
+  const offsets: number[] = []
+  for (let index = 0; index < text.length; index += 1) {
+    const piece = normalizeForSearch(text[index])
+    for (let n = 0; n < piece.length; n += 1) offsets.push(index)
+    folded += piece
+  }
+  offsets.push(text.length)
+  return { folded, offsets }
 }

@@ -1,4 +1,5 @@
 import mammoth from 'mammoth'
+import { sanitize } from '../documents/sanitize'
 
 export interface DocxReadResult {
   html: string
@@ -40,8 +41,11 @@ export async function docxToHtml(bytes: Uint8Array): Promise<DocxReadResult> {
     }
   )
 
+  // Sanitised here rather than at each call site: this is the one place
+  // mammoth's output can escape from, and the PDF and HTML exporters used to
+  // forget.
   return {
-    html: result.value || '<p></p>',
+    html: sanitize(result.value || '<p></p>'),
     warnings: result.messages.map((message) => message.message)
   }
 }

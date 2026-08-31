@@ -1,7 +1,8 @@
-import { degrees, rgb, StandardFonts } from '@cantoo/pdf-lib'
-import { hexToRgb, needsComplexShaping, uid } from '../format'
+import { rgb } from '@cantoo/pdf-lib'
+import { hexToRgb, uid } from '../format'
 import { load, save } from './ops'
-import { rasterizeText } from './text-raster'
+import { applyRedactions, type RedactionReport, type RedactRegion } from './redact'
+import { drawSmartText, isRtlText, prepareFonts, wrapSmartText } from './typography'
 
 export type AnnotationKind =
   | 'text'
@@ -51,18 +52,33 @@ export function createAnnotation(partial: Partial<Annotation> & Pick<Annotation,
   }
 }
 
-/** Burns the annotation list into the document, producing new PDF bytes. */
+export interface FlattenResult {
+  bytes: Uint8Array
+  /** Present when the list contained redactions; describes what was destroyed. */
+  redaction?: RedactionReport
+}
+
+/**
+ * Burns the annotation list into the document, producing new PDF bytes.
+ *
+ * Redactions are deliberately not part of that pass: painting them here would
+ * leave the covered text in the file. They are collected and handed to the
+ * real redaction pipeline afterwards, which removes the content itself and
+ * verifies that it is gone.
+ */
 export async function flattenAnnotations(
   bytes: Uint8Array,
   annotations: Annotation[],
-  password?: string
-): Promise<Uint8Array> {
+  password?: string,
+  onProgress?: (fraction: number) => void
+): Promise<FlattenResult> {
+  const redactions = annotations.filter((annotation) => annotation.kind === 'redact')
+  const drawable = annotations.filter((annotation) => annotation.kind !== 'redact')
   const document = await load(bytes, password)
   const pages = document.getPages()
-  const font = await document.embedFont(StandardFonts.Helvetica)
-  const boldFont = await document.embedFont(StandardFonts.HelveticaBold)
+  const fonts = await prepareFonts(document)
 
-  for (const annotation of annotations) {
+  for (const annotation of drawable) {
     const page = pages[annotation.page - 1]
     if (!page) continue
     const pageWidth = page.getWidth()
@@ -76,10 +92,6 @@ export async function flattenAnnotations(
     const y = pageHeight - annotation.y * pageHeight - height
 
     switch (annotation.kind) {
-      case 'redact':
-        page.drawRectangle({ x, y, width, height, color: rgb(0, 0, 0) })
-        break
-
       case 'highlight':
         page.drawRectangle({ x, y, width, height, color, opacity: annotation.opacity * 0.42 })
         break
@@ -152,39 +164,37 @@ export async function flattenAnnotations(
         const value = annotation.text ?? ''
         if (!value.trim()) break
         const size = annotation.fontSize ?? 14
+        const rtl = isRtlText(value)
+        const style = { size, color: annotation.color, bold: annotation.bold, rtl }
 
-        if (needsComplexShaping(value)) {
-          const raster = rasterizeText(value, {
-            fontSize: size,
-            color: annotation.color,
-            bold: annotation.bold
-          })
-          const image = await document.embedPng(raster.png)
-          page.drawImage(image, {
-            x,
-            y: pageHeight - annotation.y * pageHeight - raster.height,
-            width: raster.width,
-            height: raster.height,
+        // Wrap to the box the user drew, so the flattened result matches the
+        // preview instead of running off the page.
+        const boxWidth = Math.max(20, width)
+        const lines = await wrapSmartText(fonts, value, boxWidth, style)
+        const lineHeight = size * 1.32
+
+        for (const [lineIndex, line] of lines.entries()) {
+          const lineY = pageHeight - annotation.y * pageHeight - size - lineIndex * lineHeight
+          await drawSmartText(page, fonts, line, x, lineY, {
+            ...style,
             opacity: annotation.opacity
           })
-          break
         }
-
-        page.drawText(value, {
-          x,
-          y: pageHeight - annotation.y * pageHeight - size,
-          size,
-          font: annotation.bold ? boldFont : font,
-          color,
-          opacity: annotation.opacity,
-          lineHeight: size * 1.3,
-          maxWidth: width > 10 ? width : undefined,
-          rotate: degrees(0)
-        })
         break
       }
     }
   }
 
-  return save(document)
+  const drawn = await save(document)
+  if (redactions.length === 0) return { bytes: drawn }
+
+  const regions: RedactRegion[] = redactions.map((annotation) => ({
+    pageIndex: annotation.page - 1,
+    x: annotation.x,
+    y: annotation.y,
+    width: annotation.width,
+    height: annotation.height
+  }))
+  const redaction = await applyRedactions(drawn, regions, password, onProgress)
+  return { bytes: redaction.bytes, redaction }
 }

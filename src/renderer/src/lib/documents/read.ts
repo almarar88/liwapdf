@@ -1,9 +1,9 @@
 import JSZip from 'jszip'
-import DOMPurify from 'dompurify'
 import { docxToHtml } from '../docx/read'
 import { markdownToHtml } from '../markdown'
 import { escapeHtml, stripExtension } from '../format'
 import { decodeText, detectDirection, normalizeArabicPresentation } from '../text/encoding'
+import { sanitize } from './sanitize'
 import {
   epubToHtml,
   legacyDocToHtml,
@@ -37,6 +37,12 @@ export interface LoadedDocument {
   imageDataUrl?: string
   direction: 'rtl' | 'ltr'
   encoding?: string
+  /**
+   * True when the reader could not represent the whole file. Save-in-place is
+   * refused for such a document so the original is never overwritten with a
+   * partial copy.
+   */
+  truncated?: boolean
   /** Non-fatal notes worth showing the user, e.g. "text only". */
   warnings: string[]
   originalBytes: Uint8Array
@@ -141,15 +147,29 @@ export async function readDocument(
     case 'csv':
     case 'tsv': {
       const decoded = decodeText(bytes)
-      const { sheets, direction } = readDelimited(decoded.text, format === 'tsv' ? '\t' : ',')
-      return { ...base, sheets, encoding: decoded.encoding, direction }
+      const { sheets, direction, truncated } = readDelimited(decoded.text, format === 'tsv' ? '\t' : ',')
+      return {
+        ...base,
+        sheets,
+        encoding: decoded.encoding,
+        direction,
+        truncated,
+        warnings: truncated ? ['sheet-truncated'] : []
+      }
     }
 
     case 'xlsx':
     case 'xls':
     case 'ods': {
-      const { sheets, direction } = readWorkbook(bytes)
-      return { ...base, sheets, direction }
+      const { sheets, direction, truncated } = readWorkbook(bytes)
+      // A truncated grid must never be written back over the original.
+      return {
+        ...base,
+        sheets,
+        direction,
+        truncated,
+        warnings: truncated ? ['sheet-truncated'] : []
+      }
     }
 
     case 'json':
@@ -200,10 +220,34 @@ async function detectFormat(name: string, bytes: Uint8Array): Promise<DocumentFo
   }
 
   const byBytes = formatFromBytes(bytes)
+
+  // .doc, .xls and .ppt are all OLE2 compound files with identical magic
+  // bytes, so the signature alone cannot tell them apart — the extension is
+  // the only cheap discriminator, and probing the CFB streams is the fallback.
+  if (byBytes === 'doc') {
+    if (byName && ['xls', 'xlsx', 'ods', 'doc', 'pptx'].includes(byName.format)) return byName.format
+    return probeOle2(bytes)
+  }
+
   if (byBytes && byBytes !== 'image') return byBytes
   if (byName) return byName.format
   if (byBytes) return byBytes
   return 'unknown'
+}
+
+/**
+ * Distinguishes an OLE2 container by the stream names in its root directory.
+ * A BIFF workbook holds "Workbook" or "Book"; Word holds "WordDocument".
+ */
+function probeOle2(bytes: Uint8Array): DocumentFormat {
+  // Stream names are UTF-16LE in the directory sector; a byte scan is enough
+  // to tell the three apart without implementing the CFB layout.
+  const text = new TextDecoder('utf-16le', { fatal: false }).decode(
+    bytes.subarray(0, Math.min(bytes.length, 1 << 16))
+  )
+  if (text.includes('Workbook') || text.includes('Book')) return 'xls'
+  if (text.includes('PowerPoint')) return 'unknown'
+  return 'doc'
 }
 
 async function probeZip(bytes: Uint8Array): Promise<DocumentFormat | null> {
@@ -235,15 +279,7 @@ async function probeZip(bytes: Uint8Array): Promise<DocumentFormat | null> {
  * scripts, event handlers and remote references keeps a hostile file from doing
  * anything when it lands in the contenteditable surface.
  */
-export function sanitize(html: string): string {
-  return DOMPurify.sanitize(html, {
-    USE_PROFILES: { html: true },
-    ALLOWED_URI_REGEXP: /^(?:data:image\/[a-z+.-]+;base64,|https?:|mailto:|#)/i,
-    FORBID_TAGS: ['script', 'style', 'iframe', 'object', 'embed', 'link', 'meta', 'base', 'form'],
-    FORBID_ATTR: ['srcset', 'formaction', 'background', 'ping'],
-    ADD_ATTR: ['dir', 'colspan', 'rowspan']
-  })
-}
+export { sanitize, sanitizeForPrint } from './sanitize'
 
 function plainTextToHtml(text: string): string {
   const blocks = text.replace(/\r\n?/g, '\n').split(/\n{2,}/)

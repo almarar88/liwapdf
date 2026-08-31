@@ -4,6 +4,7 @@ import { DEFAULT_SETTINGS } from '@shared/types'
 import { openForRender, PasswordRequiredError, type PDFDocumentProxy } from '../lib/pdf/pdfjs'
 import type { LoadedDocument } from '../lib/documents/read'
 import type { SheetData } from '../lib/documents/sheets'
+import type { Annotation } from '../lib/pdf/annotations'
 import { translate, type TranslationKey } from '../i18n'
 import { extensionOf, uid } from '../lib/format'
 
@@ -26,10 +27,19 @@ export interface Toast {
 }
 
 export interface PdfDoc {
+  /** Stable identity for this open document, independent of name or path. */
+  id: string
   name: string
   path: string | null
   bytes: Uint8Array
   password?: string
+  /**
+   * True when the file was encrypted on disk. Editing decrypts it, so saving
+   * in place would replace a protected file with an unprotected one.
+   */
+  wasProtected: boolean
+  /** Set once the in-memory bytes are known to have lost that protection. */
+  protectionDropped: boolean
   proxy: PDFDocumentProxy
   pageCount: number
   dirty: boolean
@@ -43,6 +53,12 @@ export interface PdfDoc {
  * only the one matching `source.kind` is meaningful.
  */
 export interface EditorDoc {
+  /**
+   * A fresh identity per load. Name+path+format is not enough: reopening the
+   * same file after edits, or reverting it, produced the same key and the rich
+   * editor kept showing the previous contents.
+   */
+  id: string
   source: LoadedDocument
   html: string
   sheets: SheetData[]
@@ -58,6 +74,28 @@ export interface BusyState {
 }
 
 const HISTORY_LIMIT = 12
+/**
+ * History is capped by bytes as well as entries: twelve snapshots of a 50 MB
+ * PDF would retain 600 MB. Past the budget the oldest entries are dropped.
+ */
+const HISTORY_BYTE_BUDGET = 192 * 1024 * 1024
+
+/** Guards the async read-modify-write in applyPdfBytes / undo / redo. */
+let mutationGeneration = 0
+
+function pushHistory(stack: Uint8Array[], entry: Uint8Array): Uint8Array[] {
+  // A single snapshot larger than the whole budget would evict everything and
+  // still not fit — skip it and degrade to no undo for that step.
+  if (entry.byteLength > HISTORY_BYTE_BUDGET) return stack
+
+  const next = [...stack, entry].slice(-HISTORY_LIMIT)
+  let total = next.reduce((sum, item) => sum + item.byteLength, 0)
+  while (next.length > 1 && total > HISTORY_BYTE_BUDGET) {
+    total -= next[0].byteLength
+    next.shift()
+  }
+  return next
+}
 
 interface AppState {
   settings: AppSettings
@@ -75,10 +113,29 @@ interface AppState {
   selectedPages: number[]
   currentPage: number
 
+  /**
+   * Pending annotations live here rather than in the view, so switching route
+   * no longer silently destroys unflattened work.
+   */
+  annotations: Annotation[]
+  selectedAnnotation: string | null
+
   editorDoc: EditorDoc | null
 
   /** Set when a file needs a password before it can be opened. */
   passwordPrompt: { name: string; bytes: Uint8Array; path: string | null; wrong: boolean } | null
+
+  /**
+   * A pending question the user must answer before a destructive action runs.
+   * Set by `confirm`, cleared by the dialog's answer.
+   */
+  confirmPrompt: {
+    title: string
+    body: string
+    confirmLabel: string
+    danger: boolean
+    resolve: (accepted: boolean) => void
+  } | null
 
   t: (key: TranslationKey, vars?: Record<string, string | number>) => string
 }
@@ -113,8 +170,15 @@ interface AppActions {
   setSelectedPages: (pages: number[]) => void
   togglePageSelection: (index: number) => void
   setCurrentPage: (page: number) => void
+  setAnnotations: (annotations: Annotation[]) => void
+  setSelectedAnnotation: (id: string | null) => void
   resolvePassword: (password: string) => Promise<void>
   cancelPassword: () => void
+
+  confirm: (options: { title: string; body: string; confirmLabel: string; danger?: boolean }) => Promise<boolean>
+  answerConfirm: (accepted: boolean) => void
+  /** True when nothing would be lost, or the user accepted losing it. */
+  confirmDiscard: () => Promise<boolean>
 
   openEditorDocument: (loaded: LoadedDocument) => void
   updateEditorHtml: (html: string) => void
@@ -141,9 +205,12 @@ export const useApp = create<AppState & AppActions>((set, get) => ({
   redoStack: [],
   selectedPages: [],
   currentPage: 1,
+  annotations: [],
+  selectedAnnotation: null,
 
   editorDoc: null,
   passwordPrompt: null,
+  confirmPrompt: null,
 
   t: (key, vars) => translate(get().settings.language, key, vars),
 
@@ -231,10 +298,13 @@ export const useApp = create<AppState & AppActions>((set, get) => ({
       if (previous) void previous.proxy.destroy()
       set({
         doc: {
+          id: uid(),
           name,
           path,
           bytes,
           password,
+          wasProtected: password !== undefined,
+          protectionDropped: false,
           proxy,
           pageCount: proxy.numPages,
           dirty: false,
@@ -244,6 +314,8 @@ export const useApp = create<AppState & AppActions>((set, get) => ({
         redoStack: [],
         selectedPages: [],
         currentPage: 1,
+        annotations: [],
+        selectedAnnotation: null,
         passwordPrompt: null
       })
       return true
@@ -258,22 +330,38 @@ export const useApp = create<AppState & AppActions>((set, get) => ({
   },
 
   async applyPdfBytes(bytes, options) {
+    const generation = ++mutationGeneration
     const current = get().doc
     if (!current) return
-    const proxy = await openForRender(bytes, current.password)
-    void current.proxy.destroy()
 
-    const undoStack = [...get().undoStack, current.bytes].slice(-HISTORY_LIMIT)
+    const proxy = await openForRender(bytes, current.password)
+
+    // Another mutation started while this one was parsing. Drop this result
+    // rather than clobbering the newer document and leaking its proxy.
+    if (generation !== mutationGeneration) {
+      void proxy.destroy()
+      return
+    }
+
+    const latest = get().doc
+    if (!latest) {
+      void proxy.destroy()
+      return
+    }
+    void latest.proxy.destroy()
+
     set({
       doc: {
-        ...current,
+        ...latest,
         bytes,
         proxy,
         pageCount: proxy.numPages,
         dirty: !options?.markClean,
-        version: current.version + 1
+        // Any mutation of a protected document decrypts it.
+        protectionDropped: latest.protectionDropped || latest.wasProtected,
+        version: latest.version + 1
       },
-      undoStack,
+      undoStack: pushHistory(get().undoStack, latest.bytes),
       redoStack: [],
       selectedPages: [],
       currentPage: Math.min(get().currentPage, proxy.numPages)
@@ -281,39 +369,17 @@ export const useApp = create<AppState & AppActions>((set, get) => ({
   },
 
   async undo() {
-    const { undoStack, doc } = get()
-    if (!doc || undoStack.length === 0) return
-    const previous = undoStack[undoStack.length - 1]
-    const proxy = await openForRender(previous, doc.password)
-    void doc.proxy.destroy()
-    set({
-      doc: { ...doc, bytes: previous, proxy, pageCount: proxy.numPages, dirty: true, version: doc.version + 1 },
-      undoStack: undoStack.slice(0, -1),
-      redoStack: [...get().redoStack, doc.bytes].slice(-HISTORY_LIMIT),
-      selectedPages: [],
-      currentPage: 1
-    })
+    await stepHistory(get, set, 'undo')
   },
 
   async redo() {
-    const { redoStack, doc } = get()
-    if (!doc || redoStack.length === 0) return
-    const next = redoStack[redoStack.length - 1]
-    const proxy = await openForRender(next, doc.password)
-    void doc.proxy.destroy()
-    set({
-      doc: { ...doc, bytes: next, proxy, pageCount: proxy.numPages, dirty: true, version: doc.version + 1 },
-      redoStack: redoStack.slice(0, -1),
-      undoStack: [...get().undoStack, doc.bytes].slice(-HISTORY_LIMIT),
-      selectedPages: [],
-      currentPage: 1
-    })
+    await stepHistory(get, set, 'redo')
   },
 
   closePdf() {
     const doc = get().doc
     if (doc) void doc.proxy.destroy()
-    set({ doc: null, undoStack: [], redoStack: [], selectedPages: [], currentPage: 1 })
+    set({ doc: null, undoStack: [], redoStack: [], selectedPages: [], currentPage: 1, annotations: [] })
   },
 
   markSaved(path, name) {
@@ -340,6 +406,14 @@ export const useApp = create<AppState & AppActions>((set, get) => ({
     set({ currentPage: page })
   },
 
+  setAnnotations(annotations) {
+    set({ annotations })
+  },
+
+  setSelectedAnnotation(id) {
+    set({ selectedAnnotation: id })
+  },
+
   async resolvePassword(password) {
     const prompt = get().passwordPrompt
     if (!prompt) return
@@ -351,9 +425,42 @@ export const useApp = create<AppState & AppActions>((set, get) => ({
     set({ passwordPrompt: null })
   },
 
+  confirm(options) {
+    return new Promise<boolean>((resolve) => {
+      set({
+        confirmPrompt: {
+          title: options.title,
+          body: options.body,
+          confirmLabel: options.confirmLabel,
+          danger: options.danger ?? false,
+          resolve
+        }
+      })
+    })
+  },
+
+  answerConfirm(accepted) {
+    const prompt = get().confirmPrompt
+    set({ confirmPrompt: null })
+    prompt?.resolve(accepted)
+  },
+
+  async confirmDiscard() {
+    const { doc, editorDoc, t } = get()
+    if (!doc?.dirty && !editorDoc?.dirty) return true
+    const name = doc?.dirty ? doc.name : (editorDoc?.source.name ?? '')
+    return get().confirm({
+      title: t('msg.unsavedTitle'),
+      body: t('msg.unsavedBody') + (name ? ' — ' + name : ''),
+      confirmLabel: t('msg.discard'),
+      danger: true
+    })
+  },
+
   openEditorDocument(loaded) {
     set({
       editorDoc: {
+        id: uid(),
         source: loaded,
         html: loaded.html ?? '',
         sheets: loaded.sheets ?? [],
@@ -413,11 +520,57 @@ export const useApp = create<AppState & AppActions>((set, get) => ({
   }
 }))
 
+/**
+ * Undo and redo are the same move in opposite directions, and both race the
+ * same way as applyPdfBytes — so they share one generation-guarded body.
+ */
+async function stepHistory(
+  get: () => AppState & AppActions,
+  set: (partial: Partial<AppState>) => void,
+  direction: 'undo' | 'redo'
+): Promise<void> {
+  const generation = ++mutationGeneration
+  const state = get()
+  const doc = state.doc
+  const source = direction === 'undo' ? state.undoStack : state.redoStack
+  if (!doc || source.length === 0) return
+
+  const target = source[source.length - 1]
+  const proxy = await openForRender(target, doc.password)
+
+  if (generation !== mutationGeneration) {
+    void proxy.destroy()
+    return
+  }
+  const latest = get().doc
+  if (!latest) {
+    void proxy.destroy()
+    return
+  }
+  void latest.proxy.destroy()
+
+  const from = direction === 'undo' ? get().undoStack : get().redoStack
+  const to = direction === 'undo' ? get().redoStack : get().undoStack
+  const rewound = { ...latest, bytes: target, proxy, pageCount: proxy.numPages, dirty: true, version: latest.version + 1 }
+
+  set({
+    doc: rewound,
+    undoStack: direction === 'undo' ? from.slice(0, -1) : pushHistory(to, latest.bytes),
+    redoStack: direction === 'undo' ? pushHistory(to, latest.bytes) : from.slice(0, -1),
+    selectedPages: [],
+    currentPage: 1
+  })
+}
+
 function applyDocumentChrome(settings: AppSettings, dark: boolean): void {
   const root = document.documentElement
   root.setAttribute('data-theme', dark ? 'dark' : 'light')
   root.setAttribute('data-accent', settings.accent)
-  root.setAttribute('data-reduce-motion', String(settings.reduceMotion))
+  // Present only when the user asked for it: with the attribute absent the
+  // prefers-reduced-motion media query in theme.css still applies, so the OS
+  // setting is honoured without the app having to mirror it.
+  if (settings.reduceMotion) root.setAttribute('data-reduce-motion', 'true')
+  else root.removeAttribute('data-reduce-motion')
   root.setAttribute('lang', settings.language)
   root.setAttribute('dir', settings.language === 'ar' ? 'rtl' : 'ltr')
 }

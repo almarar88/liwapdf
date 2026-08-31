@@ -61,6 +61,7 @@ export function AnnotateView(): React.JSX.Element {
   const applyPdfBytes = useApp((state) => state.applyPdfBytes)
   const setBusy = useApp((state) => state.setBusy)
   const reportError = useApp((state) => state.reportError)
+  const notify = useApp((state) => state.notify)
   const { openDialog } = useDocumentActions()
 
   const [tool, setTool] = useState<Tool>('select')
@@ -69,8 +70,20 @@ export function AnnotateView(): React.JSX.Element {
   const [fontSize, setFontSize] = useState(16)
   const [opacity, setOpacity] = useState(100)
   const [filled, setFilled] = useState(false)
-  const [annotations, setAnnotations] = useState<Annotation[]>([])
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  // Annotations live in the store, so leaving this route no longer destroys
+  // work the user has not flattened yet.
+  const annotations = useApp((state) => state.annotations)
+  const setAnnotationsRaw = useApp((state) => state.setAnnotations)
+  const selectedId = useApp((state) => state.selectedAnnotation)
+  const setSelectedId = useApp((state) => state.setSelectedAnnotation)
+
+  const setAnnotations = (
+    update: Annotation[] | ((current: Annotation[]) => Annotation[])
+  ): void => {
+    setAnnotationsRaw(
+      typeof update === 'function' ? (update as (c: Annotation[]) => Annotation[])(useApp.getState().annotations) : update
+    )
+  }
   const [signatureOpen, setSignatureOpen] = useState(false)
   const [pendingImage, setPendingImage] = useState<string | null>(null)
 
@@ -230,6 +243,101 @@ export function AnnotateView(): React.JSX.Element {
     if (drag.mode === 'create' && tool !== 'draw') setTool('select')
   }
 
+  /**
+   * Keyboard equivalents for every pointer gesture on the canvas.
+   *
+   * Drawing an annotation was mouse-only, which left the whole view — and the
+   * properties panel that depends on a selection — unreachable from the
+   * keyboard. Enter drops a default-sized shape of the armed tool at the page
+   * centre and selects it; the arrows then move and resize it.
+   */
+  const onCanvasKeyDown = (event: React.KeyboardEvent): void => {
+    if (event.key !== 'Enter' && event.key !== ' ') return
+    if (event.target !== event.currentTarget) return
+    if (tool === 'select' || tool === 'signature' || tool === 'image') return
+    event.preventDefault()
+    const kind = tool as AnnotationKind
+    const annotation = createAnnotation({
+      page: currentPage,
+      kind,
+      x: 0.32,
+      y: 0.44,
+      width: kind === 'text' ? 0.36 : 0.24,
+      height: kind === 'text' ? 0.06 : 0.12,
+      color,
+      opacity: opacity / 100,
+      strokeWidth,
+      filled,
+      fontSize,
+      text: kind === 'text' ? t('annotate.textPlaceholder') : undefined,
+      points:
+        kind === 'draw'
+          ? ([
+              [0.32, 0.44],
+              [0.56, 0.56]
+            ] as [number, number][])
+          : undefined
+    })
+    setAnnotations((current) => [...current, annotation])
+    setSelectedId(annotation.id)
+    setTool('select')
+  }
+
+  const onShapeKeyDown = (event: React.KeyboardEvent, annotation: Annotation): void => {
+    const step = event.shiftKey ? 0.05 : 0.01
+
+    if (event.key === 'Delete' || event.key === 'Backspace') {
+      event.preventDefault()
+      setAnnotations((current) => current.filter((item) => item.id !== annotation.id))
+      setSelectedId(null)
+      overlayRef.current?.focus()
+      return
+    }
+    if (event.key === 'Escape') {
+      setSelectedId(null)
+      overlayRef.current?.focus()
+      return
+    }
+
+    const deltas: Record<string, [number, number]> = {
+      ArrowLeft: [-step, 0],
+      ArrowRight: [step, 0],
+      ArrowUp: [0, -step],
+      ArrowDown: [0, step]
+    }
+    const delta = deltas[event.key]
+    if (!delta) return
+    event.preventDefault()
+    setSelectedId(annotation.id)
+
+    // Alt resizes, everything else moves.
+    if (event.altKey) {
+      setAnnotations((current) =>
+        current.map((item) =>
+          item.id === annotation.id
+            ? {
+                ...item,
+                width: clamp(item.width + delta[0], 0.01, 1),
+                height: clamp(item.height + delta[1], 0.01, 1)
+              }
+            : item
+        )
+      )
+      return
+    }
+    setAnnotations((current) =>
+      current.map((item) =>
+        item.id === annotation.id
+          ? {
+              ...item,
+              x: clamp(item.x + delta[0], 0, 1),
+              y: clamp(item.y + delta[1], 0, 1)
+            }
+          : item
+      )
+    )
+  }
+
   const updateSelected = (patch: Partial<Annotation>): void => {
     if (!selectedId) return
     setAnnotations((current) =>
@@ -239,12 +347,40 @@ export function AnnotateView(): React.JSX.Element {
 
   const apply = async (): Promise<void> => {
     if (annotations.length === 0) return
-    setBusy({ label: t('msg.working'), progress: null })
+    const redacting = annotations.some((item) => item.kind === 'redact')
+    setBusy({ label: t(redacting ? 'msg.redacting' : 'msg.working'), progress: null })
     try {
-      const next = await flattenAnnotations(doc.bytes, annotations, doc.password)
-      await applyPdfBytes(next)
+      const result = await flattenAnnotations(
+        doc.bytes,
+        annotations,
+        doc.password,
+        redacting ? (fraction) => setBusy({ label: t('msg.redacting'), progress: fraction }) : undefined
+      )
+      await applyPdfBytes(result.bytes)
       setAnnotations([])
       setSelectedId(null)
+
+      // Redaction makes a promise the user is entitled to see kept, so say
+      // exactly what was destroyed — and admit it when a page had to be
+      // flattened to an image to make the guarantee hold.
+      const report = result.redaction
+      if (report) {
+        notify({
+          kind: 'success',
+          title: t('msg.redacted'),
+          message:
+            t('msg.redactedDetail')
+              .replace('{runs}', String(report.removedRuns))
+              .replace('{annots}', String(report.removedAnnotations)) +
+            (report.rasterizedPages.length > 0
+              ? ' ' +
+                t('msg.redactedFlattened').replace(
+                  '{pages}',
+                  report.rasterizedPages.map((index) => index + 1).join(', ')
+                )
+              : '')
+        })
+      }
     } catch (error) {
       reportError(error)
     } finally {
@@ -332,9 +468,13 @@ export function AnnotateView(): React.JSX.Element {
                   ref={overlayRef}
                   className="anno-layer"
                   style={{ cursor: tool === 'select' ? 'default' : 'crosshair', touchAction: 'none' }}
+                  role="application"
+                  aria-label={t('annotate.canvasLabel')}
+                  tabIndex={0}
                   onPointerDown={onPointerDown}
                   onPointerMove={onPointerMove}
                   onPointerUp={onPointerUp}
+                  onKeyDown={onCanvasKeyDown}
                 >
                   {pageAnnotations.map((annotation) => (
                     <AnnotationShape
@@ -342,6 +482,12 @@ export function AnnotateView(): React.JSX.Element {
                       annotation={annotation}
                       selected={annotation.id === selectedId}
                       interactive={tool === 'select'}
+                      label={t('annotate.shapeLabel', {
+                        kind: t(`annotate.tool.${annotation.kind}` as never),
+                        page: annotation.page
+                      })}
+                      onFocus={() => setSelectedId(annotation.id)}
+                      onKeyDown={onShapeKeyDown}
                       onSelect={(event) => {
                         setSelectedId(annotation.id)
                         if (tool !== 'select' || !overlayRef.current) return
@@ -391,6 +537,12 @@ export function AnnotateView(): React.JSX.Element {
                     label={t('word.bold')}
                   />
                 </>
+              ) : null}
+
+              {selected.kind === 'redact' ? (
+                <p className="hint" style={{ margin: '0 0 10px' }}>
+                  {t('annotate.redactHint')}
+                </p>
               ) : null}
 
               {selected.kind !== 'image' && selected.kind !== 'redact' ? (
@@ -485,13 +637,29 @@ function AnnotationShape({
   annotation,
   selected,
   interactive,
-  onSelect
+  label,
+  onSelect,
+  onFocus,
+  onKeyDown
 }: {
   annotation: Annotation
   selected: boolean
   interactive: boolean
+  label: string
   onSelect: (event: React.PointerEvent) => void
+  onFocus: () => void
+  onKeyDown: (event: React.KeyboardEvent, annotation: Annotation) => void
 }): React.JSX.Element {
+  // Every shape is a focus stop with an accessible name, so the annotation
+  // layer can be walked, selected and edited without a pointer.
+  const keyboard = {
+    tabIndex: interactive ? 0 : -1,
+    role: 'button' as const,
+    'aria-label': label,
+    'aria-pressed': selected,
+    onFocus,
+    onKeyDown: (event: React.KeyboardEvent) => onKeyDown(event, annotation)
+  }
   const base: React.CSSProperties = {
     position: 'absolute',
     left: `${annotation.x * 100}%`,
@@ -522,10 +690,12 @@ function AnnotationShape({
           width: '100%',
           height: '100%',
           pointerEvents: 'none',
-          overflow: 'visible'
+          overflow: 'visible',
+          outline: selected ? '2px solid var(--accent)' : undefined
         }}
         viewBox="0 0 1 1"
         preserveAspectRatio="none"
+        {...keyboard}
       >
         <polyline
           points={points.map(([x, y]) => `${x},${y}`).join(' ')}
@@ -554,6 +724,7 @@ function AnnotationShape({
           height: 'auto'
         }}
         onPointerDown={interactive ? onSelect : undefined}
+        {...keyboard}
       >
         {annotation.text}
       </div>
@@ -568,6 +739,7 @@ function AnnotationShape({
         style={{ ...base, objectFit: 'contain' }}
         onPointerDown={interactive ? onSelect : undefined}
         draggable={false}
+        {...keyboard}
       />
     )
   }
@@ -584,7 +756,7 @@ function AnnotationShape({
     if (annotation.kind === 'ellipse') style.borderRadius = '50%'
   }
 
-  return <div style={style} onPointerDown={interactive ? onSelect : undefined} />
+  return <div style={style} onPointerDown={interactive ? onSelect : undefined} {...keyboard} />
 }
 
 function SignatureModal({

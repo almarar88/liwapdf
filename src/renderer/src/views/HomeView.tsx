@@ -165,7 +165,7 @@ export function HomeView(): React.JSX.Element {
                   )}
                 </span>
                 <div className="grow">
-                  <div className="title">{file.name}</div>
+                  <div className="title"><bdi>{file.name}</bdi></div>
                   <div className="sub truncate" title={file.path}>
                     <Bytes value={file.size} /> · {formatRelativeTime(file.openedAt, language)}
                   </div>

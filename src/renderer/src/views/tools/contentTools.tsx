@@ -147,7 +147,10 @@ export function PageNumbersPanel({ onClose }: ToolPanelProps): React.JSX.Element
   const [fontSize, setFontSize] = useState(11)
   const [color, setColor] = useState('#3b4252')
   const [skipFirst, setSkipFirst] = useState(false)
-  const [arabicNumerals, setArabicNumerals] = useState(language === 'ar')
+  const [numerals, setNumerals] = useState<'western' | 'arabic-indic'>(
+    language === 'ar' ? 'arabic-indic' : 'western'
+  )
+  const [templateLanguage, setTemplateLanguage] = useState<'ar' | 'en'>(language)
   const [range, setRange] = useState('')
 
   if (!doc) return <p className="muted">{t('msg.noDocument')}</p>
@@ -161,8 +164,11 @@ export function PageNumbersPanel({ onClose }: ToolPanelProps): React.JSX.Element
           options={[
             { value: 'n', label: '1' },
             { value: 'n-of-total', label: '1 / 10' },
-            { value: 'page-n', label: arabicNumerals ? 'صفحة 1' : 'Page 1' },
-            { value: 'page-n-of-total', label: arabicNumerals ? 'صفحة 1 من 10' : 'Page 1 of 10' },
+            { value: 'page-n', label: templateLanguage === 'ar' ? 'صفحة 1' : 'Page 1' },
+            {
+              value: 'page-n-of-total',
+              label: templateLanguage === 'ar' ? 'صفحة 1 من 10' : 'Page 1 of 10'
+            },
             { value: 'dash-n-dash', label: '- 1 -' }
           ]}
         />
@@ -178,11 +184,26 @@ export function PageNumbersPanel({ onClose }: ToolPanelProps): React.JSX.Element
         <ColorInput value={color} onChange={setColor} />
       </Field>
       <Checkbox checked={skipFirst} onChange={setSkipFirst} label={t('opt.skipFirst')} />
-      <Checkbox
-        checked={arabicNumerals}
-        onChange={setArabicNumerals}
-        label="٠١٢٣٤٥٦٧٨٩"
-      />
+      <Field label={t('opt.numerals')}>
+        <Segmented
+          value={numerals}
+          onChange={setNumerals}
+          options={[
+            { value: 'western', label: '0123456789' },
+            { value: 'arabic-indic', label: '٠١٢٣٤٥٦٧٨٩' }
+          ]}
+        />
+      </Field>
+      <Field label={t('opt.templateLanguage')}>
+        <Segmented
+          value={templateLanguage}
+          onChange={setTemplateLanguage}
+          options={[
+            { value: 'ar', label: 'العربية' },
+            { value: 'en', label: 'English' }
+          ]}
+        />
+      </Field>
       <RangeField value={range} onChange={setRange} />
 
       <Button
@@ -202,7 +223,8 @@ export function PageNumbersPanel({ onClose }: ToolPanelProps): React.JSX.Element
                 bold: false,
                 skipFirst,
                 indices,
-                arabicNumerals
+                numerals,
+                templateLanguage
               },
               doc.password
             )

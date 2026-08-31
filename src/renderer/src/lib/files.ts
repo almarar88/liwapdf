@@ -1,4 +1,21 @@
 import type { PickedFile } from '@shared/types'
+import { translate, type TranslationKey } from '../i18n'
+import { useApp } from '../store/app'
+
+/**
+ * Filter labels are shown by the OS file dialog, so they follow the app's
+ * language. They are stored as translation keys and resolved at the moment the
+ * dialog opens, which is the only point where the current language is known.
+ */
+function localizeFilters(filters: FileFilter[]): FileFilter[] {
+  const language = useApp.getState().settings.language
+  return filters.map((filter) => ({
+    ...filter,
+    name: filter.name.startsWith('file.')
+      ? translate(language, filter.name as TranslationKey)
+      : filter.name
+  }))
+}
 
 export interface FileFilter {
   name: string
@@ -9,17 +26,17 @@ export const FILTERS: Record<
   'pdf' | 'word' | 'images' | 'text' | 'html' | 'documents' | 'any',
   FileFilter[]
 > = {
-  pdf: [{ name: 'PDF', extensions: ['pdf'] }],
-  word: [{ name: 'Word', extensions: ['docx', 'doc'] }],
-  images: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif'] }],
-  text: [{ name: 'Text', extensions: ['txt', 'md', 'markdown'] }],
-  html: [{ name: 'HTML', extensions: ['html', 'htm'] }],
+  pdf: [{ name: 'file.pdf', extensions: ['pdf'] }],
+  word: [{ name: 'file.word', extensions: ['docx', 'doc'] }],
+  images: [{ name: 'file.images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif'] }],
+  text: [{ name: 'file.text', extensions: ['txt', 'md', 'markdown'] }],
+  html: [{ name: 'file.html', extensions: ['html', 'htm'] }],
   documents: [
-    { name: 'Documents', extensions: ['pdf', 'docx', 'doc', 'txt', 'md', 'html', 'htm'] },
-    { name: 'PDF', extensions: ['pdf'] },
-    { name: 'Word', extensions: ['docx', 'doc'] }
+    { name: 'file.supported', extensions: ['pdf', 'docx', 'doc', 'txt', 'md', 'html', 'htm'] },
+    { name: 'file.pdf', extensions: ['pdf'] },
+    { name: 'file.word', extensions: ['docx', 'doc'] }
   ],
-  any: [{ name: 'All files', extensions: ['*'] }]
+  any: [{ name: 'file.all', extensions: ['*'] }]
 }
 
 export async function pickFiles(
@@ -27,7 +44,7 @@ export async function pickFiles(
   multiple = false,
   title?: string
 ): Promise<PickedFile[]> {
-  return window.alcode.dialog.open({ multiple, title, filters })
+  return window.alcode.dialog.open({ multiple, title, filters: localizeFilters(filters) })
 }
 
 export async function pickOneFile(
@@ -48,7 +65,10 @@ export async function saveBytes(
   defaultName: string,
   filters: FileFilter[]
 ): Promise<SaveOutcome> {
-  const result = await window.alcode.dialog.save({ defaultName, filters })
+  const result = await window.alcode.dialog.save({
+    defaultName,
+    filters: localizeFilters(filters)
+  })
   if (result.canceled || !result.path) return { saved: false }
   await window.alcode.fs.write(result.path, bytes)
   return { saved: true, path: result.path }
@@ -59,7 +79,10 @@ export async function saveText(
   defaultName: string,
   filters: FileFilter[]
 ): Promise<SaveOutcome> {
-  const result = await window.alcode.dialog.save({ defaultName, filters })
+  const result = await window.alcode.dialog.save({
+    defaultName,
+    filters: localizeFilters(filters)
+  })
   if (result.canceled || !result.path) return { saved: false }
   await window.alcode.fs.writeText(result.path, text)
   return { saved: true, path: result.path }
