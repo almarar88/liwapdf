@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
   FileText,
   Maximize2,
   Minus,
@@ -42,6 +44,7 @@ export function ViewerView(): React.JSX.Element {
   const [query, setQuery] = useState('')
   const [hits, setHits] = useState<SearchHit[] | null>(null)
   const [searching, setSearching] = useState(false)
+  const [hitIndex, setHitIndex] = useState(0)
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const [naturalSizes, setNaturalSizes] = useState<{ width: number; height: number }[]>([])
@@ -193,6 +196,25 @@ export function ViewerView(): React.JSX.Element {
     }
     setCurrentPage(closest)
   }, [mode, layout, scrollTop, viewportHeight, setCurrentPage])
+
+  /** Moves to the next or previous hit, wrapping at both ends. */
+  const step = (delta: number): void => {
+    if (!hits || hits.length === 0) return
+    const next = (hitIndex + delta + hits.length) % hits.length
+    setHitIndex(next)
+    goToPage(hits[next].pageNumber)
+  }
+
+  /**
+   * Which occurrence on a given page is the active one — the text layer counts
+   * matches per page, so a document-wide index has to be rebased.
+   */
+  const activeOnPage = (pageNumber: number): number | undefined => {
+    if (!hits || hits.length === 0) return undefined
+    const current = hits[hitIndex]
+    if (!current || current.pageNumber !== pageNumber) return undefined
+    return hits.filter((hit, index) => hit.pageNumber === pageNumber && index < hitIndex).length
+  }
 
   const goToPage = (pageNumber: number): void => {
     const clamped = clamp(pageNumber, 1, doc?.pageCount ?? 1)
@@ -359,22 +381,49 @@ export function ViewerView(): React.JSX.Element {
               onEnter={async () => {
                 setSearching(true)
                 try {
-                  setHits(await searchDocument(doc.proxy, query))
+                  const found = await searchDocument(doc.proxy, query)
+                  setHits(found)
+                  setHitIndex(0)
+                  if (found.length > 0) goToPage(found[0].pageNumber)
                 } finally {
                   setSearching(false)
                 }
               }}
             />
           </div>
-          <span className="muted">
+          <span className="muted" dir="ltr">
             {searching
               ? t('msg.loading')
               : hits
                 ? hits.length === 0
                   ? t('viewer.noResults')
-                  : `${hits.length} ${t('viewer.results')}`
+                  : `${hitIndex + 1} / ${hits.length}`
                 : ''}
           </span>
+          {hits && hits.length > 0 ? (
+            <>
+              <Button
+                size="sm"
+                variant="ghost"
+                icon
+                title={t('viewer.previousMatch')}
+                aria-label={t('viewer.previousMatch')}
+                onClick={() => step(-1)}
+              >
+                <ChevronUp size={15} />
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                icon
+                title={t('viewer.nextMatch')}
+                aria-label={t('viewer.nextMatch')}
+                onClick={() => step(1)}
+              >
+                <ChevronDown size={15} />
+              </Button>
+            </>
+          ) : null}
           <span className="spacer" />
           <Button
             size="sm"
@@ -385,6 +434,7 @@ export function ViewerView(): React.JSX.Element {
             onClick={() => {
               setSearchOpen(false)
               setHits(null)
+              setHitIndex(0)
             }}
           >
             <X size={15} />
@@ -397,9 +447,12 @@ export function ViewerView(): React.JSX.Element {
           {hits.slice(0, 60).map((hit, index) => (
             <button
               key={index}
-              className="list-row"
+              className={`list-row${index === hitIndex ? ' active' : ''}`}
               style={{ width: '100%', textAlign: 'start' }}
-              onClick={() => goToPage(hit.pageNumber)}
+              onClick={() => {
+                setHitIndex(index)
+                goToPage(hit.pageNumber)
+              }}
             >
               <span className="badge accent">{hit.pageNumber}</span>
               <span className="grow truncate">{hit.snippet}</span>
@@ -457,6 +510,9 @@ export function ViewerView(): React.JSX.Element {
                     scale={zoom}
                     rotation={rotation}
                     version={doc.version}
+                    selectable
+                    highlight={hits && hits.length > 0 ? query : undefined}
+                    activeMatch={activeOnPage(pageNumber)}
                   />
                 </div>
               ))}
@@ -469,6 +525,9 @@ export function ViewerView(): React.JSX.Element {
                 scale={zoom}
                 rotation={rotation}
                 version={doc.version}
+                selectable
+                highlight={hits && hits.length > 0 ? query : undefined}
+                activeMatch={activeOnPage(currentPage)}
               />
             </div>
           )}

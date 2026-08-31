@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { CornerDownLeft } from 'lucide-react'
 import { useApp } from '../store/app'
 import { SPRING } from './ui'
+import { normalizeForSearch } from '../lib/text/encoding'
 
 export interface Command {
   id: string
@@ -22,13 +23,14 @@ export function CommandPalette({ commands }: { commands: Command[] }): React.JSX
   const listRef = useRef<HTMLDivElement>(null)
 
   const results = useMemo(() => {
-    const needle = query.trim().toLowerCase()
+    // Folded, so typing "الاسم" finds "الأسم" and tashkeel never blocks a match.
+    const needle = normalizeForSearch(query.trim())
     if (!needle) return commands.slice(0, 40)
     return commands
       .filter((command) =>
-        `${command.label} ${command.hint ?? ''} ${command.keywords ?? ''}`
-          .toLowerCase()
-          .includes(needle)
+        normalizeForSearch(
+          `${command.label} ${command.hint ?? ''} ${command.keywords ?? ''}`
+        ).includes(needle)
       )
       .slice(0, 40)
   }, [commands, query])

@@ -14,19 +14,21 @@ import {
   Slider,
   TextInput
 } from '../../components/ui'
-import { FILTERS, pickFiles, pickOneFile, saveBatch, saveBytes, normalizeImage } from '../../lib/files'
+import { FILTERS, pickFiles, pickOneFile, describeBatch,
+  saveBatch, saveBytes, normalizeImage } from '../../lib/files'
 import { stripExtension } from '../../lib/format'
 import * as ops from '../../lib/pdf/ops'
 import { extractImages, readOutline, type OutlineNode } from '../../lib/pdf/render'
 import { diffLines, documentTextLines } from '../../lib/convert'
-import { AnchorPicker, RangeField, resolveRange, useRunner, type ToolPanelProps } from './shared'
+import { AnchorPicker, RangeField, resolveRange, useApplied,
+  useRunner, type ToolPanelProps } from './shared'
 
 /* -------------------------------------------------------------- watermark */
 
 export function WatermarkPanel({ onClose }: ToolPanelProps): React.JSX.Element {
   const t = useApp((state) => state.t)
+  const applied = useApplied()
   const doc = useApp((state) => state.doc)
-  const applyPdfBytes = useApp((state) => state.applyPdfBytes)
   const run = useRunner()
 
   const [source, setSource] = useState<'text' | 'image'>('text')
@@ -121,7 +123,7 @@ export function WatermarkPanel({ onClose }: ToolPanelProps): React.JSX.Element {
               },
               doc.password
             )
-            await applyPdfBytes(next)
+            await applied(next, 'tool.watermark')
             onClose()
           })
         }
@@ -136,9 +138,9 @@ export function WatermarkPanel({ onClose }: ToolPanelProps): React.JSX.Element {
 
 export function PageNumbersPanel({ onClose }: ToolPanelProps): React.JSX.Element {
   const t = useApp((state) => state.t)
+  const applied = useApplied()
   const doc = useApp((state) => state.doc)
   const language = useApp((state) => state.settings.language)
-  const applyPdfBytes = useApp((state) => state.applyPdfBytes)
   const run = useRunner()
 
   const [format, setFormat] = useState<ops.NumberFormat>('n')
@@ -228,7 +230,7 @@ export function PageNumbersPanel({ onClose }: ToolPanelProps): React.JSX.Element
               },
               doc.password
             )
-            await applyPdfBytes(next)
+            await applied(next, 'tool.pageNumbers')
             onClose()
           })
         }
@@ -243,8 +245,8 @@ export function PageNumbersPanel({ onClose }: ToolPanelProps): React.JSX.Element
 
 export function HeaderFooterPanel({ onClose }: ToolPanelProps): React.JSX.Element {
   const t = useApp((state) => state.t)
+  const applied = useApplied()
   const doc = useApp((state) => state.doc)
-  const applyPdfBytes = useApp((state) => state.applyPdfBytes)
   const run = useRunner()
   const [header, setHeader] = useState('')
   const [footer, setFooter] = useState('')
@@ -293,7 +295,7 @@ export function HeaderFooterPanel({ onClose }: ToolPanelProps): React.JSX.Elemen
               { header, footer, fontSize, color, margin: 24, align, indices },
               doc.password
             )
-            await applyPdfBytes(next)
+            await applied(next, 'tool.headerFooter')
             onClose()
           })
         }
@@ -308,8 +310,8 @@ export function HeaderFooterPanel({ onClose }: ToolPanelProps): React.JSX.Elemen
 
 export function BackgroundPanel({ onClose }: ToolPanelProps): React.JSX.Element {
   const t = useApp((state) => state.t)
+  const applied = useApplied()
   const doc = useApp((state) => state.doc)
-  const applyPdfBytes = useApp((state) => state.applyPdfBytes)
   const run = useRunner()
   const [mode, setMode] = useState<'color' | 'image'>('color')
   const [color, setColor] = useState('#fdf6e3')
@@ -367,7 +369,7 @@ export function BackgroundPanel({ onClose }: ToolPanelProps): React.JSX.Element 
               },
               doc.password
             )
-            await applyPdfBytes(next)
+            await applied(next, 'tool.background')
             onClose()
           })
         }
@@ -382,8 +384,8 @@ const STAMP_PRESETS = ['DRAFT', 'CONFIDENTIAL', 'APPROVED', 'مسودة', 'سر�
 
 export function StampPanel({ onClose }: ToolPanelProps): React.JSX.Element {
   const t = useApp((state) => state.t)
+  const applied = useApplied()
   const doc = useApp((state) => state.doc)
-  const applyPdfBytes = useApp((state) => state.applyPdfBytes)
   const run = useRunner()
   const [text, setText] = useState(STAMP_PRESETS[0])
   const [color, setColor] = useState('#e5484d')
@@ -432,7 +434,7 @@ export function StampPanel({ onClose }: ToolPanelProps): React.JSX.Element {
               },
               doc.password
             )
-            await applyPdfBytes(next)
+            await applied(next, 'tool.stamp')
             onClose()
           })
         }
@@ -466,9 +468,10 @@ export function ExtractImagesPanel({ onClose }: ToolPanelProps): React.JSX.Eleme
               return
             }
             const outcome = await saveBatch(images.map(({ name, bytes }) => ({ name, bytes })))
-            if (!outcome.saved) return
-            onClose()
-            return t('msg.filesCreated', { n: outcome.count })
+            const summary = describeBatch(outcome, t)
+            if (summary === undefined) return
+            if (outcome.saved) onClose()
+            return summary
           })
         }
       >
@@ -483,8 +486,9 @@ export function ExtractImagesPanel({ onClose }: ToolPanelProps): React.JSX.Eleme
 
 export function FormsPanel({ onClose }: ToolPanelProps): React.JSX.Element {
   const t = useApp((state) => state.t)
+  const applied = useApplied()
   const doc = useApp((state) => state.doc)
-  const applyPdfBytes = useApp((state) => state.applyPdfBytes)
+  const notify = useApp((state) => state.notify)
   const reportError = useApp((state) => state.reportError)
   const run = useRunner()
   const [fields, setFields] = useState<ops.FormField[] | null>(null)
@@ -538,8 +542,24 @@ export function FormsPanel({ onClose }: ToolPanelProps): React.JSX.Element {
         variant="primary"
         onClick={() =>
           void run(t('msg.working'), async () => {
-            const next = await ops.fillFormFields(doc.bytes, values, flatten, doc.password)
-            await applyPdfBytes(next)
+            const result = await ops.fillFormFields(doc.bytes, values, flatten, doc.password)
+            await applied(result.bytes, 'tool.forms')
+
+            // Asking for the fields to be locked and getting them back live is
+            // the kind of thing a person ships without noticing.
+            if (flatten && !result.flattened) {
+              throw new Error('flatten-failed')
+            }
+            if (result.skipped.length > 0) {
+              notify({
+                kind: 'info',
+                title: t('msg.fieldsSkipped', { n: result.skipped.length }),
+                message: result.skipped
+                  .map((entry) => entry.name)
+                  .filter(Boolean)
+                  .join('، ')
+              })
+            }
             onClose()
           })
         }

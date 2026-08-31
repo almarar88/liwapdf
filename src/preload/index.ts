@@ -74,6 +74,7 @@ const api = {
     minimize: (): Promise<void> => ipcRenderer.invoke('window:minimize'),
     toggleMaximize: (): Promise<boolean> => ipcRenderer.invoke('window:toggleMaximize'),
     close: (): Promise<void> => ipcRenderer.invoke('window:close'),
+    forceClose: (): Promise<void> => ipcRenderer.invoke('window:forceClose'),
     isMaximized: (): Promise<boolean> => ipcRenderer.invoke('window:isMaximized'),
     onState: (handler: (state: WindowState) => void): (() => void) => {
       const listener = (_e: unknown, state: WindowState): void => handler(state)

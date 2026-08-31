@@ -382,6 +382,13 @@ html[dir='rtl'] .switch.on .knob { transform: translateX(-17px); }
   background: var(--surface-2);
   transition: border-color var(--dur), background var(--dur), transform var(--dur) var(--ease-spring);
 }
+/* Its subtitle promises "or click to browse", so it has to look and behave
+   like something you can click. */
+.dropzone.clickable { cursor: pointer; }
+.dropzone.clickable:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
 .dropzone.over { border-color: var(--accent); background: var(--accent-soft); transform: scale(1.008); }
 .dropzone .dz-icon {
   width: 56px; height: 56px; border-radius: var(--r-lg); display: grid; place-items: center;
@@ -450,14 +457,28 @@ html[dir='rtl'] .switch.on .knob { transform: translateX(-17px); }
   transition: box-shadow var(--dur);
 }
 .pdf-page canvas { display: block; border-radius: 3px; }
+/* pdf.js positions one transparent span per text run here, so the page can be
+   selected and copied like a document rather than looked at like a picture. */
 .pdf-page .text-layer {
-  position: absolute; inset: 0; overflow: hidden; opacity: 0.24; line-height: 1;
-  transform-origin: 0 0;
+  position: absolute; inset: 0; overflow: hidden; line-height: 1;
+  transform-origin: 0 0; text-size-adjust: none; forced-color-adjust: none;
 }
-.pdf-page .text-layer span {
-  position: absolute; white-space: pre; color: transparent; transform-origin: 0 0; cursor: text;
+.pdf-page .text-layer span,
+.pdf-page .text-layer br {
+  position: absolute; white-space: pre; color: transparent;
+  transform-origin: 0 0; cursor: text;
 }
-.pdf-page .text-layer ::selection { background: var(--accent); }
+.pdf-page .text-layer span.markedContent { top: 0; height: 0; }
+.pdf-page .text-layer ::selection { background: color-mix(in srgb, var(--accent) 45%, transparent); }
+/* Search hits: one <mark> per occurrence, behind the transparent glyphs. */
+.pdf-page .text-layer mark {
+  color: transparent; background: color-mix(in srgb, var(--amber) 50%, transparent);
+  border-radius: 2px; padding: 0;
+}
+.pdf-page .text-layer mark.match-active {
+  background: color-mix(in srgb, var(--accent) 55%, transparent);
+  box-shadow: 0 0 0 1.5px var(--accent);
+}
 .pdf-page .anno-layer { position: absolute; inset: 0; }
 
 .toolbar {

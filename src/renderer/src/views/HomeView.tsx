@@ -66,6 +66,7 @@ export function HomeView(): React.JSX.Element {
         </div>
 
         <Dropzone
+          onBrowse={() => void openDialog()}
           onFiles={(paths) => void openPaths(paths)}
           icon={<UploadCloud size={26} />}
           title={t('home.dropTitle')}

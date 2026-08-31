@@ -91,10 +91,22 @@ export async function saveText(
 export interface BatchSaveOutcome {
   saved: boolean
   directory?: string
+  /** Files that could not be written, with the reason for each. */
+  failures?: { name: string; error: string }[]
+  /** How many were attempted, so the caller can say "12 of 15". */
+  total?: number
   count: number
 }
 
-/** Asks once for a folder, then drops every produced file into it. */
+/**
+ * Asks once for a folder, then drops every produced file into it.
+ *
+ * Each write is isolated: splitting a 200-page document onto a nearly-full
+ * drive used to write forty files, throw, abandon the other hundred and sixty,
+ * and show one generic error that never mentioned the forty. Existing files
+ * are also given way to rather than overwritten — the caller asked to create
+ * files, not to replace whatever happened to share a name.
+ */
 export async function saveBatch(
   files: { name: string; bytes: Uint8Array }[]
 ): Promise<BatchSaveOutcome> {
@@ -103,14 +115,85 @@ export async function saveBatch(
   if (!directory) return { saved: false, count: 0 }
 
   const separator = directory.includes('\\') ? '\\' : '/'
+  const failures: { name: string; error: string }[] = []
+  const taken = new Set<string>()
+  let written = 0
+
   for (const file of files) {
-    await window.alcode.fs.write(`${directory}${separator}${sanitize(file.name)}`, file.bytes)
+    const name = await freeName(directory, separator, sanitize(file.name), taken)
+    taken.add(name.toLowerCase())
+    try {
+      await window.alcode.fs.write(`${directory}${separator}${name}`, file.bytes)
+      written += 1
+    } catch (error) {
+      failures.push({ name, error: (error as Error)?.message ?? String(error) })
+    }
   }
-  return { saved: true, directory, count: files.length }
+
+  return { saved: written > 0, directory, count: written, failures, total: files.length }
 }
 
+/** `report.pdf` → `report (2).pdf` when the first name is already in use. */
+async function freeName(
+  directory: string,
+  separator: string,
+  name: string,
+  taken: Set<string>
+): Promise<string> {
+  const dot = name.lastIndexOf('.')
+  const stem = dot > 0 ? name.slice(0, dot) : name
+  const extension = dot > 0 ? name.slice(dot) : ''
+
+  for (let attempt = 1; attempt <= 200; attempt += 1) {
+    const candidate = attempt === 1 ? name : `${stem} (${attempt})${extension}`
+    if (taken.has(candidate.toLowerCase())) continue
+    try {
+      if (!(await window.alcode.fs.exists(`${directory}${separator}${candidate}`))) return candidate
+    } catch {
+      return candidate
+    }
+  }
+  return name
+}
+
+/**
+ * Makes a name safe on every platform this app ships to. Windows additionally
+ * refuses its reserved device names and any trailing dot or space, and the
+ * extension has to survive the length cap or the file stops opening.
+ */
 export function sanitize(name: string): string {
-  return name.replace(/[\\/:*?"<>|]/g, '_').slice(0, 180)
+  const cleaned = name
+    .replace(/[\\/:*?"<>|]/g, '_')
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u001f]/g, '')
+    .replace(/[. ]+$/, '')
+
+  const dot = cleaned.lastIndexOf('.')
+  const stem = dot > 0 ? cleaned.slice(0, dot) : cleaned
+  const extension = dot > 0 ? cleaned.slice(dot, dot + 24) : ''
+  const safeStem = RESERVED.test(stem) ? `_${stem}` : stem
+  const limit = Math.max(1, 180 - extension.length)
+  return (safeStem.slice(0, limit) || 'file') + extension
+}
+
+const RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i
+
+/**
+ * The one line a batch tool reports, which never claims more than happened.
+ * Returns undefined when the user cancelled the folder picker.
+ */
+export function describeBatch(
+  outcome: BatchSaveOutcome,
+  t: (key: 'msg.filesCreated' | 'msg.filesPartial', vars?: Record<string, string | number>) => string
+): string | undefined {
+  if (!outcome.saved && (outcome.failures?.length ?? 0) === 0) return undefined
+  const failed = outcome.failures?.length ?? 0
+  if (failed === 0) return t('msg.filesCreated', { n: outcome.count })
+  return t('msg.filesPartial', {
+    n: outcome.count,
+    total: outcome.total ?? outcome.count + failed,
+    failed
+  })
 }
 
 export function imageTypeOf(name: string, bytes: Uint8Array): 'png' | 'jpg' | null {

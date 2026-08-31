@@ -9,6 +9,14 @@ const isMac = process.platform === 'darwin'
 const isDev = !app.isPackaged
 
 let mainWindow: BrowserWindow | null = null
+/**
+ * Set once the renderer has confirmed there is nothing to lose. Until then the
+ * close is intercepted: the confirmation resolves through a React modal, so a
+ * synchronous main-process check cannot ask the question.
+ */
+let closeConfirmed = false
+/** True once a quit is under way, so a confirmed close can finish it. */
+let quitting = false
 
 function createWindow(): BrowserWindow {
   const window = new BrowserWindow({
@@ -44,6 +52,14 @@ function createWindow(): BrowserWindow {
       spellcheck: isMac || settings().get().spellcheck,
       webSecurity: true
     }
+  })
+
+  window.on('close', (event) => {
+    if (closeConfirmed) return
+    // Covers every route out: the title-bar button, the native traffic light,
+    // Cmd+Q and the taskbar. Only the renderer knows whether work is pending.
+    event.preventDefault()
+    window.webContents.send('menu:action', 'confirm-quit')
   })
 
   window.on('closed', () => {
@@ -302,7 +318,17 @@ if (!gotLock) {
       const startupFile = fileFromArgv(process.argv, process.cwd())
       if (startupFile) setPendingOpenFile(startupFile)
 
-      registerIpc(() => mainWindow, buildMenu, applySpellcheck)
+      registerIpc(() => mainWindow, buildMenu, applySpellcheck, () => {
+        closeConfirmed = true
+        mainWindow?.destroy()
+        // Cmd+Q asks the window to close first; preventing that aborted the
+        // quit, so it has to be resumed once the answer comes back.
+        if (quitting) app.quit()
+      })
+
+      app.on('before-quit', () => {
+        quitting = true
+      })
       mainWindow = createWindow()
       buildMenu()
 

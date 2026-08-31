@@ -12,10 +12,12 @@ import {
   Slider,
   TextInput
 } from '../../components/ui'
-import { FILTERS, pickFiles, saveBatch, saveBytes } from '../../lib/files'
+import { FILTERS, pickFiles, describeBatch,
+  saveBatch, saveBytes } from '../../lib/files'
 import { formatBytes, PAGE_PRESETS, stripExtension, MM_TO_PT } from '../../lib/format'
 import * as ops from '../../lib/pdf/ops'
-import { RangeField, resolveRange, useRunner, type ToolPanelProps } from './shared'
+import { RangeField, resolveRange, useApplied,
+  useRunner, type ToolPanelProps } from './shared'
 
 /* ------------------------------------------------------------------ merge */
 
@@ -164,9 +166,10 @@ export function SplitPanel({ onClose }: ToolPanelProps): React.JSX.Element {
               doc.password
             )
             const outcome = await saveBatch(parts)
-            if (!outcome.saved) return
-            onClose()
-            return t('msg.filesCreated', { n: outcome.count })
+            const summary = describeBatch(outcome, t)
+            if (summary === undefined) return
+            if (outcome.saved) onClose()
+            return summary
           })
         }
       >
@@ -200,9 +203,10 @@ export function SplitBySizePanel({ onClose }: ToolPanelProps): React.JSX.Element
               doc.password
             )
             const outcome = await saveBatch(parts)
-            if (!outcome.saved) return
-            onClose()
-            return t('msg.filesCreated', { n: outcome.count })
+            const summary = describeBatch(outcome, t)
+            if (summary === undefined) return
+            if (outcome.saved) onClose()
+            return summary
           })
         }
       >
@@ -253,9 +257,9 @@ export function ExtractPanel({ onClose }: ToolPanelProps): React.JSX.Element {
 
 export function DeletePagesPanel({ onClose }: ToolPanelProps): React.JSX.Element {
   const t = useApp((state) => state.t)
+  const applied = useApplied()
   const doc = useApp((state) => state.doc)
   const selected = useApp((state) => state.selectedPages)
-  const applyPdfBytes = useApp((state) => state.applyPdfBytes)
   const notify = useApp((state) => state.notify)
   const run = useRunner()
   const [range, setRange] = useState(
@@ -273,7 +277,7 @@ export function DeletePagesPanel({ onClose }: ToolPanelProps): React.JSX.Element
           void run(t('msg.working'), async () => {
             const indices = resolveRange(range, doc.pageCount)
             const next = await ops.deletePages(doc.bytes, indices, doc.password)
-            await applyPdfBytes(next)
+            await applied(next, 'tool.deletePages')
             notify({ kind: 'success', title: t('msg.pagesRemoved', { n: indices.length }) })
             onClose()
           })
@@ -289,8 +293,8 @@ export function DeletePagesPanel({ onClose }: ToolPanelProps): React.JSX.Element
 
 export function RotatePanel({ onClose }: ToolPanelProps): React.JSX.Element {
   const t = useApp((state) => state.t)
+  const applied = useApplied()
   const doc = useApp((state) => state.doc)
-  const applyPdfBytes = useApp((state) => state.applyPdfBytes)
   const run = useRunner()
   const [range, setRange] = useState('')
   const [angle, setAngle] = useState<'90' | '180' | '270'>('90')
@@ -317,7 +321,7 @@ export function RotatePanel({ onClose }: ToolPanelProps): React.JSX.Element {
           void run(t('msg.working'), async () => {
             const indices = resolveRange(range, doc.pageCount)
             const next = await ops.rotatePages(doc.bytes, indices, Number(angle), doc.password)
-            await applyPdfBytes(next)
+            await applied(next, 'tool.rotate')
             onClose()
           })
         }
@@ -332,8 +336,8 @@ export function RotatePanel({ onClose }: ToolPanelProps): React.JSX.Element {
 
 export function NUpPanel({ onClose }: ToolPanelProps): React.JSX.Element {
   const t = useApp((state) => state.t)
+  const applied = useApplied()
   const doc = useApp((state) => state.doc)
-  const applyPdfBytes = useApp((state) => state.applyPdfBytes)
   const run = useRunner()
   const [perSheet, setPerSheet] = useState<'2' | '4' | '6' | '9'>('2')
   const [size, setSize] = useState<'A4' | 'A3' | 'Letter'>('A4')
@@ -379,7 +383,7 @@ export function NUpPanel({ onClose }: ToolPanelProps): React.JSX.Element {
               sheet,
               doc.password
             )
-            await applyPdfBytes(next)
+            await applied(next, 'tool.nup')
             onClose()
           })
         }
@@ -392,8 +396,8 @@ export function NUpPanel({ onClose }: ToolPanelProps): React.JSX.Element {
 
 export function ResizePanel({ onClose }: ToolPanelProps): React.JSX.Element {
   const t = useApp((state) => state.t)
+  const applied = useApplied()
   const doc = useApp((state) => state.doc)
-  const applyPdfBytes = useApp((state) => state.applyPdfBytes)
   const run = useRunner()
   const [preset, setPreset] = useState<'A4' | 'A3' | 'A5' | 'Letter' | 'Legal' | 'custom'>('A4')
   const [width, setWidth] = useState(210)
@@ -444,7 +448,7 @@ export function ResizePanel({ onClose }: ToolPanelProps): React.JSX.Element {
               target = landscape ? [dimensions[1], dimensions[0]] : [dimensions[0], dimensions[1]]
             }
             const next = await ops.resizePages(doc.bytes, target, doc.password)
-            await applyPdfBytes(next)
+            await applied(next, 'tool.resize')
             onClose()
           })
         }
@@ -457,8 +461,8 @@ export function ResizePanel({ onClose }: ToolPanelProps): React.JSX.Element {
 
 export function CropPanel({ onClose }: ToolPanelProps): React.JSX.Element {
   const t = useApp((state) => state.t)
+  const applied = useApplied()
   const doc = useApp((state) => state.doc)
-  const applyPdfBytes = useApp((state) => state.applyPdfBytes)
   const run = useRunner()
   const [range, setRange] = useState('')
   const [top, setTop] = useState(5)
@@ -494,7 +498,7 @@ export function CropPanel({ onClose }: ToolPanelProps): React.JSX.Element {
               indices,
               doc.password
             )
-            await applyPdfBytes(next)
+            await applied(next, 'tool.crop')
             onClose()
           })
         }

@@ -63,6 +63,38 @@ export function useDoc(): NonNullable<ReturnType<typeof useApp.getState>['doc']>
   return useApp((state) => state.doc)
 }
 
+/**
+ * Applies new document bytes and then *shows* the user what happened.
+ *
+ * Most tools used to close their modal onto a grid of tiles with nothing on
+ * screen changed — the watermark was applied, the page numbers were added, and
+ * there was no way to tell. This lands the user on the page they changed and
+ * offers a one-click undo, but only when a history entry actually exists:
+ * snapshots over the size budget are skipped, and an undo button that does
+ * nothing is worse than none.
+ */
+export function useApplied(): (bytes: Uint8Array, toolKey: TranslationKey) => Promise<void> {
+  const store = useApp
+  return useCallback(
+    async (bytes, toolKey) => {
+      const depthBefore = store.getState().undoStack.length
+      await store.getState().applyPdfBytes(bytes)
+      const state = store.getState()
+      const undoable = state.undoStack.length > depthBefore
+
+      state.navigate('viewer')
+      state.notify({
+        kind: 'success',
+        title: state.t('msg.applied', { tool: state.t(toolKey) }),
+        action: undoable
+          ? { label: state.t('action.undo'), run: () => void store.getState().undo() }
+          : undefined
+      })
+    },
+    [store]
+  )
+}
+
 export function RangeField({
   value,
   onChange

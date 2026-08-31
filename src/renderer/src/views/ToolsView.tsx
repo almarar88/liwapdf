@@ -1,5 +1,4 @@
 import { motion } from 'framer-motion'
-import { useState } from 'react'
 import { useApp } from '../store/app'
 import { Modal, useSpotlight } from '../components/ui'
 import { TOOLS, TOOL_GROUPS, type ToolId } from './toolRegistry'
@@ -67,9 +66,9 @@ const PANELS: Record<ToolId, (props: { onClose: () => void }) => React.JSX.Eleme
 
 export function ToolsView(): React.JSX.Element {
   const t = useApp((state) => state.t)
-  const doc = useApp((state) => state.doc)
-  const notify = useApp((state) => state.notify)
-  const [openTool, setOpenTool] = useState<ToolId | null>(null)
+  const openTool = useApp((state) => state.activeTool) as ToolId | null
+  const requestTool = useApp((state) => state.openTool)
+  const closeTool = useApp((state) => state.closeTool)
   const spotlight = useSpotlight()
 
   const descriptor = openTool ? TOOLS.find((tool) => tool.id === openTool) : null
@@ -96,13 +95,7 @@ export function ToolsView(): React.JSX.Element {
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: index * 0.02, duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
-                onClick={() => {
-                  if (tool.needsDocument && !doc) {
-                    notify({ kind: 'info', title: t('msg.noDocument') })
-                    return
-                  }
-                  setOpenTool(tool.id)
-                }}
+                onClick={() => requestTool(tool.id, Boolean(tool.needsDocument))}
               >
                 <span className="icon">{tool.icon}</span>
                 <h3>{t(tool.titleKey)}</h3>
@@ -115,11 +108,11 @@ export function ToolsView(): React.JSX.Element {
 
       <Modal
         open={Boolean(openTool)}
-        onClose={() => setOpenTool(null)}
+        onClose={closeTool}
         title={descriptor ? t(descriptor.titleKey) : ''}
         wide={openTool === 'compare'}
       >
-        {Panel ? <Panel onClose={() => setOpenTool(null)} /> : null}
+        {Panel ? <Panel onClose={closeTool} /> : null}
       </Modal>
     </div>
   )

@@ -4,6 +4,7 @@ import {
   PDFCheckBox,
   PDFDict,
   PDFDocument,
+  PDFInvalidObject,
   PDFDropdown,
   PDFName,
   PDFNumber,
@@ -11,6 +12,7 @@ import {
   PDFOptionList,
   PDFPage,
   PDFRadioGroup,
+  PDFRawStream,
   PDFRef,
   PDFSignature,
   PDFTextField,
@@ -47,18 +49,44 @@ export class PdfPasswordError extends Error {
 /* -------------------------------------------------------------- loading */
 
 /**
- * Security state captured at load time, so an edit can put the protection back.
- * pdf-lib strips the handler when it decrypts, and saving would otherwise emit
- * an unprotected file over the user's confidential original.
+ * Removes what is left of a document's encryption after pdf-lib has decrypted
+ * it, so the file it writes can actually be opened again.
+ *
+ * Deleting `trailerInfo.Encrypt` is not enough — pdf-lib has already cleared
+ * that by the time `load` returns. What survives is the standard security
+ * handler dictionary and the carcass of the original cross-reference stream,
+ * which the writer emits verbatim because its skip rule only recognises an
+ * xref that parsed as a raw stream. Reload the result and the parser merges
+ * that carcass back into the trailer, resurrects /Encrypt, resolves it to the
+ * still-present handler, and tries to AES-decrypt plaintext: "Password
+ * incorrect" on a file the app itself just wrote.
+ *
+ * Only ever run on the decrypt path, so a `/Filter /Standard` entry in an
+ * unencrypted file can never be mistaken for a security handler.
  */
-export interface DocumentSecurity {
-  wasEncrypted: boolean
+function stripSecurityRemnants(document: PDFDocument): void {
+  const context = document.context
+  for (const [ref, object] of context.enumerateIndirectObjects()) {
+    let drop = false
+    if (object instanceof PDFInvalidObject) {
+      const bytes = new Uint8Array(object.sizeInBytes())
+      object.copyBytesInto(bytes, 0)
+      drop = latin1(bytes).includes('/XRef')
+    } else if (object instanceof PDFRawStream) {
+      drop = object.dict.get(PDFName.of('Type'))?.toString() === '/XRef'
+    } else if (object instanceof PDFDict) {
+      drop = object.get(PDFName.of('Filter'))?.toString() === '/Standard'
+    }
+    if (drop) context.delete(ref)
+  }
+  const trailer = context.trailerInfo as { Encrypt?: unknown }
+  delete trailer.Encrypt
 }
 
-const securityByDocument = new WeakMap<PDFDocument, DocumentSecurity>()
-
-export function securityOf(document: PDFDocument): DocumentSecurity {
-  return securityByDocument.get(document) ?? { wasEncrypted: false }
+function latin1(bytes: Uint8Array): string {
+  let text = ''
+  for (let index = 0; index < bytes.length; index += 1) text += String.fromCharCode(bytes[index])
+  return text
 }
 
 export async function load(bytes: PdfBytes, password?: string): Promise<PDFDocument> {
@@ -71,14 +99,7 @@ export async function load(bytes: PdfBytes, password?: string): Promise<PDFDocum
       updateMetadata: false
     })
 
-    if (password !== undefined) {
-      // The decrypt path leaves a dangling /Encrypt reference behind, which
-      // makes the very next load of the output fail with "Password incorrect".
-      const trailer = document.context.trailerInfo as { Encrypt?: unknown }
-      const wasEncrypted = trailer.Encrypt !== undefined || document.isEncrypted
-      delete trailer.Encrypt
-      securityByDocument.set(document, { wasEncrypted })
-    }
+    if (password !== undefined) stripSecurityRemnants(document)
 
     return document
   } catch (error) {
@@ -113,30 +134,81 @@ export async function edit(
   return save(document)
 }
 
-/** True when this document came off disk encrypted. */
-export async function isProtected(bytes: PdfBytes, password?: string): Promise<boolean> {
+/**
+ * True when this document came off disk encrypted.
+ *
+ * Determined by trying to open it *without* a password: pdf-lib clears both
+ * `trailerInfo.Encrypt` and `isEncrypted` before a successful decrypt returns,
+ * so inspecting a decrypted document tells you nothing.
+ */
+export async function isProtected(bytes: PdfBytes): Promise<boolean> {
   try {
-    const document = await load(bytes, password)
-    return securityOf(document).wasEncrypted
-  } catch (error) {
-    if (error instanceof PdfPasswordError) return true
+    await PDFDocument.load(bytes.slice(), { ignoreEncryption: false, updateMetadata: false })
     return false
+  } catch {
+    return true
   }
 }
 
 /* ---------------------------------------------------------- page layout */
+
+/**
+ * Re-hangs a document's existing page leaves off its page tree in a new order.
+ *
+ * Reordering, extracting, deleting, duplicating and reversing are all the same
+ * operation: choose which page objects the tree points at, and in what order.
+ * Doing it this way keeps the document's own catalog — its bookmarks, form,
+ * attachments, page labels and structure tree all survive.
+ *
+ * The obvious alternative, copying pages into a blank document, throws every
+ * one of those away: pdf-lib's copier clones a page and what it references and
+ * never visits the catalog. Two of this app's own tools *create* bookmarks and
+ * attachments, so a drag-reorder in Organize was quietly undoing them.
+ */
+function rehangPages(document: PDFDocument, order: number[]): void {
+  const refs = document.getPages().map((page) => page.ref)
+  if (order.some((index) => index < 0 || index >= refs.length)) {
+    throw new Error('invalid-page-order')
+  }
+
+  const kept = new Set<string>()
+  const resolved: PDFRef[] = []
+  for (const index of order) {
+    const ref = refs[index]
+    if (!kept.has(ref.tag)) {
+      kept.add(ref.tag)
+      resolved.push(ref)
+      continue
+    }
+    // A page listed twice must become two objects: a page dictionary carries
+    // its own /Parent, so one object cannot hang in the tree twice.
+    const original = document.context.lookup(ref, PDFDict)
+    resolved.push(document.context.register(original.clone(document.context)))
+  }
+
+  for (let index = refs.length - 1; index >= 0; index -= 1) {
+    document.catalog.removeLeafNode(index)
+  }
+  resolved.forEach((ref, position) => document.catalog.insertLeafNode(ref, position))
+  for (const ref of refs) if (!kept.has(ref.tag)) document.context.delete(ref)
+
+  // pdf-lib caches the page count and the flattened page list.
+  const internals = document as unknown as {
+    pageCount: number
+    pageCache: { invalidate(): void }
+  }
+  internals.pageCount = resolved.length
+  internals.pageCache.invalidate()
+}
 
 export async function reorderPages(
   bytes: PdfBytes,
   order: number[],
   password?: string
 ): Promise<PdfBytes> {
-  const source = await load(bytes, password)
-  const target = await PDFDocument.create()
-  const copied = await target.copyPages(source, order)
-  for (const page of copied) target.addPage(page)
-  await carryMetadata(source, target)
-  return save(target)
+  const document = await load(bytes, password)
+  rehangPages(document, order)
+  return save(document)
 }
 
 export async function extractPages(
@@ -154,11 +226,10 @@ export async function deletePages(
   password?: string
 ): Promise<PdfBytes> {
   const document = await load(bytes, password)
-  const remaining = document
-    .getPageIndices()
-    .filter((index) => !indices.includes(index))
+  const remaining = document.getPageIndices().filter((index) => !indices.includes(index))
   if (remaining.length === 0) throw new Error('cannot-delete-all-pages')
-  return reorderPages(bytes, remaining, password)
+  rehangPages(document, remaining)
+  return save(document)
 }
 
 export async function duplicatePages(
@@ -172,7 +243,8 @@ export async function duplicatePages(
     order.push(index)
     if (indices.includes(index)) order.push(index)
   }
-  return reorderPages(bytes, order, password)
+  rehangPages(document, order)
+  return save(document)
 }
 
 export async function rotatePages(
@@ -342,7 +414,8 @@ export async function splitBySize(
 
 export async function reversePages(bytes: PdfBytes, password?: string): Promise<PdfBytes> {
   const document = await load(bytes, password)
-  return reorderPages(bytes, document.getPageIndices().reverse(), password)
+  rehangPages(document, document.getPageIndices().reverse())
+  return save(document)
 }
 
 /* -------------------------------------------------------- page geometry */
@@ -1253,6 +1326,8 @@ export interface FormField {
   type: 'text' | 'checkbox' | 'radio' | 'dropdown' | 'option' | 'button' | 'signature' | 'unknown'
   value: string
   options?: string[]
+  /** Every current selection, for a multi-select option list. */
+  selected?: string[]
 }
 
 export async function readFormFields(bytes: PdfBytes, password?: string): Promise<FormField[]> {
@@ -1282,7 +1357,15 @@ export async function readFormFields(bytes: PdfBytes, password?: string): Promis
         return { name, type: 'radio', value: field.getSelected() ?? '', options: field.getOptions() }
       }
       if (field instanceof PDFOptionList) {
-        return { name, type: 'option', value: field.getSelected().join(', '), options: field.getOptions() }
+        // Joining the selection into one string produced a value that matches
+        // no option, so handing it back on save threw on every list field.
+        return {
+          name,
+          type: 'option',
+          value: field.getSelected()[0] ?? '',
+          selected: field.getSelected(),
+          options: field.getOptions()
+        }
       }
       if (field instanceof PDFSignature) return { name, type: 'signature', value: '' }
       if (field instanceof PDFButton) return { name, type: 'button', value: '' }
@@ -1293,14 +1376,30 @@ export async function readFormFields(bytes: PdfBytes, password?: string): Promis
   })
 }
 
+export interface FormFillResult {
+  bytes: PdfBytes
+  /** Fields that could not be written, and why. */
+  skipped: { name: string; reason: string }[]
+  /** True only when flattening was asked for *and* it worked. */
+  flattened: boolean
+}
+
+/**
+ * Writes values into a form, optionally locking it.
+ *
+ * Every failure is reported rather than swallowed: a user who ticks "flatten",
+ * is told it applied, and ships a PDF whose fields are still live and editable
+ * has been actively misled — which is the whole point of flattening.
+ */
 export async function fillFormFields(
   bytes: PdfBytes,
   values: Record<string, string>,
   flatten: boolean,
   password?: string
-): Promise<PdfBytes> {
+): Promise<FormFillResult> {
   const document = await load(bytes, password)
   const form = document.getForm()
+  const skipped: { name: string; reason: string }[] = []
 
   for (const [name, value] of Object.entries(values)) {
     try {
@@ -1316,35 +1415,51 @@ export async function fillFormFields(
         if (value) field.select(value)
       } else if (field instanceof PDFRadioGroup) {
         if (value) field.select(value)
+      } else if (field instanceof PDFSignature || field instanceof PDFButton) {
+        // Not writable by design; not a failure worth reporting either.
+        continue
+      } else {
+        skipped.push({ name, reason: 'unsupported-field-type' })
       }
-    } catch {
-      /* a missing or unsupported field should not abort the whole fill */
+    } catch (error) {
+      skipped.push({ name, reason: (error as Error)?.message ?? 'field-write-failed' })
     }
   }
 
+  let flattened = false
   if (flatten) {
     try {
       form.flatten()
-    } catch {
-      /* some malformed forms cannot be flattened */
+      flattened = true
+    } catch (error) {
+      skipped.push({ name: '', reason: (error as Error)?.message ?? 'flatten-failed' })
     }
   }
-  return save(document)
+  return { bytes: await save(document), skipped, flattened }
 }
 
-export async function flattenForms(bytes: PdfBytes, password?: string): Promise<PdfBytes> {
+export async function flattenForms(bytes: PdfBytes, password?: string): Promise<FormFillResult> {
   return fillFormFields(bytes, {}, true, password)
 }
 
 /* ------------------------------------------------------------ optimize */
 
+/**
+ * Rewrites the file compactly without rebuilding it.
+ *
+ * Copying the pages into a blank document was the obvious way to drop orphaned
+ * objects — and it also dropped the bookmarks, the form, the attachments, the
+ * page labels and the accessibility structure tree, because `copyPages` clones
+ * a page and what it references and never visits the catalog. Two sibling
+ * tools in this app *create* exactly those things, so "optimize" was quietly
+ * undoing them and reporting a size saving for it.
+ *
+ * A full non-incremental rewrite of the loaded document gets the same win —
+ * object streams, no stale revisions — while keeping the catalog intact.
+ */
 export async function optimizeDocument(bytes: PdfBytes, password?: string): Promise<PdfBytes> {
-  const source = await load(bytes, password)
-  const target = await PDFDocument.create()
-  const copied = await target.copyPages(source, source.getPageIndices())
-  for (const page of copied) target.addPage(page)
-  await carryMetadata(source, target)
-  return target.save({ useObjectStreams: true, addDefaultPage: false })
+  const document = await load(bytes, password)
+  return document.save({ useObjectStreams: true, addDefaultPage: false, rewrite: true })
 }
 
 export async function attachFiles(

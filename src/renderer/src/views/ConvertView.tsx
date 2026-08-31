@@ -24,6 +24,7 @@ import {
   FILTERS,
   pickFiles,
   pickOneFile,
+  describeBatch,
   saveBatch,
   saveBytes,
   saveText,
@@ -231,9 +232,10 @@ function ConverterPanel({
                   report
                 )
                 const outcome = await saveBatch(images)
-                if (!outcome.saved) return
-                onClose()
-                return t('msg.filesCreated', { n: outcome.count })
+                const summary = describeBatch(outcome, t)
+                if (summary === undefined) return
+                if (outcome.saved) onClose()
+                return summary
               })
             }
           >

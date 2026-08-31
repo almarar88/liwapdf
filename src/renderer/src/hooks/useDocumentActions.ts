@@ -20,6 +20,8 @@ export interface DocumentActions {
   openDialog: () => Promise<void>
   openPaths: (paths: string[]) => Promise<void>
   saveActive: () => Promise<void>
+  /** Always opens a dialog, whatever the document already has a path. */
+  saveActiveAs: () => Promise<void>
   savePdfAs: () => Promise<void>
   exportEditorAs: (target: DocumentFormat) => Promise<void>
   newDocument: (kind: 'rich' | 'sheet' | 'code', template?: string) => Promise<void>
@@ -116,10 +118,14 @@ export function useDocumentActions(): DocumentActions {
       state.notify({ kind: 'info', title: state.t('msg.noDocument') })
       return
     }
-    const outcome = await saveBytes(doc.bytes, doc.name, FILTERS.pdf)
-    if (outcome.saved && outcome.path) {
-      state.markSaved(outcome.path)
-      announceSaved(outcome.path)
+    try {
+      const outcome = await saveBytes(doc.bytes, doc.name, FILTERS.pdf)
+      if (outcome.saved && outcome.path) {
+        state.markSaved(outcome.path)
+        announceSaved(outcome.path)
+      }
+    } catch (error) {
+      store.getState().reportError(error)
     }
   }, [store])
 
@@ -185,9 +191,37 @@ export function useDocumentActions(): DocumentActions {
       return
     }
     if (doc.path) {
-      await window.alcode.fs.write(doc.path, doc.bytes)
-      state.markSaved(doc.path)
-      state.notify({ kind: 'success', title: state.t('msg.saved'), message: doc.path })
+      // A protected file that has been edited is now decrypted; writing it back
+      // in place would quietly replace the user's protected original with an
+      // open one.
+      if (doc.protectionDropped) {
+        const accepted = await state.confirm({
+          title: state.t('msg.protectionLost'),
+          body: state.t('msg.protectionLostBody'),
+          confirmLabel: state.t('msg.saveUnprotected'),
+          danger: true
+        })
+        if (!accepted) {
+          await savePdfAs()
+          return
+        }
+      }
+      state.setBusy({ label: state.t('msg.working'), progress: null })
+      try {
+        await window.alcode.fs.write(doc.path, doc.bytes)
+        store.getState().markSaved(doc.path)
+        store.getState().notify({
+          kind: 'success',
+          title: store.getState().t('msg.saved'),
+          message: doc.path
+        })
+      } catch (error) {
+        // ENOSPC, a revoked consent, a yanked drive: every one of these used to
+        // reject an unawaited promise and leave the user believing it saved.
+        store.getState().reportError(error)
+      } finally {
+        store.getState().setBusy(null)
+      }
       return
     }
     await savePdfAs()
@@ -239,7 +273,20 @@ export function useDocumentActions(): DocumentActions {
     [store]
   )
 
-  return { openDialog, openPaths, saveActive, savePdfAs, exportEditorAs, newDocument }
+  const saveActiveAs = useCallback(async (): Promise<void> => {
+    const state = store.getState()
+    // "Save As" used to route into saveActive, which for a file with a path
+    // went straight to an in-place write without ever showing a dialog.
+    if (state.route === 'editor' && state.editorDoc) {
+      const doc = state.editorDoc
+      const { canSaveInPlace } = await writers()
+      await exportEditorAs(canSaveInPlace(doc.source) ? doc.source.format : fallbackTarget(doc))
+      return
+    }
+    await savePdfAs()
+  }, [exportEditorAs, savePdfAs, store])
+
+  return { openDialog, openPaths, saveActive, saveActiveAs, savePdfAs, exportEditorAs, newDocument }
 }
 
 interface ExportRequestShape {
@@ -249,6 +296,8 @@ interface ExportRequestShape {
   html?: string
   sheets?: EditorDoc['sheets']
   text?: string
+  encoding?: string
+  eol?: 'lf' | 'crlf'
 }
 
 function requestFor(doc: EditorDoc, target: DocumentFormat): ExportRequestShape {
@@ -258,7 +307,12 @@ function requestFor(doc: EditorDoc, target: DocumentFormat): ExportRequestShape 
     rightToLeft: doc.direction === 'rtl',
     html: doc.source.kind === 'rich' || doc.source.kind === 'slides' ? doc.html : undefined,
     sheets: doc.source.kind === 'sheet' ? doc.sheets : undefined,
-    text: doc.source.kind === 'code' ? doc.text : undefined
+    text: doc.source.kind === 'code' ? doc.text : undefined,
+    // Writing back to the same format keeps the encoding and line endings the
+    // file arrived with; exporting to another format is a new file, so it gets
+    // the modern default.
+    encoding: target === doc.source.format ? doc.source.encoding : undefined,
+    eol: target === doc.source.format ? doc.source.eol : undefined
   }
 }
 

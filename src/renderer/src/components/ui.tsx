@@ -408,12 +408,15 @@ export function Modal({
 
 export function Dropzone({
   onFiles,
+  onBrowse,
   title,
   subtitle,
   icon,
   accept
 }: {
   onFiles: (paths: string[]) => void
+  /** Makes the whole zone clickable — its subtitle already promises this. */
+  onBrowse?: () => void
   title: string
   subtitle: string
   icon: ReactNode
@@ -423,7 +426,17 @@ export function Dropzone({
 
   return (
     <div
-      className={`dropzone${over ? ' over' : ''}`}
+      className={`dropzone${over ? ' over' : ''}${onBrowse ? ' clickable' : ''}`}
+      role={onBrowse ? 'button' : undefined}
+      tabIndex={onBrowse ? 0 : undefined}
+      onClick={onBrowse}
+      onKeyDown={(event) => {
+        if (!onBrowse) return
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          onBrowse()
+        }
+      }}
       onDragOver={(event) => {
         event.preventDefault()
         setOver(true)

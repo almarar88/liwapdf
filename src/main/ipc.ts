@@ -226,7 +226,8 @@ const openedFiles = new Set<string>()
 export function registerIpc(
   getWindow: () => BrowserWindow | null,
   rebuildMenu: () => void = () => undefined,
-  applySpellcheck: (enabled: boolean) => void = () => undefined
+  applySpellcheck: (enabled: boolean) => void = () => undefined,
+  forceClose: () => void = () => undefined
 ): void {
   /* ---------------------------------------------------------------- files */
 
@@ -385,6 +386,8 @@ export function registerIpc(
     return window.isMaximized()
   })
   ipcMain.handle('window:close', () => getWindow()?.close())
+  // Called by the renderer once it has confirmed there is nothing to lose.
+  ipcMain.handle('window:forceClose', () => forceClose())
   ipcMain.handle('window:isMaximized', () => getWindow()?.isMaximized() ?? false)
 
   nativeTheme.on('updated', () => {

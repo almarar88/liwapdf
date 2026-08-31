@@ -1,17 +1,14 @@
 import { Suspense, lazy, useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, MotionConfig, motion } from 'framer-motion'
 import {
-  Combine,
   FileText,
   FolderOpen,
   Home,
   LayoutGrid,
-  Lock,
   PenLine,
   Repeat2,
   Save,
   Settings as SettingsIcon,
-  Shrink,
   Wrench
 } from 'lucide-react'
 import { useApp, type Route } from './store/app'
@@ -49,9 +46,10 @@ export default function App(): React.JSX.Element {
   const navigate = useApp((state) => state.navigate)
   const collapsed = useApp((state) => state.sidebarCollapsed)
   const setPaletteOpen = useApp((state) => state.setPaletteOpen)
+  const openTool = useApp((state) => state.openTool)
   const reduceMotion = useApp((state) => state.settings.reduceMotion)
   const t = useApp((state) => state.t)
-  const { openDialog, openPaths, saveActive } = useDocumentActions()
+  const { openDialog, openPaths, saveActive, saveActiveAs } = useDocumentActions()
 
   const [platform, setPlatform] = useState('win32')
 
@@ -68,12 +66,22 @@ export default function App(): React.JSX.Element {
     const offOpen = window.alcode.on.openPath((path) => void openPaths([path]))
     const offMenu = window.alcode.on.menuAction((action) => {
       if (action === 'open') void openDialog()
-      else if (action === 'save' || action === 'save-as') void saveActive()
+      else if (action === 'save') void saveActive().catch(() => undefined)
+      else if (action === 'save-as') void saveActiveAs()
       else if (action === 'palette') setPaletteOpen(true)
       else if (action === 'close-doc') {
         void useApp.getState().confirmDiscard().then((ok) => {
           if (ok) useApp.getState().closePdf()
         })
+      } else if (action === 'confirm-quit') {
+        // The main process holds the window open until we answer: the question
+        // resolves through a React modal, so it cannot be asked from there.
+        void useApp
+          .getState()
+          .confirmDiscard()
+          .then((ok) => {
+            if (ok) void window.alcode.window.forceClose()
+          })
       }
     })
     const offNavigate = window.alcode.on.menuNavigate((target) => navigate(target as Route))
@@ -133,10 +141,7 @@ export default function App(): React.JSX.Element {
 
     const actions: Command[] = [
       { id: 'open', label: t('action.open'), hint: 'Ctrl O', icon: <FolderOpen size={15} />, run: () => void openDialog() },
-      { id: 'save', label: t('action.save'), hint: 'Ctrl S', icon: <Save size={15} />, run: () => void saveActive() },
-      { id: 'quick-merge', label: t('tool.merge'), icon: <Combine size={15} />, run: () => navigate('tools') },
-      { id: 'quick-compress', label: t('tool.compress'), icon: <Shrink size={15} />, run: () => navigate('tools') },
-      { id: 'quick-protect', label: t('tool.protect'), icon: <Lock size={15} />, run: () => navigate('tools') }
+      { id: 'save', label: t('action.save'), hint: 'Ctrl S', icon: <Save size={15} />, run: () => void saveActive() }
     ]
 
     const tools: Command[] = TOOLS.map((tool) => ({
@@ -145,7 +150,8 @@ export default function App(): React.JSX.Element {
       hint: t('nav.tools'),
       icon: tool.icon,
       keywords: t(tool.descriptionKey),
-      run: () => navigate('tools')
+      // Opens the panel itself; landing on the grid was the whole complaint.
+      run: () => openTool(tool.id, Boolean(tool.needsDocument))
     }))
 
     return [...actions, ...navigation, ...tools]

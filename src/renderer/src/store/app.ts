@@ -134,6 +134,13 @@ interface AppState {
 
   editorDoc: EditorDoc | null
 
+  /**
+   * The tool panel that is open, in the store rather than in ToolsView so the
+   * command palette can open one directly instead of dropping the user on a
+   * grid of tiles to find it in again.
+   */
+  activeTool: string | null
+
   /** Set when a file needs a password before it can be opened. */
   passwordPrompt: { name: string; bytes: Uint8Array; path: string | null; wrong: boolean } | null
 
@@ -192,6 +199,10 @@ interface AppActions {
   /** True when nothing would be lost, or the user accepted losing it. */
   confirmDiscard: () => Promise<boolean>
 
+  /** Opens a tool panel, refusing the ones that need a document when none is open. */
+  openTool: (id: string, needsDocument: boolean) => void
+  closeTool: () => void
+
   openEditorDocument: (loaded: LoadedDocument) => void
   updateEditorHtml: (html: string) => void
   updateEditorSheets: (sheets: SheetData[]) => void
@@ -234,6 +245,47 @@ async function announceIfScanned(proxy: PDFDocumentProxy): Promise<void> {
   }
 }
 
+/**
+ * Turns an internal failure into something a person can act on.
+ *
+ * The slugs are what the document and PDF layers throw; the errno prefixes are
+ * what the operating system reports through the file IPC, and without them an
+ * Arabic user was shown
+ * `Error invoking remote method 'fs:write': Error: ENOSPC…`.
+ */
+function explain(message: string): TranslationKey | null {
+  const exact: Record<string, TranslationKey> = {
+    'invalid-range': 'msg.invalidRange',
+    'no-pages-selected': 'msg.selectPages',
+    'no-text-found': 'msg.noText',
+    'pdf-password-required': 'msg.needPassword',
+    'password-required': 'msg.needPassword',
+    'wrong-password': 'msg.wrongPassword',
+    'write-not-permitted': 'msg.writeNotPermitted',
+    'cannot-delete-all-pages': 'msg.cannotDeleteAllPages',
+    'no-sheet-data': 'msg.noSheetData',
+    'unsupported-export-target': 'msg.unsupportedTarget',
+    'unsupported-preview-type': 'msg.unsupportedTarget',
+    'invalid-page-order': 'msg.invalidRange',
+    'canvas-unavailable': 'msg.canvasUnavailable',
+    'flatten-failed': 'msg.flattenFailed'
+  }
+  if (exact[message]) return exact[message]
+
+  const patterns: [RegExp, TranslationKey][] = [
+    [/ENOSPC/, 'msg.diskFull'],
+    [/EACCES|EPERM|EROFS/, 'msg.noPermission'],
+    [/ENOENT/, 'msg.fileMissing'],
+    [/EBUSY|ETXTBSY/, 'msg.fileBusy'],
+    [/print-timeout/, 'msg.printTimeout'],
+    [/InvalidPDF|FormatError|Invalid PDF/i, 'msg.brokenPdf'],
+    [/epub-|pptx-|odt-|doc-no-text/, 'msg.unreadableDocument'],
+    [/password|encrypt/i, 'msg.needPassword']
+  ]
+  for (const [pattern, key] of patterns) if (pattern.test(message)) return key
+  return null
+}
+
 export const useApp = create<AppState & AppActions>((set, get) => ({
   settings: DEFAULT_SETTINGS,
   dark: false,
@@ -253,6 +305,7 @@ export const useApp = create<AppState & AppActions>((set, get) => ({
   selectedAnnotation: null,
 
   editorDoc: null,
+  activeTool: null,
   passwordPrompt: null,
   confirmPrompt: null,
 
@@ -311,19 +364,14 @@ export const useApp = create<AppState & AppActions>((set, get) => ({
   reportError(error) {
     const { t } = get()
     const message = error instanceof Error ? error.message : String(error)
-    const friendly: Record<string, TranslationKey> = {
-      'invalid-range': 'msg.invalidRange',
-      'no-pages-selected': 'msg.selectPages',
-      'no-text-found': 'msg.noText',
-      'pdf-password-required': 'msg.needPassword',
-      'wrong-password': 'msg.wrongPassword'
-    }
-    const key = friendly[message]
+    const key = explain(message)
     set({ busy: null })
     get().notify({
       kind: 'error',
       title: t('msg.error'),
-      message: key ? t(key) : message
+      // An unrecognised failure still says something in the user's language;
+      // the raw text follows so a bug report has something to go on.
+      message: key ? t(key) : `${t('msg.unexpected')} — ${message}`
     })
   },
 
@@ -494,15 +542,28 @@ export const useApp = create<AppState & AppActions>((set, get) => ({
   },
 
   async confirmDiscard() {
-    const { doc, editorDoc, t } = get()
-    if (!doc?.dirty && !editorDoc?.dirty) return true
-    const name = doc?.dirty ? doc.name : (editorDoc?.source.name ?? '')
+    const { doc, editorDoc, annotations, t } = get()
+    // Annotations that have not been flattened are unsaved work too.
+    if (!doc?.dirty && !editorDoc?.dirty && annotations.length === 0) return true
+    const name = doc?.dirty || annotations.length > 0 ? (doc?.name ?? '') : (editorDoc?.source.name ?? '')
     return get().confirm({
       title: t('msg.unsavedTitle'),
       body: t('msg.unsavedBody') + (name ? ' — ' + name : ''),
       confirmLabel: t('msg.discard'),
       danger: true
     })
+  },
+
+  openTool(id, needsDocument) {
+    if (needsDocument && !get().doc) {
+      get().notify({ kind: 'info', title: get().t('msg.noDocument') })
+      return
+    }
+    set({ route: 'tools', activeTool: id, paletteOpen: false })
+  },
+
+  closeTool() {
+    set({ activeTool: null })
   },
 
   openEditorDocument(loaded) {

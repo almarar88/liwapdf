@@ -318,7 +318,7 @@ export async function searchDocument(
  * Folds text for matching while keeping a map back to the original offsets, so
  * a hit on normalised text can still be quoted from the text the user sees.
  */
-function foldWithOffsets(text: string): { folded: string; offsets: number[] } {
+export function foldWithOffsets(text: string): { folded: string; offsets: number[] } {
   let folded = ''
   const offsets: number[] = []
   for (let index = 0; index < text.length; index += 1) {

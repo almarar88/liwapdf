@@ -6,7 +6,8 @@ import { FILTERS, pickOneFile, saveBytes } from '../../lib/files'
 import { formatBytes, ltr, stripExtension } from '../../lib/format'
 import * as ops from '../../lib/pdf/ops'
 import { compressPdf, type CompressionLevel } from '../../lib/pdf/compress'
-import { useRunner, type ToolPanelProps } from './shared'
+import { useApplied,
+  useRunner, type ToolPanelProps } from './shared'
 
 /* --------------------------------------------------------------- compress */
 
@@ -208,8 +209,8 @@ export function UnlockPanel({ onClose }: ToolPanelProps): React.JSX.Element {
 
 export function OptimizePanel({ onClose }: ToolPanelProps): React.JSX.Element {
   const t = useApp((state) => state.t)
+  const applied = useApplied()
   const doc = useApp((state) => state.doc)
-  const applyPdfBytes = useApp((state) => state.applyPdfBytes)
   const notify = useApp((state) => state.notify)
   const run = useRunner()
 
@@ -224,7 +225,7 @@ export function OptimizePanel({ onClose }: ToolPanelProps): React.JSX.Element {
           void run(t('msg.working'), async () => {
             const before = doc.bytes.byteLength
             const next = await ops.optimizeDocument(doc.bytes, doc.password)
-            await applyPdfBytes(next)
+            await applied(next, 'tool.optimize')
             notify({
               kind: 'success',
               title: `${t('msg.sizeAfter')}: ${ltr(formatBytes(next.byteLength))}`,
@@ -244,8 +245,8 @@ export function OptimizePanel({ onClose }: ToolPanelProps): React.JSX.Element {
 
 export function MetadataPanel({ onClose }: ToolPanelProps): React.JSX.Element {
   const t = useApp((state) => state.t)
+  const applied = useApplied()
   const doc = useApp((state) => state.doc)
-  const applyPdfBytes = useApp((state) => state.applyPdfBytes)
   const reportError = useApp((state) => state.reportError)
   const run = useRunner()
   const [meta, setMeta] = useState<ops.DocumentMetadata | null>(null)
@@ -304,7 +305,7 @@ export function MetadataPanel({ onClose }: ToolPanelProps): React.JSX.Element {
         onClick={() =>
           void run(t('msg.working'), async () => {
             const next = await ops.writeMetadata(doc.bytes, meta, doc.password)
-            await applyPdfBytes(next)
+            await applied(next, 'tool.metadata')
             onClose()
           })
         }

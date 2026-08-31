@@ -37,6 +37,8 @@ export interface LoadedDocument {
   imageDataUrl?: string
   direction: 'rtl' | 'ltr'
   encoding?: string
+  /** Line endings as they were on disk, so a save-in-place keeps them. */
+  eol?: 'lf' | 'crlf'
   /**
    * True when the reader could not represent the whole file. Save-in-place is
    * refused for such a document so the original is never overwritten with a
@@ -140,6 +142,7 @@ export async function readDocument(
         ...base,
         html: plainTextToHtml(text),
         encoding: decoded.encoding,
+        eol: /\r\n/.test(decoded.text) ? 'crlf' : 'lf',
         direction: detectDirection(text)
       }
     }
