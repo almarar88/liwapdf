@@ -766,19 +766,39 @@ function anchorPosition(
       ? 'Right'
       : 'Center'
 
-  const vx = horizontal[horizontalKey]
-  const vy = vertical[verticalKey]
+  return readerToPage(box, horizontal[horizontalKey], vertical[verticalKey])
+}
 
-  // Undo the page rotation: a point (vx, vy) in reader space maps to these
-  // coordinates in the page's own space, and the label must be counter-rotated
-  // by the same angle to read upright.
+/**
+ * Maps a rectangle the reader sees onto the coordinates pdf-lib draws in.
+ *
+ * Two things make these differ, and both are invisible until the file that has
+ * them arrives: a page whose MediaBox does not start at (0, 0) — routine in
+ * scanned and office-produced documents — and a page carrying /Rotate. Placing
+ * by raw width and height silently lands everything at an offset on the first
+ * and transposed on the second.
+ *
+ * `vx` and `vy` are measured from the visible box's bottom-left, and the
+ * returned `rotate` counter-rotates the drawing so it reads upright.
+ */
+export function readerToPage(
+  box: VisibleBox,
+  vx: number,
+  vy: number
+): { x: number; y: number; rotate: number } {
+  // pdf-lib rotates a drawing about the very point it is given, and a positive
+  // angle turns counter-clockwise — so the returned point is the corner the
+  // rotation pivots on, not the drawing's lower-left in page space. The
+  // extents need no subtracting here: the rotation is what carries them.
+  // Every branch below was read off a rendered page rather than derived, after
+  // the derived version put three of the four corners off the sheet.
   switch (box.rotation) {
     case 90:
-      return { x: box.x + vy, y: box.y + box.width - vx - width, rotate: -90 }
+      return { x: box.x + box.height - vy, y: box.y + vx, rotate: 90 }
     case 180:
-      return { x: box.x + box.width - vx - width, y: box.y + box.height - vy - height, rotate: 180 }
+      return { x: box.x + box.width - vx, y: box.y + box.height - vy, rotate: 180 }
     case 270:
-      return { x: box.x + box.height - vy - height, y: box.y + vx, rotate: 90 }
+      return { x: box.x + vy, y: box.y + box.width - vx, rotate: -90 }
     default:
       return { x: box.x + vx, y: box.y + vy, rotate: 0 }
   }

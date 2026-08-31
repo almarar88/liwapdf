@@ -1,8 +1,14 @@
-import { rgb } from '@cantoo/pdf-lib'
+import { degrees, rgb } from '@cantoo/pdf-lib'
 import { hexToRgb, uid } from '../format'
-import { load, save } from './ops'
+import { load, readerToPage, save, visibleBox } from './ops'
 import { applyRedactions, type RedactionReport, type RedactRegion } from './redact'
-import { drawSmartText, isRtlText, prepareFonts, wrapSmartText } from './typography'
+import {
+  drawSmartText,
+  isRtlText,
+  measureSmartText,
+  prepareFonts,
+  wrapSmartText
+} from './typography'
 
 export type AnnotationKind =
   | 'text'
@@ -81,19 +87,33 @@ export async function flattenAnnotations(
   for (const annotation of drawable) {
     const page = pages[annotation.page - 1]
     if (!page) continue
-    const pageWidth = page.getWidth()
-    const pageHeight = page.getHeight()
+    // Annotations are stored against what the reader sees, so they have to be
+    // placed through the visible box rather than the raw page size: a MediaBox
+    // that does not start at (0, 0) — routine in scanned and office-produced
+    // files — put every mark at an offset, and a rotated page transposed them.
+    const box = visibleBox(page)
+    const pageWidth = box.width
+    const pageHeight = box.height
     const { r, g, b } = hexToRgb(annotation.color)
     const color = rgb(r, g, b)
 
-    const x = annotation.x * pageWidth
     const width = annotation.width * pageWidth
     const height = annotation.height * pageHeight
-    const y = pageHeight - annotation.y * pageHeight - height
+    /** Reader-space point (measured from the visible box's bottom-left) to page space. */
+    const at = (
+      normalizedX: number,
+      normalizedY: number,
+      boxHeight = 0
+    ): { x: number; y: number; rotate: number } =>
+      readerToPage(box, normalizedX * pageWidth, pageHeight - normalizedY * pageHeight - boxHeight)
+
+    const placed = at(annotation.x, annotation.y, height)
+    const { x, y } = placed
+    const rotate = degrees(placed.rotate)
 
     switch (annotation.kind) {
       case 'highlight':
-        page.drawRectangle({ x, y, width, height, color, opacity: annotation.opacity * 0.42 })
+        page.drawRectangle({ x, y, width, height, color, rotate, opacity: annotation.opacity * 0.42 })
         break
 
       case 'rect':
@@ -102,6 +122,7 @@ export async function flattenAnnotations(
           y,
           width,
           height,
+          rotate,
           borderColor: color,
           borderWidth: annotation.strokeWidth,
           color: annotation.filled ? color : undefined,
@@ -110,12 +131,16 @@ export async function flattenAnnotations(
         })
         break
 
-      case 'ellipse':
+      case 'ellipse': {
+        const centre = at(
+          annotation.x + annotation.width / 2,
+          annotation.y + annotation.height / 2
+        )
         page.drawEllipse({
-          x: x + width / 2,
-          y: y + height / 2,
-          xScale: width / 2,
-          yScale: height / 2,
+          x: centre.x,
+          y: centre.y,
+          xScale: (box.rotation === 90 || box.rotation === 270 ? height : width) / 2,
+          yScale: (box.rotation === 90 || box.rotation === 270 ? width : height) / 2,
           borderColor: color,
           borderWidth: annotation.strokeWidth,
           color: annotation.filled ? color : undefined,
@@ -123,26 +148,29 @@ export async function flattenAnnotations(
           borderOpacity: annotation.opacity
         })
         break
+      }
 
-      case 'line':
+      case 'line': {
+        const from = at(annotation.x, annotation.y)
+        const to = at(annotation.x + annotation.width, annotation.y + annotation.height)
         page.drawLine({
-          start: { x, y: pageHeight - annotation.y * pageHeight },
-          end: { x: x + width, y: pageHeight - (annotation.y + annotation.height) * pageHeight },
+          start: { x: from.x, y: from.y },
+          end: { x: to.x, y: to.y },
           thickness: annotation.strokeWidth,
           color,
           opacity: annotation.opacity
         })
         break
+      }
 
       case 'draw': {
         const points = annotation.points ?? []
         for (let index = 1; index < points.length; index += 1) {
+          const from = at(points[index - 1][0], points[index - 1][1])
+          const to = at(points[index][0], points[index][1])
           page.drawLine({
-            start: {
-              x: points[index - 1][0] * pageWidth,
-              y: pageHeight - points[index - 1][1] * pageHeight
-            },
-            end: { x: points[index][0] * pageWidth, y: pageHeight - points[index][1] * pageHeight },
+            start: { x: from.x, y: from.y },
+            end: { x: to.x, y: to.y },
             thickness: annotation.strokeWidth,
             color,
             opacity: annotation.opacity
@@ -156,7 +184,7 @@ export async function flattenAnnotations(
         const image = annotation.imageDataUrl.includes('image/jpeg')
           ? await document.embedJpg(annotation.imageDataUrl)
           : await document.embedPng(annotation.imageDataUrl)
-        page.drawImage(image, { x, y, width, height, opacity: annotation.opacity })
+        page.drawImage(image, { x, y, width, height, rotate, opacity: annotation.opacity })
         break
       }
 
@@ -174,9 +202,21 @@ export async function flattenAnnotations(
         const lineHeight = size * 1.32
 
         for (const [lineIndex, line] of lines.entries()) {
-          const lineY = pageHeight - annotation.y * pageHeight - size - lineIndex * lineHeight
-          await drawSmartText(page, fonts, line, x, lineY, {
+          // An Arabic line starts at the right edge of the box the user drew.
+          // Drawing every line from the left made a right-to-left note look
+          // ragged down its reading edge, which is the edge the eye follows.
+          const measured = await measureSmartText(fonts, line, style)
+          const indent = rtl ? Math.max(0, boxWidth - measured.width) : 0
+          // The line's own extents have to go in: on a rotated page the text
+          // runs along a different axis, so the anchor is a corner of the line
+          // box rather than a bare point.
+          const spot = at(
+            annotation.x + indent / pageWidth,
+            annotation.y + (size + lineIndex * lineHeight) / pageHeight
+          )
+          await drawSmartText(page, fonts, line, spot.x, spot.y, {
             ...style,
+            rotate: placed.rotate,
             opacity: annotation.opacity
           })
         }
