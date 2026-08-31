@@ -17,14 +17,18 @@ format — PDF, Word, Excel, PowerPoint, EPUB and more. Fully offline.*
 
 ## ⬇️ التحميل المباشر — Direct download
 
-> الروابط تعمل بعد اكتمال أول إصدار على صفحة [Releases](../../releases). إن لم تفتح بعد، فالبناء ما زال جارياً.
+### ⬇️ صفحة التحميل: **https://almarar88.github.io/liwapdf/**
 
-| النظام / Platform | نوع الملف | رابط التحميل |
-| --- | --- | --- |
-| 🪟 **Windows 10/11 (64-bit)** | مثبّت `.exe` | [تحميل / Download](../../releases/latest/download/Alcode-Editor-1.2.2-x64-Setup.exe) |
-| 🪟 **Windows (نسخة محمولة)** | `Portable.exe` بدون تثبيت | [تحميل / Download](../../releases/latest/download/Alcode-Editor-1.2.2-Portable.exe) |
-| 🍎 **macOS — Apple Silicon (M1/M2/M3/M4)** | `.dmg` | [تحميل / Download](../../releases/latest/download/Alcode-Editor-1.2.2-arm64.dmg) |
-| 🍎 **macOS — Intel** | `.dmg` | [تحميل / Download](../../releases/latest/download/Alcode-Editor-1.2.2-x64.dmg) |
+| النظام / Platform | نوع الملف | رابط التحميل | رابط بديل |
+| --- | --- | --- | --- |
+| 🪟 **Windows 10/11 (64-bit)** | مثبّت `.exe` | [تحميل / Download](https://almarar88.github.io/liwapdf/Alcode-Editor-1.2.2-x64-Setup.exe) | [Releases](../../releases/latest/download/Alcode-Editor-1.2.2-x64-Setup.exe) |
+| 🪟 **Windows (نسخة محمولة)** | `Portable.exe` بدون تثبيت | [تحميل / Download](https://almarar88.github.io/liwapdf/Alcode-Editor-1.2.2-Portable.exe) | [Releases](../../releases/latest/download/Alcode-Editor-1.2.2-Portable.exe) |
+| 🍎 **macOS — Apple Silicon (M1/M2/M3/M4)** | `.dmg` | [تحميل / Download](https://almarar88.github.io/liwapdf/Alcode-Editor-1.2.2-arm64.dmg) | [Releases](../../releases/latest/download/Alcode-Editor-1.2.2-arm64.dmg) |
+| 🍎 **macOS — Intel** | `.dmg` | [تحميل / Download](https://almarar88.github.io/liwapdf/Alcode-Editor-1.2.2-x64.dmg) | [Releases](../../releases/latest/download/Alcode-Editor-1.2.2-x64.dmg) |
+
+> ملفات صفحة الإصدارات تُخدَّم من `objects.githubusercontent.com`، وهو محجوب على بعض الشبكات
+> رغم أن `github.com` نفسه يفتح — فيفشل التحميل بخطأ اتصال لا بخطأ «الملف غير موجود».
+> لذلك يوجد عمودان: العمود الأول يُخدَّم من `github.io`، وهو نطاق آخر يعمل حين يفشل الأول.
 
 📦 **كل الإصدارات:** [صفحة الإصدارات / All releases](../../releases/latest)
 
