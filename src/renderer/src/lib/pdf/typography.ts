@@ -3,6 +3,18 @@ import * as fontkit from 'fontkit'
 import bidiFactory from 'bidi-js'
 import amiriRegularUrl from '../../assets/fonts/Amiri-Regular.ttf?url'
 import amiriBoldUrl from '../../assets/fonts/Amiri-Bold.ttf?url'
+import {
+  TextRenderingMode,
+  beginText,
+  endText,
+  popGraphicsState,
+  pushGraphicsState,
+  setCharacterSqueeze,
+  setFontAndSize,
+  setTextMatrix,
+  setTextRenderingMode,
+  showText
+} from '@cantoo/pdf-lib'
 import { hexToRgb, needsComplexShaping } from '../format'
 
 /**
@@ -311,4 +323,45 @@ export function formatGregorian(date: Date, language: 'ar' | 'en'): string {
   } catch {
     return date.toISOString().slice(0, 10)
   }
+}
+
+/**
+ * Draws text that is present but not painted — PDF text rendering mode 3.
+ *
+ * This is how a scanned page becomes searchable: the picture stays exactly as
+ * it was, and an invisible layer of the recognised words sits on top of it at
+ * the coordinates OCR found them, so selection, search and copy all work while
+ * nothing about the page's appearance changes.
+ *
+ * The box is honoured in both directions: the size comes from its height and
+ * the horizontal scaling (Tz) stretches the run to its width, so a text
+ * selection lands on the ink the reader is pointing at.
+ */
+export async function drawInvisibleText(
+  page: PDFPage,
+  fonts: FontSet,
+  text: string,
+  box: { x: number; y: number; width: number; height: number }
+): Promise<void> {
+  const value = text.trim()
+  if (!value || box.width <= 0 || box.height <= 0) return
+
+  const font = await fontFor(fonts, value, false)
+  // Cap-height rather than the full box: OCR boxes include ascender and
+  // descender space, and oversizing pushes the selection past the glyphs.
+  const size = Math.max(1, box.height * 0.82)
+  const natural = safeWidth(font, value, size)
+  const squeeze = natural > 0 ? Math.max(10, Math.min(400, (box.width / natural) * 100)) : 100
+
+  page.pushOperators(
+    pushGraphicsState(),
+    beginText(),
+    setTextRenderingMode(TextRenderingMode.Invisible),
+    setFontAndSize(page.node.newFontDictionary(font.name, font.ref), size),
+    setCharacterSqueeze(squeeze),
+    setTextMatrix(1, 0, 0, 1, box.x, box.y),
+    showText(font.encodeText(value)),
+    endText(),
+    popGraphicsState()
+  )
 }

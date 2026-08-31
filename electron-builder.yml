@@ -13,6 +13,11 @@ files:
   - '!**/*.map'
 
 asar: true
+# The OCR worker, its WebAssembly core and the language models are loaded by
+# URL from inside a Web Worker, so they are kept as real files on disk rather
+# than archive entries.
+asarUnpack:
+  - out/renderer/tesseract/**
 compression: maximum
 electronLanguages:
   - en-US

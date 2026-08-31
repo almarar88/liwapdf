@@ -9,3 +9,6 @@ release/
 
 tsconfig.*.tsbuildinfo
 *.tsbuildinfo
+
+# Staged at build time by scripts/copy-ocr-assets.mjs (~12 MB of models).
+src/renderer/public/tesseract/

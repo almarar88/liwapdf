@@ -83,7 +83,9 @@ export function coerceSettings(raw: unknown): AppSettings {
     rememberSession:
       typeof source.rememberSession === 'boolean'
         ? source.rememberSession
-        : DEFAULT_SETTINGS.rememberSession
+        : DEFAULT_SETTINGS.rememberSession,
+    spellcheck:
+      typeof source.spellcheck === 'boolean' ? source.spellcheck : DEFAULT_SETTINGS.spellcheck
   }
 }
 

@@ -9,7 +9,7 @@ on:
       tag:
         description: 'Release tag to publish (created if it does not exist)'
         required: true
-        default: 'v1.1.0'
+        default: 'v1.2.0'
 
 permissions:
   contents: write

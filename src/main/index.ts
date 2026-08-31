@@ -1,6 +1,7 @@
-import { app, shell, BrowserWindow, dialog, nativeTheme, Menu } from 'electron'
+import { app, shell, BrowserWindow, dialog, nativeTheme, Menu, session } from 'electron'
 import { existsSync, statSync } from 'node:fs'
 import { join, resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { registerIpc, setPendingOpenFile } from './ipc'
 import { settings } from './store'
 
@@ -37,7 +38,10 @@ function createWindow(): BrowserWindow {
       sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,
-      spellcheck: true,
+      // See applySpellcheck: enabling this on Windows/Linux makes Chromium
+      // fetch a dictionary from Google's CDN, so it follows the user's choice
+      // rather than being on by default.
+      spellcheck: isMac || settings().get().spellcheck,
       webSecurity: true
     }
   })
@@ -207,6 +211,62 @@ function fileFromArgv(argv: string[], workingDirectory: string): string | null {
 const OPENABLE =
   /\.(pdf|docx?|rtf|odt|txt|md|markdown|html?|json|xml|ya?ml|log|csv|tsv|xlsx?|ods|pptx|ppsx|epub|png|jpe?g|webp|gif|bmp)$/i
 
+/**
+ * "Works offline" is a promise, so it is enforced rather than assumed.
+ *
+ * Chromium does a surprising amount of talking on its own — component updates,
+ * domain reliability, network-time — none of which this app wants or needs.
+ * The switches turn those off, and the request filter below is the backstop:
+ * it cancels every http(s)/ws request from any session, whatever asked for it.
+ * `file:` and `data:` are untouched, because that is how the app loads itself.
+ */
+for (const flag of [
+  'disable-background-networking',
+  'disable-component-update',
+  'disable-domain-reliability',
+  'no-pings',
+  'disable-breakpad',
+  'disable-sync'
+]) {
+  app.commandLine.appendSwitch(flag)
+}
+app.commandLine.appendSwitch(
+  'disable-features',
+  'MediaRouter,OptimizationGuideModelDownloading,Translate,NetworkTimeServiceQuerying'
+)
+
+function blockOutboundRequests(): void {
+  const filter = { urls: ['*://*/*'] }
+  session.defaultSession.webRequest.onBeforeRequest(filter, (_details, callback) =>
+    callback({ cancel: true })
+  )
+}
+
+/**
+ * Chromium's Hunspell spellchecker downloads its dictionary from Google's CDN
+ * the first time it runs, which is a network request this app promises not to
+ * make. So it stays off unless the user turns it on — except on macOS, where
+ * the system spellchecker is used and nothing is fetched.
+ */
+export function applySpellcheck(enabled: boolean): void {
+  const on = isMac || enabled
+  try {
+    session.defaultSession.setSpellCheckerEnabled(on)
+    if (!on) {
+      // Disabling the checker is not enough on its own: the session still
+      // resolves its default language list and fetches that dictionary. An
+      // empty language list is what actually stops the request.
+      session.defaultSession.setSpellCheckerLanguages([])
+    }
+    // Whatever happens, the dictionary may only come from this machine.
+    session.defaultSession.setSpellCheckerDictionaryDownloadURL(
+      new URL('dictionaries/', pathToFileURL(join(__dirname, '../renderer/')).href).href
+    )
+  } catch {
+    /* older Electron or a headless session; spellcheck is a nicety */
+  }
+}
+
 const gotLock = app.requestSingleInstanceLock()
 if (!gotLock) {
   app.quit()
@@ -233,6 +293,8 @@ if (!gotLock) {
     .whenReady()
     .then(() => {
       app.setAppUserModelId('app.alcode.editor')
+      blockOutboundRequests()
+      applySpellcheck(settings().get().spellcheck)
 
       const saved = settings().get()
       nativeTheme.themeSource = saved.theme
@@ -240,7 +302,7 @@ if (!gotLock) {
       const startupFile = fileFromArgv(process.argv, process.cwd())
       if (startupFile) setPendingOpenFile(startupFile)
 
-      registerIpc(() => mainWindow, buildMenu)
+      registerIpc(() => mainWindow, buildMenu, applySpellcheck)
       mainWindow = createWindow()
       buildMenu()
 

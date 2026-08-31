@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { Suspense, lazy, useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, MotionConfig, motion } from 'framer-motion'
 import {
   Combine,
@@ -21,14 +21,26 @@ import { Sidebar } from './components/Sidebar'
 import { CommandPalette, type Command } from './components/CommandPalette'
 import { BusyVeil, Button, Field, Modal, TextInput, Toasts } from './components/ui'
 import { HomeView } from './views/HomeView'
-import { ViewerView } from './views/ViewerView'
-import { OrganizeView } from './views/OrganizeView'
-import { AnnotateView } from './views/AnnotateView'
-import { EditorView } from './views/EditorView'
-import { ConvertView } from './views/ConvertView'
-import { ToolsView } from './views/ToolsView'
-import { SettingsView } from './views/SettingsView'
 import { TOOLS } from './views/toolRegistry'
+
+// Only the home screen is needed to paint the first frame; the rest — and the
+// document libraries they pull in — load when the user actually goes there,
+// which is what keeps the startup bundle from carrying every format at once.
+const ViewerView = lazy(() => import('./views/ViewerView').then((m) => ({ default: m.ViewerView })))
+const OrganizeView = lazy(() =>
+  import('./views/OrganizeView').then((m) => ({ default: m.OrganizeView }))
+)
+const AnnotateView = lazy(() =>
+  import('./views/AnnotateView').then((m) => ({ default: m.AnnotateView }))
+)
+const EditorView = lazy(() => import('./views/EditorView').then((m) => ({ default: m.EditorView })))
+const ConvertView = lazy(() =>
+  import('./views/ConvertView').then((m) => ({ default: m.ConvertView }))
+)
+const ToolsView = lazy(() => import('./views/ToolsView').then((m) => ({ default: m.ToolsView })))
+const SettingsView = lazy(() =>
+  import('./views/SettingsView').then((m) => ({ default: m.SettingsView }))
+)
 
 export default function App(): React.JSX.Element {
   const init = useApp((state) => state.init)
@@ -169,7 +181,7 @@ export default function App(): React.JSX.Element {
               exit={reduceMotion ? undefined : { opacity: 0, y: -6 }}
               transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
             >
-              {view}
+              <Suspense fallback={<div className="view" />}>{view}</Suspense>
             </motion.div>
           </AnimatePresence>
           <BusyVeil />

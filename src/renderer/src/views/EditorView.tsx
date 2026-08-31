@@ -50,7 +50,10 @@ export function EditorView(): React.JSX.Element {
   const { openDialog, exportEditorAs, newDocument } = useDocumentActions()
 
   const [zoom, setZoom] = useState(1)
-  const [spellCheck, setSpellCheck] = useState(true)
+  // Follows the app setting: on the platforms where Chromium would have to
+  // fetch a dictionary, spellcheck stays off until the user asks for it.
+  const spellcheckAllowed = useApp((state) => state.settings.spellcheck)
+  const [spellCheck, setSpellCheck] = useState(spellcheckAllowed)
   const [navigatorOpen, setNavigatorOpen] = useState(false)
   const [findOpen, setFindOpen] = useState(false)
 

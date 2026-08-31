@@ -23,7 +23,8 @@ import {
   ClipboardList,
   GitCompare,
   ListTree,
-  Paperclip
+  Paperclip,
+  ScanText
 } from 'lucide-react'
 import type { TranslationKey } from '../i18n'
 
@@ -53,6 +54,7 @@ export type ToolId =
   | 'compare'
   | 'bookmarks'
   | 'attachments'
+  | 'ocr'
 
 export type ToolGroup = 'pages' | 'optimize' | 'content'
 
@@ -93,7 +95,8 @@ export const TOOLS: ToolDescriptor[] = [
   { id: 'forms', group: 'content', titleKey: 'tool.forms', descriptionKey: 'tool.forms.d', icon: <ClipboardList size={19} />, needsDocument: true },
   { id: 'compare', group: 'content', titleKey: 'tool.compare', descriptionKey: 'tool.compare.d', icon: <GitCompare size={19} />, needsDocument: false },
   { id: 'bookmarks', group: 'content', titleKey: 'tool.bookmarks', descriptionKey: 'tool.bookmarks.d', icon: <ListTree size={19} />, needsDocument: true },
-  { id: 'attachments', group: 'content', titleKey: 'tool.attachments', descriptionKey: 'tool.attachments.d', icon: <Paperclip size={19} />, needsDocument: true }
+  { id: 'attachments', group: 'content', titleKey: 'tool.attachments', descriptionKey: 'tool.attachments.d', icon: <Paperclip size={19} />, needsDocument: true },
+  { id: 'ocr', group: 'content', titleKey: 'tool.ocr', descriptionKey: 'tool.ocr.d', icon: <ScanText size={19} />, needsDocument: true }
 ]
 
 /** Tools plus the eight converters shown on the Convert screen. */

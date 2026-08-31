@@ -10,6 +10,13 @@ export interface AppSettings {
   reduceMotion: boolean
   defaultExportDir: string | null
   rememberSession: boolean
+  /**
+   * Off by default because Chromium fetches its Hunspell dictionary from
+   * Google's CDN the first time it is used, which would break the app's
+   * "nothing leaves this machine" promise without the user ever asking.
+   * macOS is exempt: it has an offline system spellchecker.
+   */
+  spellcheck: boolean
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -18,7 +25,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   accent: 'blue',
   reduceMotion: false,
   defaultExportDir: null,
-  rememberSession: true
+  rememberSession: true,
+  spellcheck: false
 }
 
 export interface RecentFile {

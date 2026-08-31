@@ -34,6 +34,7 @@ import {
   BookmarksPanel,
   AttachmentsPanel
 } from './tools/contentTools'
+import { OcrPanel } from './tools/ocrTools'
 
 const PANELS: Record<ToolId, (props: { onClose: () => void }) => React.JSX.Element> = {
   merge: MergePanel,
@@ -60,7 +61,8 @@ const PANELS: Record<ToolId, (props: { onClose: () => void }) => React.JSX.Eleme
   forms: FormsPanel,
   compare: ComparePanel,
   bookmarks: BookmarksPanel,
-  attachments: AttachmentsPanel
+  attachments: AttachmentsPanel,
+  ocr: OcrPanel
 }
 
 export function ToolsView(): React.JSX.Element {

@@ -1,12 +1,20 @@
 import { useCallback } from 'react'
 import { useApp, type EditorDoc } from '../store/app'
 import { FILTERS, pickFiles, saveBytes, type FileFilter } from '../lib/files'
-import { readDocument, sanitize } from '../lib/documents/read'
-import { exportDocument, canSaveInPlace } from '../lib/documents/write'
 import { formatInfo, type DocumentFormat, ALL_READABLE_EXTENSIONS } from '../lib/documents/formats'
-import { emptyGrid } from '../lib/documents/sheets'
-import { markdownToHtml } from '../lib/markdown'
+import { sanitize } from '../lib/documents/sanitize'
 import { stripExtension } from '../lib/format'
+import type { LoadedDocument } from '../lib/documents/read'
+
+/**
+ * The document pipeline — SheetJS, mammoth, docx, JSZip — is three megabytes
+ * of parsers that only matter once a file is actually opened, so it is loaded
+ * at that moment rather than at startup.
+ */
+const readers = (): Promise<typeof import('../lib/documents/read')> =>
+  import('../lib/documents/read')
+const writers = (): Promise<typeof import('../lib/documents/write')> =>
+  import('../lib/documents/write')
 
 export interface DocumentActions {
   openDialog: () => Promise<void>
@@ -14,7 +22,7 @@ export interface DocumentActions {
   saveActive: () => Promise<void>
   savePdfAs: () => Promise<void>
   exportEditorAs: (target: DocumentFormat) => Promise<void>
-  newDocument: (kind: 'rich' | 'sheet' | 'code', template?: string) => void
+  newDocument: (kind: 'rich' | 'sheet' | 'code', template?: string) => Promise<void>
 }
 
 /**
@@ -50,7 +58,7 @@ export function useDocumentActions(): DocumentActions {
       state.setBusy({ label: state.t('msg.loading'), progress: null })
 
       try {
-        const loaded = await readDocument(name, bytes, path)
+        const loaded = await (await readers()).readDocument(name, bytes, path)
 
         if (loaded.format === 'pdf') {
           const opened = await store.getState().openPdfBytes(name, bytes, path)
@@ -126,7 +134,7 @@ export function useDocumentActions(): DocumentActions {
 
       state.setBusy({ label: state.t('msg.working'), progress: null })
       try {
-        const result = await exportDocument(requestFor(doc, target))
+        const result = await (await writers()).exportDocument(requestFor(doc, target))
         const info = formatInfo(target)
         const outcome = await saveBytes(result.bytes, result.fileName, [
           { name: info?.label ?? target.toUpperCase(), extensions: [target === 'code' ? '*' : target] }
@@ -147,10 +155,11 @@ export function useDocumentActions(): DocumentActions {
     if (state.route === 'editor' && state.editorDoc) {
       const doc = state.editorDoc
       // Save in place only when we can write the format we opened.
-      if (doc.source.path && canSaveInPlace(doc.source)) {
+      const write = await writers()
+      if (doc.source.path && write.canSaveInPlace(doc.source)) {
         state.setBusy({ label: state.t('msg.working'), progress: null })
         try {
-          const result = await exportDocument(requestFor(doc, doc.source.format))
+          const result = await write.exportDocument(requestFor(doc, doc.source.format))
           await window.alcode.fs.write(doc.source.path, result.bytes)
           store.getState().markEditorSaved(doc.source.path)
           store.getState().notify({
@@ -185,9 +194,11 @@ export function useDocumentActions(): DocumentActions {
   }, [exportEditorAs, savePdfAs, store])
 
   const newDocument = useCallback(
-    (kind: 'rich' | 'sheet' | 'code', template?: string): void => {
+    async (kind: 'rich' | 'sheet' | 'code', template?: string): Promise<void> => {
       const state = store.getState()
       const rightToLeft = state.settings.language === 'ar'
+      const { emptyGrid } = await import('../lib/documents/sheets')
+      const { markdownToHtml } = await import('../lib/markdown')
 
       if (kind === 'sheet') {
         state.openEditorDocument({
@@ -231,7 +242,16 @@ export function useDocumentActions(): DocumentActions {
   return { openDialog, openPaths, saveActive, savePdfAs, exportEditorAs, newDocument }
 }
 
-function requestFor(doc: EditorDoc, target: DocumentFormat): Parameters<typeof exportDocument>[0] {
+interface ExportRequestShape {
+  target: DocumentFormat
+  name: string
+  rightToLeft: boolean
+  html?: string
+  sheets?: EditorDoc['sheets']
+  text?: string
+}
+
+function requestFor(doc: EditorDoc, target: DocumentFormat): ExportRequestShape {
   return {
     target,
     name: doc.source.name,

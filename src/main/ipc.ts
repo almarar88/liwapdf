@@ -225,7 +225,8 @@ const openedFiles = new Set<string>()
 
 export function registerIpc(
   getWindow: () => BrowserWindow | null,
-  rebuildMenu: () => void = () => undefined
+  rebuildMenu: () => void = () => undefined,
+  applySpellcheck: (enabled: boolean) => void = () => undefined
 ): void {
   /* ---------------------------------------------------------------- files */
 
@@ -342,6 +343,7 @@ export function registerIpc(
     // The macOS menu bar is built from these strings, so it has to follow a
     // language change rather than staying in whatever language it launched in.
     if (next.language !== before.language) rebuildMenu()
+    if (next.spellcheck !== before.spellcheck) applySpellcheck(next.spellcheck)
     return next
   })
 

@@ -1,7 +1,13 @@
 import { create } from 'zustand'
 import type { AppSettings, RecentFile } from '@shared/types'
 import { DEFAULT_SETTINGS } from '@shared/types'
-import { openForRender, PasswordRequiredError, type PDFDocumentProxy } from '../lib/pdf/pdfjs'
+import type { PDFDocumentProxy } from '../lib/pdf/pdfjs'
+
+/**
+ * pdf.js and its worker are a megabyte that only a PDF needs, so the module is
+ * pulled in the first time one is opened rather than at startup.
+ */
+const pdfjs = (): Promise<typeof import('../lib/pdf/pdfjs')> => import('../lib/pdf/pdfjs')
 import type { LoadedDocument } from '../lib/documents/read'
 import type { SheetData } from '../lib/documents/sheets'
 import type { Annotation } from '../lib/pdf/annotations'
@@ -190,6 +196,38 @@ interface AppActions {
   markEditorSaved: (path: string, name?: string) => void
 }
 
+/**
+ * A scan looks like a normal PDF until you try to search it. Sampling the
+ * first few pages costs almost nothing and lets the app say so up front,
+ * rather than leaving the user to conclude that search is broken.
+ */
+async function announceIfScanned(proxy: PDFDocumentProxy): Promise<void> {
+  try {
+    const sample = Math.min(proxy.numPages, 3)
+    const texts: string[] = []
+    for (let pageNumber = 1; pageNumber <= sample; pageNumber += 1) {
+      const page = await proxy.getPage(pageNumber)
+      const content = await page.getTextContent()
+      texts.push(
+        content.items
+          .map((item) => ('str' in item ? item.str : ''))
+          .join('')
+      )
+      page.cleanup()
+    }
+    const perPage = texts.reduce((sum, text) => sum + text.replace(/\s+/g, '').length, 0) / sample
+    if (perPage >= 24) return
+    const state = useApp.getState()
+    state.notify({
+      kind: 'info',
+      title: state.t('msg.looksScanned'),
+      message: state.t('msg.looksScannedHint')
+    })
+  } catch {
+    /* detection is a convenience; never let it break opening a file */
+  }
+}
+
 export const useApp = create<AppState & AppActions>((set, get) => ({
   settings: DEFAULT_SETTINGS,
   dark: false,
@@ -293,6 +331,7 @@ export const useApp = create<AppState & AppActions>((set, get) => ({
 
   async openPdfBytes(name, bytes, path, password) {
     try {
+      const { openForRender } = await pdfjs()
       const proxy = await openForRender(bytes, password)
       const previous = get().doc
       if (previous) void previous.proxy.destroy()
@@ -318,8 +357,10 @@ export const useApp = create<AppState & AppActions>((set, get) => ({
         selectedAnnotation: null,
         passwordPrompt: null
       })
+      void announceIfScanned(proxy)
       return true
     } catch (error) {
+      const { PasswordRequiredError } = await pdfjs()
       if (error instanceof PasswordRequiredError) {
         set({ passwordPrompt: { name, bytes, path, wrong: error.wrong } })
         return false
@@ -334,6 +375,7 @@ export const useApp = create<AppState & AppActions>((set, get) => ({
     const current = get().doc
     if (!current) return
 
+    const { openForRender } = await pdfjs()
     const proxy = await openForRender(bytes, current.password)
 
     // Another mutation started while this one was parsing. Drop this result
@@ -536,6 +578,7 @@ async function stepHistory(
   if (!doc || source.length === 0) return
 
   const target = source[source.length - 1]
+  const { openForRender } = await import('../lib/pdf/pdfjs')
   const proxy = await openForRender(target, doc.password)
 
   if (generation !== mutationGeneration) {

@@ -100,6 +100,14 @@ export function SettingsView(): React.JSX.Element {
               label={t('settings.reduceMotion')}
             />
           </Field>
+
+          <Field hint={t('settings.spellcheckHint')}>
+            <Switch
+              checked={settings.spellcheck}
+              onChange={(checked) => void setSettings({ spellcheck: checked })}
+              label={t('settings.spellcheck')}
+            />
+          </Field>
         </div>
       </Card>
 
