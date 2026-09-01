@@ -8,8 +8,11 @@ import {
   Languages,
   ListTree,
   Minus,
+  Maximize2,
+  Minimize2,
   Plus,
   Replace,
+  Target,
   SpellCheck,
   ChevronDown,
   ChevronUp,
@@ -64,6 +67,10 @@ export function EditorView(): React.JSX.Element {
   const [navigatorOpen, setNavigatorOpen] = useState(false)
   const [findOpen, setFindOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
+  // A word target is per-document and per-session: it belongs to the sitting,
+  // not to the file, and persisting it would resurrect yesterday's number.
+  const [goal, setGoal] = useState('')
+  const [focus, setFocus] = useState(false)
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
@@ -75,7 +82,10 @@ export function EditorView(): React.JSX.Element {
         event.preventDefault()
         setSearchOpen(true)
       }
-      if (event.key === 'Escape') setSearchOpen(false)
+      if (event.key === 'Escape') {
+        setSearchOpen(false)
+        setFocus(false)
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -88,7 +98,10 @@ export function EditorView(): React.JSX.Element {
   const stats = computeStats(doc.source.kind, doc.html, doc.text)
 
   return (
-    <div className="view flush" style={{ display: 'flex', flexDirection: 'column' }}>
+    <div
+      className={focus ? 'view flush focus-mode' : 'view flush'}
+      style={{ display: 'flex', flexDirection: 'column' }}
+    >
       <div className="toolbar">
         <span className="badge accent">{info?.label ?? doc.source.format.toUpperCase()}</span>
         {info && !info.writable ? (
@@ -136,6 +149,15 @@ export function EditorView(): React.JSX.Element {
           onClick={() => setSpellCheck((value) => !value)}
         >
           <SpellCheck size={15} />
+        </Button>
+        <Button
+          size="sm"
+          variant={focus ? 'primary' : 'ghost'}
+          icon
+          title={t('editor.focus')}
+          onClick={() => setFocus((value) => !value)}
+        >
+          {focus ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
         </Button>
 
         <span className="sep" />
@@ -231,6 +253,9 @@ export function EditorView(): React.JSX.Element {
           <span>
             {Math.max(1, Math.round(stats.words / 220))} {t('word.readTime')}
           </span>
+        ) : null}
+        {stats.words !== null ? (
+          <GoalMeter words={stats.words} goal={goal} onGoalChange={setGoal} />
         ) : null}
         <span style={{ marginInlineStart: 'auto' }}>
           {doc.dirty ? '● ' : ''}
@@ -609,6 +634,57 @@ function FindBar({ onClose }: { onClose: () => void }): React.JSX.Element {
         <X size={15} />
       </Button>
     </div>
+  )
+}
+
+/**
+ * A word target and how far along it is.
+ *
+ * Writing a book is measured in sittings, and the single most useful number
+ * during one is the distance left. The bar is off until a target is typed, so
+ * it never nags anyone who did not ask to be counted.
+ */
+function GoalMeter({
+  words,
+  goal,
+  onGoalChange
+}: {
+  words: number
+  goal: string
+  onGoalChange: (value: string) => void
+}): React.JSX.Element {
+  const t = useApp((state) => state.t)
+  const target = Math.max(0, Number(goal) || 0)
+  const done = target > 0 && words >= target
+  const fraction = target > 0 ? Math.min(1, words / target) : 0
+
+  return (
+    <span className="goal" title={t('editor.goalHint')}>
+      <Target size={13} />
+      <input
+        className="goal-input"
+        value={goal}
+        onChange={(event) => onGoalChange(event.target.value.replace(/[^0-9]/g, ''))}
+        placeholder={t('editor.goal')}
+        inputMode="numeric"
+        dir="ltr"
+      />
+      {target > 0 ? (
+        <>
+          <span className="goal-track">
+            <span
+              className={done ? 'goal-fill done' : 'goal-fill'}
+              style={{ width: `${Math.round(fraction * 100)}%` }}
+            />
+          </span>
+          <span className="muted">
+            {done
+              ? t('editor.goalDone', { done: words })
+              : t('editor.goalProgress', { done: words, goal: target })}
+          </span>
+        </>
+      ) : null}
+    </span>
   )
 }
 

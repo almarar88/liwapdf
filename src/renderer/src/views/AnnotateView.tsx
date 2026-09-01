@@ -15,6 +15,7 @@ import {
   FileText
 } from 'lucide-react'
 import { useApp } from '../store/app'
+import { SignaturePad } from '../components/SignaturePad'
 import { useDocumentActions } from '../hooks/useDocumentActions'
 import {
   Button,
@@ -621,7 +622,7 @@ export function AnnotateView(): React.JSX.Element {
         </aside>
       </div>
 
-      <SignatureModal
+      <SignaturePad
         open={signatureOpen}
         onClose={() => setSignatureOpen(false)}
         onUse={(dataUrl) => {
@@ -760,92 +761,3 @@ function AnnotationShape({
   return <div style={style} onPointerDown={interactive ? onSelect : undefined} {...keyboard} />
 }
 
-function SignatureModal({
-  open,
-  onClose,
-  onUse
-}: {
-  open: boolean
-  onClose: () => void
-  onUse: (dataUrl: string) => void
-}): React.JSX.Element {
-  const t = useApp((state) => state.t)
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const drawing = useRef(false)
-
-  const position = (event: React.PointerEvent): { x: number; y: number } => {
-    const rect = canvasRef.current!.getBoundingClientRect()
-    return { x: event.clientX - rect.left, y: event.clientY - rect.top }
-  }
-
-  return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title={t('annotate.signaturePad')}
-      footer={
-        <>
-          <Button
-            onClick={() => {
-              const canvas = canvasRef.current
-              const context = canvas?.getContext('2d')
-              if (canvas && context) context.clearRect(0, 0, canvas.width, canvas.height)
-            }}
-          >
-            {t('annotate.clearPad')}
-          </Button>
-          <Button
-            variant="primary"
-            onClick={() => {
-              const canvas = canvasRef.current
-              if (canvas) onUse(canvas.toDataURL('image/png'))
-            }}
-          >
-            {t('annotate.useSignature')}
-          </Button>
-        </>
-      }
-    >
-      <canvas
-        ref={canvasRef}
-        width={760}
-        height={260}
-        style={{
-          width: '100%',
-          height: 220,
-          borderRadius: 'var(--r-md)',
-          border: '1px dashed var(--hairline)',
-          background: '#fff',
-          touchAction: 'none',
-          cursor: 'crosshair'
-        }}
-        onPointerDown={(event) => {
-          drawing.current = true
-          const context = canvasRef.current!.getContext('2d')!
-          const point = position(event)
-          const scale = canvasRef.current!.width / canvasRef.current!.clientWidth
-          context.strokeStyle = '#111'
-          context.lineWidth = 3
-          context.lineCap = 'round'
-          context.lineJoin = 'round'
-          context.beginPath()
-          context.moveTo(point.x * scale, point.y * scale)
-        }}
-        onPointerMove={(event) => {
-          if (!drawing.current) return
-          const context = canvasRef.current!.getContext('2d')!
-          const point = position(event)
-          const scale = canvasRef.current!.width / canvasRef.current!.clientWidth
-          context.lineTo(point.x * scale, point.y * scale)
-          context.stroke()
-        }}
-        onPointerUp={() => {
-          drawing.current = false
-        }}
-        onPointerLeave={() => {
-          drawing.current = false
-        }}
-      />
-    </Modal>
-  )
-}

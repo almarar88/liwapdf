@@ -86,6 +86,25 @@ const EMPTY_DRAFT: DraftShape = {
   savedAt: 0
 }
 
+/**
+ * Saved signatures. A signature is drawn once and used for years, so it lives
+ * with the app rather than being redrawn — a mouse-drawn scrawl never comes out
+ * the same twice, and a document signed with a different squiggle every time
+ * looks exactly as unconvincing as it is.
+ */
+export interface SavedSignature {
+  id: string
+  name: string
+  /** Trimmed PNG with a transparent background. */
+  dataUrl: string
+  createdAt: number
+}
+
+interface SignaturesShape {
+  items: SavedSignature[]
+}
+
+let signaturesStore: JsonStore<SignaturesShape> | null = null
 let settingsStore: JsonStore<AppSettings> | null = null
 let recentsStore: JsonStore<RecentsShape> | null = null
 let draftStore: JsonStore<DraftShape> | null = null
@@ -134,6 +153,41 @@ export function settings(): JsonStore<AppSettings> {
 export function recents(): JsonStore<RecentsShape> {
   if (!recentsStore) recentsStore = new JsonStore<RecentsShape>('recent-files.json', { items: [] })
   return recentsStore
+}
+
+export function signatures(): JsonStore<SignaturesShape> {
+  if (!signaturesStore) signaturesStore = new JsonStore<SignaturesShape>('signatures.json', { items: [] })
+  return signaturesStore
+}
+
+/** Validated on read: a corrupt file must never stop the pad from opening. */
+export function listSignatures(): SavedSignature[] {
+  const items = signatures().get().items
+  if (!Array.isArray(items)) return []
+  return items.filter(
+    (item): item is SavedSignature =>
+      Boolean(item) &&
+      typeof item.id === 'string' &&
+      typeof item.name === 'string' &&
+      typeof item.dataUrl === 'string' &&
+      item.dataUrl.startsWith('data:image/')
+  )
+}
+
+/** Caps the library: these are inline PNGs, and the file is read at startup. */
+const SIGNATURE_LIMIT = 12
+
+export function saveSignature(entry: SavedSignature): SavedSignature[] {
+  const kept = listSignatures().filter((item) => item.id !== entry.id)
+  const items = [entry, ...kept].slice(0, SIGNATURE_LIMIT)
+  signatures().replace({ items })
+  return items
+}
+
+export function deleteSignature(id: string): SavedSignature[] {
+  const items = listSignatures().filter((item) => item.id !== id)
+  signatures().replace({ items })
+  return items
 }
 
 export function draft(): JsonStore<DraftShape> {

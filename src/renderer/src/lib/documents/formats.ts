@@ -51,7 +51,7 @@ export const FORMATS: FormatInfo[] = [
   { format: 'xls', kind: 'sheet', label: 'Excel 97 (XLS)', extensions: ['xls'], readable: true, writable: false },
   { format: 'ods', kind: 'sheet', label: 'OpenDocument Sheet', extensions: ['ods'], readable: true, writable: true },
   { format: 'pptx', kind: 'slides', label: 'PowerPoint (PPTX)', extensions: ['pptx', 'ppsx'], readable: true, writable: false },
-  { format: 'epub', kind: 'rich', label: 'EPUB', extensions: ['epub'], readable: true, writable: false },
+  { format: 'epub', kind: 'rich', label: 'EPUB', extensions: ['epub'], readable: true, writable: true },
   { format: 'json', kind: 'code', label: 'JSON', extensions: ['json', 'jsonc', 'geojson'], readable: true, writable: true },
   { format: 'xml', kind: 'code', label: 'XML', extensions: ['xml', 'svg', 'rss', 'atom', 'plist'], readable: true, writable: true },
   {
@@ -123,7 +123,10 @@ export function exportTargetsFor(kind: DocumentKind): DocumentFormat[] {
   if (kind === 'sheet') return ['xlsx', 'ods', 'csv', 'tsv', 'html', 'pdf']
   if (kind === 'code') return ['txt', 'md', 'html', 'pdf']
   if (kind === 'slides') return ['docx', 'html', 'md', 'txt', 'pdf']
-  return ['docx', 'pdf', 'html', 'md', 'txt', 'rtf', 'odt']
+  // EPUB sits with the rich targets rather than in a corner of its own: a
+  // manuscript becoming a book is an ordinary thing to want from a writer's
+  // editor, not a special case.
+  return ['docx', 'pdf', 'epub', 'html', 'md', 'txt', 'rtf', 'odt']
 }
 
 export const ALL_READABLE_EXTENSIONS = FORMATS.filter((info) => info.readable).flatMap(

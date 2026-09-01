@@ -42,6 +42,11 @@ const api = {
     set: (patch: Partial<AppSettings>): Promise<AppSettings> =>
       ipcRenderer.invoke('settings:set', patch)
   },
+  signatures: {
+    list: (): Promise<unknown[]> => ipcRenderer.invoke('signatures:list'),
+    save: (entry: unknown): Promise<unknown[]> => ipcRenderer.invoke('signatures:save', entry),
+    remove: (id: string): Promise<unknown[]> => ipcRenderer.invoke('signatures:delete', id)
+  },
   draft: {
     save: (value: unknown): Promise<boolean> => ipcRenderer.invoke('draft:save', value),
     read: (): Promise<unknown> => ipcRenderer.invoke('draft:read'),

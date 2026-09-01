@@ -26,10 +26,13 @@ import {
   clearDraft,
   clearRecents,
   coerceSettings,
+  deleteSignature,
   draft,
+  listSignatures,
   pushRecent,
   readDraft,
   recents,
+  saveSignature,
   settings
 } from './store'
 
@@ -397,6 +400,23 @@ export function registerIpc(
 
   ipcMain.handle('recents:list', (): RecentFile[] => recents().get().items)
   ipcMain.handle('recents:clear', (): RecentFile[] => clearRecents())
+
+  /* ----------------------------------------------------------- signatures */
+
+  ipcMain.handle('signatures:list', () => listSignatures())
+  ipcMain.handle('signatures:save', (_event, entry: unknown) => {
+    const value = entry as { id?: string; name?: string; dataUrl?: string }
+    // A data URL is the only shape accepted: this ends up rendered into
+    // documents, and a remote URL there would phone out on every open.
+    if (!value?.id || !value.dataUrl?.startsWith('data:image/')) return listSignatures()
+    return saveSignature({
+      id: String(value.id),
+      name: String(value.name ?? '').slice(0, 60),
+      dataUrl: value.dataUrl,
+      createdAt: Date.now()
+    })
+  })
+  ipcMain.handle('signatures:delete', (_event, id: string) => deleteSignature(String(id)))
 
   /* ---------------------------------------------------------------- draft */
 

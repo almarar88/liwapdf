@@ -18,6 +18,8 @@ import {
   SeparatorHorizontal,
   Strikethrough,
   Table as TableIcon,
+  ListTree,
+  Signature,
   Trash2,
   Underline
 } from 'lucide-react'
@@ -26,6 +28,7 @@ import { Button, Select } from '../../components/ui'
 import { FILTERS, pickOneFile } from '../../lib/files'
 import { sanitize } from '../../lib/documents/read'
 import { formatGregorian, formatHijri } from '../../lib/pdf/typography'
+import { SignaturePad } from '../../components/SignaturePad'
 
 /** Dates are inserted as markup, so a stray angle bracket must not be one. */
 function escapeHtml(value: string): string {
@@ -99,6 +102,7 @@ export function RichEditor({
   onChange
 }: RichEditorProps): React.JSX.Element {
   const t = useApp((state) => state.t)
+  const notify = useApp((state) => state.notify)
   const language = useApp((state) => state.settings.language)
   const editorRef = useRef<HTMLDivElement>(null)
   const loadedKey = useRef<string | null>(null)
@@ -191,6 +195,35 @@ export function RichEditor({
   // rendering: moving the caret does not re-render, so the row and column
   // buttons were gated on a value that was only ever sampled at mount — they
   // never appeared, and table editing was unreachable from the toolbar.
+  const [signOpen, setSignOpen] = useState(false)
+
+  /**
+   * Builds a contents list from the headings already in the manuscript.
+   *
+   * Typed by hand it goes stale the first time a chapter is renamed, which is
+   * why nobody keeps one up to date. Inserted at the caret as ordinary
+   * markup so it exports to every format like the rest of the document.
+   */
+  const insertContents = (): void => {
+    const editor = editorRef.current
+    if (!editor) return
+    const headings = Array.from(editor.querySelectorAll('h1, h2, h3'))
+    if (headings.length === 0) {
+      notify({ kind: 'info', title: t('word.tocEmpty') })
+      return
+    }
+    const items = headings
+      .map((heading) => {
+        const depth = Number(heading.tagName.slice(1)) - 1
+        const label = (heading.textContent ?? '').trim()
+        if (!label) return ''
+        const indent = depth * 18
+        return `<li style="margin-inline-start:${indent}px">${escapeHtml(label)}</li>`
+      })
+      .filter(Boolean)
+      .join('')
+    insertHtml(`<h2>${escapeHtml(t('word.tocTitle'))}</h2><ul>${items}</ul>`)
+  }
   const [inTable, setInTable] = useState(false)
   useEffect(() => {
     const update = (): void => {
@@ -328,6 +361,12 @@ export function RichEditor({
         >
           <TableIcon size={15} />
         </Button>
+        <Button size="sm" variant="ghost" icon title={t('word.toc')} onClick={insertContents}>
+          <ListTree size={15} />
+        </Button>
+        <Button size="sm" variant="ghost" icon title={t('sign.insert')} onClick={() => setSignOpen(true)}>
+          <Signature size={15} />
+        </Button>
         <Button
           size="sm"
           variant="ghost"
@@ -417,6 +456,18 @@ export function RichEditor({
           }}
         />
       </div>
+
+      <SignaturePad
+        open={signOpen}
+        onClose={() => setSignOpen(false)}
+        onUse={(dataUrl) => {
+          // Sized in millimetres rather than pixels: a signature has a real
+          // width on a page, and one sized to the drawing canvas would land
+          // the width of the screen.
+          insertHtml(`<img src="${dataUrl}" alt="signature" style="width:52mm;height:auto" />`)
+          setSignOpen(false)
+        }}
+      />
     </div>
   )
 }

@@ -4,6 +4,7 @@ import { htmlToPdf } from '../convert'
 import { stripExtension } from '../format'
 import { htmlToRtf } from './rtf'
 import { htmlToOdt } from './office'
+import { htmlToEpub } from './epub'
 import { sheetsToHtml, writeDelimited, writeWorkbook, type SheetData } from './sheets'
 import type { DocumentFormat } from './formats'
 import type { LoadedDocument } from './read'
@@ -75,6 +76,16 @@ export async function exportDocument(request: ExportRequest): Promise<ExportResu
 
     case 'odt':
       return { bytes: await htmlToOdt(html, request.rightToLeft), fileName: `${base}.odt` }
+
+    case 'epub':
+      return {
+        bytes: await htmlToEpub(html, {
+          title: base,
+          language: request.rightToLeft ? 'ar' : 'en',
+          rightToLeft: request.rightToLeft
+        }),
+        fileName: `${base}.epub`
+      }
 
     case 'html': {
       const page =
