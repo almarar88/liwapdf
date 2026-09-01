@@ -54,6 +54,8 @@ function createWindow(): BrowserWindow {
     }
   })
 
+  attachContextMenu(window.webContents)
+
   window.on('close', (event) => {
     if (closeConfirmed) return
     // Covers every route out: the title-bar button, the native traffic light,
@@ -264,7 +266,56 @@ function blockOutboundRequests(): void {
  * make. So it stays off unless the user turns it on — except on macOS, where
  * the system spellchecker is used and nothing is fetched.
  */
-export function applySpellcheck(enabled: boolean): void {
+export /**
+ * Electron ships no context menu at all, so the red squiggles spellcheck draws
+ * were undismissable decoration: there was no way to reach a suggestion, add a
+ * word, or even copy and paste with the mouse. Chromium hands the suggestions
+ * over on the event; this turns them into the menu people expect.
+ */
+function attachContextMenu(contents: Electron.WebContents): void {
+  contents.on('context-menu', (_event, params) => {
+    const arabic = settings().get().language === 'ar'
+    const label = (ar: string, en: string): string => (arabic ? ar : en)
+    const items: Electron.MenuItemConstructorOptions[] = []
+
+    for (const suggestion of params.dictionarySuggestions.slice(0, 5)) {
+      items.push({ label: suggestion, click: () => contents.replaceMisspelling(suggestion) })
+    }
+    if (params.misspelledWord) {
+      if (items.length === 0) {
+        items.push({ label: label('لا توجد اقتراحات', 'No suggestions'), enabled: false })
+      }
+      items.push({
+        label: label('أضف إلى القاموس', 'Add to dictionary'),
+        click: () => contents.session.addWordToSpellCheckerDictionary(params.misspelledWord)
+      })
+      items.push({ type: 'separator' })
+    }
+
+    const editable = params.isEditable
+    items.push(
+      { label: label('تراجع', 'Undo'), role: 'undo', enabled: editable && params.editFlags.canUndo },
+      { label: label('إعادة', 'Redo'), role: 'redo', enabled: editable && params.editFlags.canRedo },
+      { type: 'separator' },
+      { label: label('قص', 'Cut'), role: 'cut', enabled: params.editFlags.canCut },
+      { label: label('نسخ', 'Copy'), role: 'copy', enabled: params.editFlags.canCopy },
+      { label: label('لصق', 'Paste'), role: 'paste', enabled: params.editFlags.canPaste },
+      {
+        // Pasting from Word otherwise brings its markup with it, which is the
+        // usual way a clean document acquires someone else's fonts and colours.
+        label: label('لصق بدون تنسيق', 'Paste without formatting'),
+        role: 'pasteAndMatchStyle',
+        enabled: params.editFlags.canPaste
+      },
+      { type: 'separator' },
+      { label: label('تحديد الكل', 'Select all'), role: 'selectAll' }
+    )
+
+    Menu.buildFromTemplate(items).popup({ window: BrowserWindow.fromWebContents(contents) ?? undefined })
+  })
+}
+
+function applySpellcheck(enabled: boolean): void {
   const on = isMac || enabled
   try {
     session.defaultSession.setSpellCheckerEnabled(on)

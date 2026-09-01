@@ -22,7 +22,16 @@ import {
   SaveDialogOptions,
   SaveResult
 } from '../shared/types'
-import { clearRecents, coerceSettings, pushRecent, recents, settings } from './store'
+import {
+  clearDraft,
+  clearRecents,
+  coerceSettings,
+  draft,
+  pushRecent,
+  readDraft,
+  recents,
+  settings
+} from './store'
 
 let pendingOpenFile: string | null = null
 
@@ -388,6 +397,24 @@ export function registerIpc(
 
   ipcMain.handle('recents:list', (): RecentFile[] => recents().get().items)
   ipcMain.handle('recents:clear', (): RecentFile[] => clearRecents())
+
+  /* ---------------------------------------------------------------- draft */
+
+  ipcMain.handle('draft:save', (_event, value: unknown) => {
+    // Never let a bad payload from the renderer throw here: autosave runs on a
+    // timer, and a throw on a timer is an unhandled rejection every few seconds.
+    try {
+      draft().replace(value as never)
+      return true
+    } catch {
+      return false
+    }
+  })
+  ipcMain.handle('draft:read', () => readDraft())
+  ipcMain.handle('draft:clear', () => {
+    clearDraft()
+    return true
+  })
 
   /* --------------------------------------------------------------- system */
 

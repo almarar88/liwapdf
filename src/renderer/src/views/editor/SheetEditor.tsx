@@ -168,6 +168,54 @@ export function SheetEditor({
     mutate({ ...sheet, rows: grid })
   }
 
+  /**
+   * Copy and paste a rectangle, in the tab-separated form every spreadsheet
+   * puts on the clipboard.
+   *
+   * Without this the grid could only be filled one cell at a time, which is
+   * not a way anyone moves a table out of Excel. Pasting writes the whole
+   * block in one update rather than one per cell: a 50x10 paste would
+   * otherwise deep-copy the grid five hundred times.
+   */
+  const selectedRect = (): { top: number; left: number; bottom: number; right: number } => {
+    const start = anchor ?? cursor
+    return {
+      top: Math.min(start.row, cursor.row),
+      left: Math.min(start.column, cursor.column),
+      bottom: Math.max(start.row, cursor.row),
+      right: Math.max(start.column, cursor.column)
+    }
+  }
+
+  const copySelection = async (): Promise<void> => {
+    const box = selectedRect()
+    const lines: string[] = []
+    for (let r = box.top; r <= box.bottom; r += 1) {
+      const line: string[] = []
+      for (let c = box.left; c <= box.right; c += 1) line.push(rows[r]?.[c]?.text ?? '')
+      lines.push(line.join('\t'))
+    }
+    await navigator.clipboard.writeText(lines.join('\n')).catch(() => undefined)
+  }
+
+  const pasteBlock = (clip: string): void => {
+    const block = clip.replace(/\r\n?/g, '\n').replace(/\n$/, '').split('\n').map((line) => line.split('\t'))
+    if (block.length === 0) return
+    const grid = [...rows]
+    for (const [rowOffset, line] of block.entries()) {
+      const row = cursor.row + rowOffset
+      while (grid.length <= row) grid.push(Array.from({ length: columnCount }, emptyCell))
+      const target = [...grid[row]]
+      for (const [columnOffset, value] of line.entries()) {
+        const column = cursor.column + columnOffset
+        while (target.length <= column) target.push(emptyCell())
+        target[column] = inferCell(value, target[column])
+      }
+      grid[row] = target
+    }
+    mutate({ ...sheet, rows: grid })
+  }
+
   const flushDraft = (): void => {
     if (!draft) return
     commitCell(draft.row, draft.column, draft.value)
@@ -229,6 +277,25 @@ export function SheetEditor({
   }
 
   const onCellKeyDown = (event: React.KeyboardEvent, row: number, column: number): void => {
+    // Handled here rather than by the browser: the cells are inputs, so a
+    // plain Ctrl+C would copy the one being edited, never the selected block.
+    if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !draft) {
+      const pressed = event.key.toLowerCase()
+      if (pressed === 'c') {
+        event.preventDefault()
+        void copySelection()
+        return
+      }
+      if (pressed === 'v') {
+        event.preventDefault()
+        void navigator.clipboard
+          .readText()
+          .then((clip) => clip && pasteBlock(clip))
+          .catch(() => undefined)
+        return
+      }
+    }
+
     const move = (nextRow: number, nextColumn: number): void => {
       // Only swallow the key when the move actually goes somewhere. At the
       // last cell Tab must be allowed through, or the grid is a keyboard trap

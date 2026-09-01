@@ -25,6 +25,12 @@ import { useApp } from '../../store/app'
 import { Button, Select } from '../../components/ui'
 import { FILTERS, pickOneFile } from '../../lib/files'
 import { sanitize } from '../../lib/documents/read'
+import { formatGregorian, formatHijri } from '../../lib/pdf/typography'
+
+/** Dates are inserted as markup, so a stray angle bracket must not be one. */
+function escapeHtml(value: string): string {
+  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
 
 // Latin faces first, then the Arabic document faces people actually expect to
 // find — Word's own Arabic defaults and the two classic naskh text faces.
@@ -50,6 +56,27 @@ const FONTS = [
 ]
 const SIZES = ['10', '11', '12', '14', '16', '18', '20', '24', '28', '32', '40', '48']
 
+/**
+ * Dates a letter or a memo in this region actually carries.
+ *
+ * The Hijri conversion is the tabular Umm al-Qura calendar, which can sit a
+ * day either side of the sighting — so the dual form names both calendars
+ * rather than presenting one as the authority.
+ */
+function dateOptions(language: 'ar' | 'en'): { value: string; label: string }[] {
+  const now = new Date()
+  const hijri = formatHijri(now, language)
+  const gregorian = formatGregorian(now, language)
+  const dual = language === 'ar' ? `${hijri} الموافق ${gregorian}` : `${hijri} / ${gregorian}`
+  const numeric = now.toISOString().slice(0, 10)
+  return [
+    { value: gregorian, label: gregorian },
+    { value: hijri, label: hijri },
+    { value: dual, label: dual },
+    { value: numeric, label: numeric }
+  ]
+}
+
 interface RichEditorProps {
   html: string
   direction: 'rtl' | 'ltr'
@@ -72,6 +99,7 @@ export function RichEditor({
   onChange
 }: RichEditorProps): React.JSX.Element {
   const t = useApp((state) => state.t)
+  const language = useApp((state) => state.settings.language)
   const editorRef = useRef<HTMLDivElement>(null)
   const loadedKey = useRef<string | null>(null)
 
@@ -182,6 +210,11 @@ export function RichEditor({
   return (
     <div className="rich-shell">
       <div className="toolbar">
+        <Select
+          value=""
+          onChange={(value) => value && insertHtml(escapeHtml(value))}
+          options={[{ value: '', label: t('word.insertDate') }, ...dateOptions(language)]}
+        />
         <Select
           value=""
           onChange={(value) => value && exec('fontName', value)}

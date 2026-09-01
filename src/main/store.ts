@@ -53,8 +53,42 @@ interface RecentsShape {
   items: RecentFile[]
 }
 
+/**
+ * The last autosaved state of the document being edited.
+ *
+ * An editor with no recovery loses the afternoon to one crash or one power
+ * cut, and the work it loses is exactly the work that was never saved — the
+ * part the user would most mind. One slot is enough: the app edits one
+ * document at a time.
+ */
+export interface DraftShape {
+  /** Empty when there is nothing to recover. */
+  name: string
+  path: string | null
+  format: string
+  kind: string
+  html: string
+  text: string
+  sheets: unknown[]
+  direction: string
+  savedAt: number
+}
+
+const EMPTY_DRAFT: DraftShape = {
+  name: '',
+  path: null,
+  format: '',
+  kind: '',
+  html: '',
+  text: '',
+  sheets: [],
+  direction: 'rtl',
+  savedAt: 0
+}
+
 let settingsStore: JsonStore<AppSettings> | null = null
 let recentsStore: JsonStore<RecentsShape> | null = null
+let draftStore: JsonStore<DraftShape> | null = null
 
 const THEMES: AppSettings['theme'][] = ['light', 'dark', 'system']
 const LANGUAGES: AppSettings['language'][] = ['ar', 'en']
@@ -100,6 +134,33 @@ export function settings(): JsonStore<AppSettings> {
 export function recents(): JsonStore<RecentsShape> {
   if (!recentsStore) recentsStore = new JsonStore<RecentsShape>('recent-files.json', { items: [] })
   return recentsStore
+}
+
+export function draft(): JsonStore<DraftShape> {
+  if (!draftStore) draftStore = new JsonStore<DraftShape>('draft.json', { ...EMPTY_DRAFT })
+  return draftStore
+}
+
+/**
+ * Validated on read the way settings are: a truncated write — the very thing
+ * a crash produces — must not stop the editor from opening.
+ */
+export function readDraft(): DraftShape | null {
+  const value = draft().get()
+  if (!value || typeof value.name !== 'string' || !value.name || typeof value.savedAt !== 'number') {
+    return null
+  }
+  return {
+    ...EMPTY_DRAFT,
+    ...value,
+    sheets: Array.isArray(value.sheets) ? value.sheets : [],
+    html: typeof value.html === 'string' ? value.html : '',
+    text: typeof value.text === 'string' ? value.text : ''
+  }
+}
+
+export function clearDraft(): void {
+  draft().replace({ ...EMPTY_DRAFT })
 }
 
 export function pushRecent(entry: RecentFile): RecentFile[] {

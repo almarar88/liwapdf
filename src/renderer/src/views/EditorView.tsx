@@ -11,6 +11,8 @@ import {
   Plus,
   Replace,
   SpellCheck,
+  ChevronDown,
+  ChevronUp,
   X
 } from 'lucide-react'
 import { useApp } from '../store/app'
@@ -34,7 +36,10 @@ import { exportTargetsFor, formatInfo, FORMATS, type DocumentFormat } from '../l
 import { htmlToPlainText } from '../lib/documents/write'
 import { inferCell, type SheetData } from '../lib/documents/sheets'
 import { replacePattern, substituteAll, type ReplaceOptions } from '../lib/documents/find'
-import { clamp } from '../lib/format'
+import { clamp, ltr } from '../lib/format'
+import { clearDraft, documentFromDraft, readDraft, type Draft } from '../lib/documents/draft'
+import { normalizeForSearch } from '../lib/text/encoding'
+import { foldWithOffsets } from '../lib/pdf/render'
 import { TEMPLATES } from './editor/templates'
 
 export function EditorView(): React.JSX.Element {
@@ -58,6 +63,7 @@ export function EditorView(): React.JSX.Element {
   const [spellCheck, setSpellCheck] = useState(spellcheckAllowed)
   const [navigatorOpen, setNavigatorOpen] = useState(false)
   const [findOpen, setFindOpen] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false)
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
@@ -65,6 +71,11 @@ export function EditorView(): React.JSX.Element {
         event.preventDefault()
         setFindOpen(true)
       }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'f') {
+        event.preventDefault()
+        setSearchOpen(true)
+      }
+      if (event.key === 'Escape') setSearchOpen(false)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -167,6 +178,8 @@ export function EditorView(): React.JSX.Element {
         </Button>
       </div>
 
+      {searchOpen ? <FindBar onClose={() => setSearchOpen(false)} /> : null}
+
       <div className={navigatorOpen ? 'editor-body with-nav' : 'editor-body'}>
         {navigatorOpen ? <Navigator html={doc.html} kind={doc.source.kind} /> : null}
 
@@ -256,7 +269,16 @@ function EditorLanding({
 }): React.JSX.Element {
   const t = useApp((state) => state.t)
   const spotlight = useSpotlight()
+  const openEditorDocument = useApp((state) => state.openEditorDocument)
+  const notify = useApp((state) => state.notify)
   const [templatesOpen, setTemplatesOpen] = useState(false)
+  const [draft, setDraft] = useState<Draft | null>(null)
+
+  // Offered rather than restored: silently reopening yesterday's unsaved work
+  // in place of the empty document someone asked for is its own surprise.
+  useEffect(() => {
+    void readDraft().then(setDraft)
+  }, [])
 
   const readable = FORMATS.filter((format) => format.readable && format.format !== 'unknown')
 
@@ -268,6 +290,39 @@ function EditorLanding({
           <p>{t('editor.sub')}</p>
         </div>
       </div>
+
+      {draft ? (
+        <div className="recovery">
+          <div>
+            <b>{t('editor.recoverTitle')}</b>
+            <p className="muted" style={{ margin: '2px 0 0' }}>
+              {t('editor.recoverBody', { name: draft.name })}
+            </p>
+          </div>
+          <span className="spacer" />
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => {
+              openEditorDocument(documentFromDraft(draft))
+              notify({ kind: 'success', title: t('editor.recovered') })
+              setDraft(null)
+            }}
+          >
+            {t('editor.recoverOpen')}
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              void clearDraft()
+              setDraft(null)
+            }}
+          >
+            {t('editor.recoverDiscard')}
+          </Button>
+        </div>
+      ) : null}
 
       <div className="grid cols-2">
         <button className="tool" {...spotlight} onClick={() => void onOpen()}>
@@ -463,6 +518,97 @@ function FindReplaceModal({
         />
       </div>
     </Modal>
+  )
+}
+
+/**
+ * Ctrl+F: find as you type, with a live count and next/previous.
+ *
+ * Matches are painted through the CSS Custom Highlight API rather than by
+ * wrapping them in <mark>. Inserting elements into a contenteditable surface
+ * would dirty the document, land in the exported file, and be undone by the
+ * user's next Ctrl+Z — a search must leave no trace in what it searches.
+ * Where the API is missing the bar still counts and scrolls; only the tint
+ * is absent.
+ */
+function FindBar({ onClose }: { onClose: () => void }): React.JSX.Element {
+  const t = useApp((state) => state.t)
+  const [query, setQuery] = useState('')
+  const [total, setTotal] = useState(0)
+  const [index, setIndex] = useState(0)
+
+  useEffect(() => {
+    const highlights = (
+      CSS as unknown as { highlights?: Map<string, unknown> & { delete(k: string): void } }
+    ).highlights
+    const HighlightCtor = (window as unknown as { Highlight?: new (...r: Range[]) => unknown })
+      .Highlight
+
+    const surface = document.querySelector('.doc-sheet, .code-body')
+    if (!surface) return
+    const needle = normalizeForSearch(query.trim())
+    highlights?.delete('alcode-find')
+    highlights?.delete('alcode-find-active')
+    if (needle.length < 1) {
+      setTotal(0)
+      setIndex(0)
+      return
+    }
+
+    const walker = document.createTreeWalker(surface, NodeFilter.SHOW_TEXT)
+    const ranges: Range[] = []
+    while (walker.nextNode()) {
+      const node = walker.currentNode as Text
+      const { folded, offsets } = foldWithOffsets(node.nodeValue ?? '')
+      let at = folded.indexOf(needle)
+      while (at !== -1) {
+        const range = document.createRange()
+        range.setStart(node, offsets[at] ?? 0)
+        range.setEnd(node, offsets[at + needle.length] ?? (node.nodeValue?.length ?? 0))
+        ranges.push(range)
+        at = folded.indexOf(needle, at + Math.max(1, needle.length))
+      }
+    }
+
+    setTotal(ranges.length)
+    const current = ranges.length === 0 ? 0 : Math.min(index, ranges.length - 1)
+    if (current !== index) setIndex(current)
+    if (ranges.length === 0) return
+
+    if (highlights && HighlightCtor) {
+      const others = ranges.filter((_, position) => position !== current)
+      if (others.length > 0) highlights.set('alcode-find', new HighlightCtor(...others))
+      highlights.set('alcode-find-active', new HighlightCtor(ranges[current]))
+    }
+    ranges[current].startContainer.parentElement?.scrollIntoView({ block: 'center' })
+
+    return () => {
+      highlights?.delete('alcode-find')
+      highlights?.delete('alcode-find-active')
+    }
+  }, [query, index])
+
+  const step = (delta: number): void => {
+    if (total === 0) return
+    setIndex((current) => (current + delta + total) % total)
+  }
+
+  return (
+    <div className="find-bar">
+      <TextInput value={query} onChange={setQuery} placeholder={t('word.find')} autoFocus />
+      <span className="muted mono" style={{ minWidth: 64, textAlign: 'center' }}>
+        {total === 0 ? t('find.noMatches') : ltr(`${index + 1} / ${total}`)}
+      </span>
+      <Button size="sm" variant="ghost" icon title={t('viewer.prevMatch')} onClick={() => step(-1)}>
+        <ChevronUp size={15} />
+      </Button>
+      <Button size="sm" variant="ghost" icon title={t('viewer.nextMatch')} onClick={() => step(1)}>
+        <ChevronDown size={15} />
+      </Button>
+      <Button size="sm" variant="ghost" icon title={t('action.cancel')} onClick={onClose}>
+        <X size={15} />
+      </Button>
+    </div>
   )
 }
 

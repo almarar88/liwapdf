@@ -42,6 +42,11 @@ const api = {
     set: (patch: Partial<AppSettings>): Promise<AppSettings> =>
       ipcRenderer.invoke('settings:set', patch)
   },
+  draft: {
+    save: (value: unknown): Promise<boolean> => ipcRenderer.invoke('draft:save', value),
+    read: (): Promise<unknown> => ipcRenderer.invoke('draft:read'),
+    clear: (): Promise<boolean> => ipcRenderer.invoke('draft:clear')
+  },
   recents: {
     list: (): Promise<RecentFile[]> => ipcRenderer.invoke('recents:list'),
     clear: (): Promise<RecentFile[]> => ipcRenderer.invoke('recents:clear')

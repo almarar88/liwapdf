@@ -13,6 +13,7 @@ import type { SheetData } from '../lib/documents/sheets'
 import type { Annotation } from '../lib/pdf/annotations'
 import { translate, type TranslationKey } from '../i18n'
 import { extensionOf, uid } from '../lib/format'
+import { clearDraft, saveDraft } from '../lib/documents/draft'
 
 export type Route =
   | 'home'
@@ -105,6 +106,41 @@ const HISTORY_BYTE_BUDGET = 192 * 1024 * 1024
 
 /** Guards the async read-modify-write in applyPdfBytes / undo / redo. */
 let mutationGeneration = 0
+
+/**
+ * Autosave is debounced rather than run per keystroke: a document is written
+ * once the typing pauses, not five times a second. The draft is dropped as
+ * soon as the document is saved or closed, so a stale one is never offered.
+ */
+let draftTimer: ReturnType<typeof setTimeout> | null = null
+const AUTOSAVE_DELAY = 2500
+
+function scheduleDraft(read: () => AppState & AppActions): void {
+  if (draftTimer) clearTimeout(draftTimer)
+  draftTimer = setTimeout(() => {
+    draftTimer = null
+    const doc = read().editorDoc
+    if (!doc || !doc.dirty) return
+    void saveDraft({
+      name: doc.source.name,
+      path: doc.source.path,
+      format: doc.source.format,
+      kind: doc.source.kind,
+      html: doc.html,
+      text: doc.text,
+      sheets: doc.sheets,
+      direction: doc.direction
+    })
+  }, AUTOSAVE_DELAY)
+}
+
+function dropDraft(): void {
+  if (draftTimer) {
+    clearTimeout(draftTimer)
+    draftTimer = null
+  }
+  void clearDraft()
+}
 
 function pushHistory(stack: Uint8Array[], entry: Uint8Array): Uint8Array[] {
   // A single snapshot larger than the whole budget would evict everything and
@@ -599,24 +635,28 @@ export const useApp = create<AppState & AppActions>((set, get) => ({
     const doc = get().editorDoc
     if (!doc || doc.html === html) return
     set({ editorDoc: { ...doc, html, dirty: true } })
+    scheduleDraft(get)
   },
 
   replaceEditorHtml(html) {
     const doc = get().editorDoc
     if (!doc || doc.html === html) return
     set({ editorDoc: { ...doc, html, dirty: true, revision: doc.revision + 1 } })
+    scheduleDraft(get)
   },
 
   updateEditorSheets(sheets) {
     const doc = get().editorDoc
     if (!doc) return
     set({ editorDoc: { ...doc, sheets, dirty: true } })
+    scheduleDraft(get)
   },
 
   updateEditorText(text) {
     const doc = get().editorDoc
     if (!doc || doc.text === text) return
     set({ editorDoc: { ...doc, text, dirty: true } })
+    scheduleDraft(get)
   },
 
   setActiveSheet(index) {
@@ -632,12 +672,15 @@ export const useApp = create<AppState & AppActions>((set, get) => ({
   },
 
   closeEditor() {
+    dropDraft()
     set({ editorDoc: null })
   },
 
   markEditorSaved(path, name) {
     const doc = get().editorDoc
     if (!doc) return
+    // Saved to a real file, so the recovery copy has nothing left to recover.
+    dropDraft()
     set({
       editorDoc: {
         ...doc,
