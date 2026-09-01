@@ -156,6 +156,31 @@ function pushHistory(stack: Uint8Array[], entry: Uint8Array): Uint8Array[] {
   return next
 }
 
+/**
+ * Recently used tools live in localStorage rather than the settings file: they
+ * are a convenience of this machine's habit, not a preference worth syncing,
+ * and losing them costs nothing.
+ */
+const RECENT_TOOLS_KEY = 'alcode.recentTools'
+
+function readRecentTools(): string[] {
+  try {
+    const raw = localStorage.getItem(RECENT_TOOLS_KEY)
+    const parsed: unknown = raw ? JSON.parse(raw) : []
+    return Array.isArray(parsed) ? parsed.filter((entry): entry is string => typeof entry === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+function writeRecentTools(ids: string[]): void {
+  try {
+    localStorage.setItem(RECENT_TOOLS_KEY, JSON.stringify(ids))
+  } catch {
+    // Storage can be full or disabled; the chips are not worth an error.
+  }
+}
+
 interface AppState {
   settings: AppSettings
   dark: boolean
@@ -187,6 +212,8 @@ interface AppState {
    * grid of tiles to find it in again.
    */
   activeTool: string | null
+  /** Tool ids most recently opened, newest first; the toolbox shows them as chips. */
+  recentTools: string[]
 
   /** Set when a file needs a password before it can be opened. */
   passwordPrompt: { name: string; bytes: Uint8Array; path: string | null; wrong: boolean } | null
@@ -355,6 +382,7 @@ export const useApp = create<AppState & AppActions>((set, get) => ({
 
   editorDoc: null,
   activeTool: null,
+  recentTools: readRecentTools(),
   passwordPrompt: null,
   confirmPrompt: null,
 
@@ -618,7 +646,9 @@ export const useApp = create<AppState & AppActions>((set, get) => ({
       })
       if (!editor) return
     }
-    set({ route: 'tools', activeTool: id, paletteOpen: false })
+    const recentTools = [id, ...get().recentTools.filter((entry) => entry !== id)].slice(0, 8)
+    writeRecentTools(recentTools)
+    set({ route: 'tools', activeTool: id, paletteOpen: false, recentTools })
   },
 
   closeTool() {

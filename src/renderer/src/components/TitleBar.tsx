@@ -34,7 +34,14 @@ export function TitleBar({
   return (
     <div className={`titlebar${isMac ? ' mac' : ''}`}>
       <div className="brand">
-        <span className="brand-mark">A</span>
+        <span className="brand-mark" aria-hidden>
+          <svg viewBox="0 0 24 24" width="14" height="14">
+            <path
+              d="M12 3.5 4.5 20h3l1.7-4h5.6l1.7 4h3L12 3.5zm0 5.4 1.9 4.6h-3.8L12 8.9z"
+              fill="#fff"
+            />
+          </svg>
+        </span>
         <span className="brand-name">
           Alcode <span>Editor</span>
         </span>

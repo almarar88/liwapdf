@@ -4,28 +4,27 @@ import {
   FileText,
   FileType2,
   Images,
-  Combine,
-  Scissors,
-  Shrink,
-  Droplets,
-  ShieldCheck,
   UploadCloud,
   Clock3,
   FolderOpen,
   Trash2,
-  Sparkles,
-  WifiOff,
-  Lock,
   FileSpreadsheet,
   Signature,
-  Minimize2
+  FilePlus2,
+  Repeat2,
+  CalendarDays,
+  Check
 } from 'lucide-react'
 import { useApp } from '../store/app'
 import { useDocumentActions } from '../hooks/useDocumentActions'
 import { Button, Bytes, Card, Dropzone, Empty, useSpotlight } from '../components/ui'
-import { formatRelativeTime } from '../lib/format'
+import { formatRelativeTime, formatHijri, formatGregorian } from '../lib/format'
 import { clearDraft, documentFromDraft, readDraft, type Draft } from '../lib/documents/draft'
 import { listSignatures } from '../components/SignaturePad'
+import { toolById, type ToolId, type Tone } from './toolRegistry'
+
+/** The tools people reach for first; the rest are one click away. */
+const QUICK_TOOLS: ToolId[] = ['merge', 'split', 'compress', 'watermark', 'protect', 'ocr', 'redact', 'batch']
 
 export function HomeView(): React.JSX.Element {
   const t = useApp((state) => state.t)
@@ -33,6 +32,7 @@ export function HomeView(): React.JSX.Element {
   const clearRecents = useApp((state) => state.clearRecents)
   const language = useApp((state) => state.settings.language)
   const navigate = useApp((state) => state.navigate)
+  const openTool = useApp((state) => state.openTool)
   const doc = useApp((state) => state.doc)
   const editorDoc = useApp((state) => state.editorDoc)
   const openEditorDocument = useApp((state) => state.openEditorDocument)
@@ -60,17 +60,41 @@ export function HomeView(): React.JSX.Element {
     return text.split(/\s+/).filter(Boolean).length
   }, [editorDoc])
 
-  const quick = [
-    { icon: <FileText size={19} />, label: t('action.openPdf'), run: () => void openDialog() },
-    { icon: <FileType2 size={19} />, label: t('editor.new.rich'), run: () => navigate('editor') },
-    { icon: <Combine size={19} />, label: t('tool.merge'), run: () => navigate('tools') },
-    { icon: <Scissors size={19} />, label: t('tool.split'), run: () => navigate('tools') },
-    { icon: <Shrink size={19} />, label: t('tool.compress'), run: () => navigate('tools') },
-    { icon: <Images size={19} />, label: t('convert.pdfToImages'), run: () => navigate('convert') },
-    { icon: <Droplets size={19} />, label: t('tool.watermark'), run: () => navigate('tools') },
-    { icon: <ShieldCheck size={19} />, label: t('tool.protect'), run: () => navigate('tools') },
-    { icon: <FileSpreadsheet size={19} />, label: t('editor.new.sheet'), run: () => navigate('editor') },
-    { icon: <Minimize2 size={19} />, label: t('tool.compressAny'), run: () => navigate('tools') }
+  // The greeting follows the clock and the date is given on both calendars:
+  // the people this is built for live on both, and a letter dated today needs
+  // the Hijri date as often as the Gregorian one.
+  const now = new Date()
+  const hour = now.getHours()
+  const greeting = t(hour < 12 ? 'home.morning' : hour < 18 ? 'home.afternoon' : 'home.evening')
+  const weekday = new Intl.DateTimeFormat(language === 'ar' ? 'ar' : 'en-GB', { weekday: 'long' }).format(now)
+  const dateLine = `${weekday}، ${formatGregorian(now, language)} · ${formatHijri(now, language)}`
+
+  const quick: { key: string; tone: Tone; icon: React.ReactNode; label: string; run: () => void }[] = [
+    ...QUICK_TOOLS.flatMap((id) => {
+      const tool = toolById(id)
+      if (!tool) return []
+      return [
+        {
+          key: id,
+          tone: tool.tone,
+          icon: tool.icon,
+          label: t(tool.titleKey),
+          // Opens the panel itself rather than landing on the grid.
+          run: () => openTool(id, tool.needsDocument)
+        }
+      ]
+    }),
+    { key: 'new-rich', tone: 'blue', icon: <FilePlus2 size={19} />, label: t('editor.new.rich'), run: () => navigate('editor') },
+    { key: 'new-sheet', tone: 'green', icon: <FileSpreadsheet size={19} />, label: t('editor.new.sheet'), run: () => navigate('editor') },
+    { key: 'convert', tone: 'purple', icon: <Repeat2 size={19} />, label: t('nav.convert'), run: () => navigate('convert') },
+    { key: 'images', tone: 'teal', icon: <Images size={19} />, label: t('convert.pdfToImages'), run: () => navigate('convert') }
+  ]
+
+  const stats: { key: string; tone: Tone; icon: React.ReactNode; value: string | number; label: string }[] = [
+    { key: 'pages', tone: 'blue', icon: <FileText size={15} />, value: doc ? doc.pageCount : '—', label: t('home.stat.pages') },
+    { key: 'words', tone: 'purple', icon: <FileType2 size={15} />, value: editorDoc ? editorWords : '—', label: t('home.stat.words') },
+    { key: 'recent', tone: 'amber', icon: <Clock3 size={15} />, value: recents.length, label: t('home.stat.recent') },
+    { key: 'signatures', tone: 'green', icon: <Signature size={15} />, value: signatureCount, label: t('home.stat.signatures') }
   ]
 
   return (
@@ -80,17 +104,34 @@ export function HomeView(): React.JSX.Element {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
       >
-        <div className="page-head">
+        <section className="hero">
           <div>
-            <h1>{t('home.greeting')}</h1>
-            <p>{t('home.sub')}</p>
+            <span className="eyebrow">
+              <CalendarDays size={13} />
+              {dateLine}
+            </span>
+            <h1>{greeting}</h1>
+            <p>{t('home.heroSub')}</p>
+            <div className="hero-actions">
+              <Button variant="primary" size="lg" onClick={() => void openDialog()}>
+                <FolderOpen size={17} />
+                {t('action.open')}
+              </Button>
+              <Button size="lg" onClick={() => navigate('editor')}>
+                <FilePlus2 size={17} />
+                {t('editor.new.rich')}
+              </Button>
+            </div>
           </div>
-          <div className="spacer" />
-          <Button variant="primary" size="lg" onClick={() => void openDialog()}>
-            <FolderOpen size={17} />
-            {t('action.open')}
-          </Button>
-        </div>
+          <div className="hero-art" aria-hidden>
+            <div className="sheet"><i className="t" /><i /><i className="s" /><i /></div>
+            <div className="sheet"><i className="t" /><i /><i className="s" /><i /></div>
+            <div className="sheet">
+              <i className="t" /><i /><i className="s" /><i />
+              <span className="stamp"><Check size={15} strokeWidth={3} /></span>
+            </div>
+          </div>
+        </section>
 
         {draft ? (
           <div className="recovery">
@@ -121,7 +162,7 @@ export function HomeView(): React.JSX.Element {
         {doc || editorDoc ? (
           <div className="grid cols-2" style={{ marginBottom: 16 }}>
             {doc ? (
-              <button className="open-doc" onClick={() => navigate('viewer')} {...spotlight}>
+              <button className="open-doc tone-rose" onClick={() => navigate('viewer')} {...spotlight}>
                 <span className="icon"><FileText size={19} /></span>
                 <span className="grow">
                   <b><bdi>{doc.name}</bdi></b>
@@ -133,7 +174,7 @@ export function HomeView(): React.JSX.Element {
               </button>
             ) : null}
             {editorDoc ? (
-              <button className="open-doc" onClick={() => navigate('editor')} {...spotlight}>
+              <button className="open-doc tone-blue" onClick={() => navigate('editor')} {...spotlight}>
                 <span className="icon"><FileType2 size={19} /></span>
                 <span className="grow">
                   <b><bdi>{editorDoc.source.name}</bdi></b>
@@ -156,50 +197,23 @@ export function HomeView(): React.JSX.Element {
         )}
 
         <div className="grid cols-4" style={{ marginTop: 16 }}>
-          <Card style={{ padding: 0 }} pad={false}>
-            <div className="stat">
-              <span className="value">{doc ? doc.pageCount : '—'}</span>
-              <span className="label">
-                <FileText size={12} style={{ verticalAlign: -2, marginInlineEnd: 4 }} />
-                {t('home.stat.pages')}
-              </span>
-            </div>
-          </Card>
-          <Card style={{ padding: 0 }} pad={false}>
-            <div className="stat">
-              <span className="value">{editorDoc ? editorWords : '—'}</span>
-              <span className="label">
-                <FileType2 size={12} style={{ verticalAlign: -2, marginInlineEnd: 4 }} />
-                {t('home.stat.words')}
-              </span>
-            </div>
-          </Card>
-          <Card style={{ padding: 0 }} pad={false}>
-            <div className="stat">
-              <span className="value">{recents.length}</span>
-              <span className="label">
-                <Clock3 size={12} style={{ verticalAlign: -2, marginInlineEnd: 4 }} />
-                {t('home.stat.recent')}
-              </span>
-            </div>
-          </Card>
-          <Card style={{ padding: 0 }} pad={false}>
-            <div className="stat">
-              <span className="value">{signatureCount}</span>
-              <span className="label">
-                <Signature size={12} style={{ verticalAlign: -2, marginInlineEnd: 4 }} />
-                {t('home.stat.signatures')}
-              </span>
-            </div>
-          </Card>
+          {stats.map((stat) => (
+            <Card key={stat.key} style={{ padding: 0 }} pad={false}>
+              <div className={`stat tone-${stat.tone}`}>
+                <span className="s-icon">{stat.icon}</span>
+                <span className="value">{stat.value}</span>
+                <span className="label">{stat.label}</span>
+              </div>
+            </Card>
+          ))}
         </div>
 
         <h2 className="section-title">{t('home.quick')}</h2>
         <div className="grid cols-4">
           {quick.map((item, index) => (
             <motion.button
-              key={item.label}
-              className="tool"
+              key={item.key}
+              className={`tool tone-${item.tone}`}
               onClick={item.run}
               {...spotlight}
               initial={{ opacity: 0, y: 12 }}
@@ -237,15 +251,16 @@ export function HomeView(): React.JSX.Element {
             recents.slice(0, 10).map((file) => (
               <div className="list-row" key={file.path}>
                 <span
-                  className="icon"
+                  className={`icon tone-${file.kind === 'pdf' ? 'rose' : file.kind === 'image' ? 'teal' : 'blue'}`}
                   style={{
                     width: 34,
                     height: 34,
+                    flex: 'none',
                     borderRadius: 'var(--r-sm)',
                     display: 'grid',
                     placeItems: 'center',
-                    background: 'var(--accent-soft)',
-                    color: 'var(--accent)'
+                    background: 'color-mix(in srgb, var(--tone) 14%, transparent)',
+                    color: 'var(--tone)'
                   }}
                 >
                   {file.kind === 'pdf' ? (

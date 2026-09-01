@@ -21,10 +21,10 @@ format — PDF, Word, Excel, PowerPoint, EPUB and more. Fully offline.*
 
 | النظام / Platform | نوع الملف | رابط التحميل | رابط بديل |
 | --- | --- | --- | --- |
-| 🪟 **Windows 10/11 (64-bit)** | مثبّت `.exe` | [تحميل / Download](https://almarar88.github.io/liwapdf/Alcode-Editor-Setup.exe) | [Releases](../../releases/latest/download/Alcode-Editor-1.6.0-x64-Setup.exe) |
-| 🪟 **Windows (نسخة محمولة)** | `Portable.exe` بدون تثبيت | [تحميل / Download](https://almarar88.github.io/liwapdf/Alcode-Editor-Portable.exe) | [Releases](../../releases/latest/download/Alcode-Editor-1.6.0-Portable.exe) |
-| 🍎 **macOS — Apple Silicon (M1/M2/M3/M4)** | `.dmg` | [تحميل / Download](https://almarar88.github.io/liwapdf/Alcode-Editor-macOS-AppleSilicon.dmg) | [Releases](../../releases/latest/download/Alcode-Editor-1.6.0-arm64.dmg) |
-| 🍎 **macOS — Intel** | `.dmg` | [تحميل / Download](https://almarar88.github.io/liwapdf/Alcode-Editor-macOS-Intel.dmg) | [Releases](../../releases/latest/download/Alcode-Editor-1.6.0-x64.dmg) |
+| 🪟 **Windows 10/11 (64-bit)** | مثبّت `.exe` | [تحميل / Download](https://almarar88.github.io/liwapdf/Alcode-Editor-Setup.exe) | [Releases](../../releases/latest/download/Alcode-Editor-1.7.0-x64-Setup.exe) |
+| 🪟 **Windows (نسخة محمولة)** | `Portable.exe` بدون تثبيت | [تحميل / Download](https://almarar88.github.io/liwapdf/Alcode-Editor-Portable.exe) | [Releases](../../releases/latest/download/Alcode-Editor-1.7.0-Portable.exe) |
+| 🍎 **macOS — Apple Silicon (M1/M2/M3/M4)** | `.dmg` | [تحميل / Download](https://almarar88.github.io/liwapdf/Alcode-Editor-macOS-AppleSilicon.dmg) | [Releases](../../releases/latest/download/Alcode-Editor-1.7.0-arm64.dmg) |
+| 🍎 **macOS — Intel** | `.dmg` | [تحميل / Download](https://almarar88.github.io/liwapdf/Alcode-Editor-macOS-Intel.dmg) | [Releases](../../releases/latest/download/Alcode-Editor-1.7.0-x64.dmg) |
 
 > ملفات صفحة الإصدارات تُخدَّم من `objects.githubusercontent.com`، وهو محجوب على بعض الشبكات
 > رغم أن `github.com` نفسه يفتح — فيفشل التحميل بخطأ اتصال لا بخطأ «الملف غير موجود».
@@ -109,12 +109,12 @@ Tesseract بالكامل داخل جهازك — العامل ونواة WebAsse
 - «كلمة كاملة» في البحث والاستبدال مبنيّ على حدود يونيكود لا على `\b` الإنجليزية.
 - الأرقام العربية‑الهندية داخل خلايا الجداول تُقرأ كأرقام لا كنص.
 
-### صندوق الأدوات (27 أداة)
+### صندوق الأدوات (28 أداة)
 | الصفحات | التحسين والحماية | المحتوى |
 | --- | --- | --- |
 | دمج ملفات | ضغط الملف | علامة مائية (نص أو شعار) |
 | تقسيم (نطاق/عدد/كل صفحة) | حماية بكلمة مرور AES‑256 | ترقيم الصفحات (أرقام عربية أو لاتينية) |
-| تقسيم حسب الحجم | فك الحماية | ترويسة وتذييل |
+| تقسيم حسب الحجم | فك الحماية | ترويسة وتذييل برموز `{page}` `{total}` `{date}` `{hijri}` |
 | استخراج صفحات | تحسين وإصلاح | خلفية الصفحة |
 | حذف صفحات | بيانات المستند (Metadata) | ختم جاهز (مسودة/سري/معتمد) |
 | تدوير الصفحات | | استخراج الصور المضمّنة |
@@ -123,6 +123,7 @@ Tesseract بالكامل داخل جهازك — العامل ونواة WebAsse
 | قص الهوامش | تصغير حجم أي ملف | الفهرس والمرفقات |
 | | تنقيح وحذف نهائي بالبحث | |
 | | | التعرّف الضوئي على النص (OCR) |
+| | | معالجة دفعية (ضغط/تحويل/علامة/حماية لعشرات الملفات) |
 
 ### محرر المستندات الشامل
 
@@ -174,8 +175,15 @@ Tesseract بالكامل داخل جهازك — العامل ونواة WebAsse
 بالإضافة إلى التصدير من المحرر إلى أي صيغة مدعومة للكتابة.
 
 ### التصميم والتجربة
-- واجهة مستوحاة من لغة تصميم Apple: أسطح شفافة، حدود شعرية، زوايا ناعمة، وحركات نابضة.
-- وضع فاتح وداكن وتلقائي يتبع النظام، مع ستة ألوان تمييز.
+- واجهة مستوحاة من لغة تصميم Apple: أسطح شفافة، حدود شعرية، زوايا ناعمة، وحركات نابضة،
+  وحبيبات ورقية خفيفة خلف الواجهة.
+- **صفحة رئيسية** ببطاقة ترحيب تتبع الساعة وتعرض تاريخ اليوم بالتقويمين الهجري والميلادي،
+  وإحصاءات عملك أنت (صفحات الملف المفتوح، كلمات المحرر، الملفات الأخيرة، توقيعاتك).
+- **ألوان للأدوات:** كل عائلة أدوات بلونها (الحماية كهرمانية، الحذف وردي، التصغير أخضر…)
+  فتُقرأ الشبكة بالعين قبل قراءة الأسماء.
+- **أفلت أي ملف في أي مكان** في النافذة ليُفتح.
+- **بحث في صندوق الأدوات** بمطابقة عربية مطبَّعة، وشرائح «استخدمتها مؤخرًا».
+- وضع فاتح وداكن وتلقائي يُختار ببطاقات معاينة، مع ثمانية ألوان تمييز.
 - عربي كامل بواجهة RTL، وإنجليزي بواجهة LTR — قابل للتبديل فوراً.
 - لوحة أوامر (`Ctrl/Cmd + K`) تفتح الأداة نفسها مباشرة، ببحث عربي مطبَّع.
 - زر إيقاف على شاشة الانتظار للعمليات الطويلة (التعرّف الضوئي، الضغط بإعادة الرسم).
@@ -290,8 +298,8 @@ npm run dist:mac       # حزمة macOS (تتطلب macOS)
 الملفات التنفيذية تُبنى تلقائياً على GitHub Actions لويندوز وماك:
 
 ```bash
-git tag v1.6.0
-git push origin v1.6.0
+git tag v1.7.0
+git push origin v1.7.0
 ```
 
 سير العمل في `.github/workflows/release.yml` يبني النسختين وينشرهما في Release واحد

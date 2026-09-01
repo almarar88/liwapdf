@@ -347,32 +347,10 @@ export function toWesternDigits(value: string): string {
 
 /* ------------------------------------------------------------- calendars */
 
-/**
- * Formats a date on the Umm al-Qura Hijri calendar, which Chromium ships with
- * ICU. Used for headers, footers and page-number templates.
- */
-export function formatHijri(date: Date, language: 'ar' | 'en'): string {
-  try {
-    return new Intl.DateTimeFormat(
-      language === 'ar' ? 'ar-SA-u-ca-islamic-umalqura' : 'en-US-u-ca-islamic-umalqura',
-      { day: 'numeric', month: 'long', year: 'numeric' }
-    ).format(date)
-  } catch {
-    return date.toISOString().slice(0, 10)
-  }
-}
-
-export function formatGregorian(date: Date, language: 'ar' | 'en'): string {
-  try {
-    return new Intl.DateTimeFormat(language === 'ar' ? 'ar' : 'en-GB', {
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric'
-    }).format(date)
-  } catch {
-    return date.toISOString().slice(0, 10)
-  }
-}
+// The calendar formatters moved to lib/format so the dashboard can show the
+// date without pulling the PDF stack into the startup bundle; re-exported here
+// for the header, footer and page-number code that always used them.
+export { formatHijri, formatGregorian } from '../format'
 
 /**
  * Draws text that is present but not painted — PDF text rendering mode 3.

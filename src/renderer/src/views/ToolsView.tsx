@@ -1,9 +1,11 @@
+import { useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
-import { FileText, FilePlus2, FolderOpen } from 'lucide-react'
+import { FileText, FilePlus2, FolderOpen, Search, X, History } from 'lucide-react'
 import { useApp } from '../store/app'
 import { Button, Modal, useSpotlight } from '../components/ui'
 import { useDocumentActions } from '../hooks/useDocumentActions'
-import { TOOLS, TOOL_GROUPS, type ToolId } from './toolRegistry'
+import { normalizeForSearch } from '../lib/text/encoding'
+import { TOOLS, TOOL_GROUPS, toolById, type ToolId } from './toolRegistry'
 import {
   MergePanel,
   SplitPanel,
@@ -77,12 +79,29 @@ export function ToolsView(): React.JSX.Element {
   const closeTool = useApp((state) => state.closeTool)
   const doc = useApp((state) => state.doc)
   const editorDoc = useApp((state) => state.editorDoc)
+  const recentTools = useApp((state) => state.recentTools)
   const navigate = useApp((state) => state.navigate)
   const { openDialog, bridgeEditorToPdf } = useDocumentActions()
   const spotlight = useSpotlight()
+  const [query, setQuery] = useState('')
 
-  const descriptor = openTool ? TOOLS.find((tool) => tool.id === openTool) : null
+  const descriptor = openTool ? toolById(openTool) : null
   const Panel = openTool ? PANELS[openTool] : null
+
+  // Folded like the command palette, so "الاسم" finds "الأسم" and a stray
+  // diacritic never hides a tool.
+  const needle = normalizeForSearch(query.trim())
+  const visible = useMemo(
+    () =>
+      needle
+        ? TOOLS.filter((tool) =>
+            normalizeForSearch(`${t(tool.titleKey)} ${t(tool.descriptionKey)}`).includes(needle)
+          )
+        : TOOLS,
+    [needle, t]
+  )
+
+  const recent = recentTools.map(toolById).filter((tool) => tool !== undefined).slice(0, 6)
 
   return (
     <div className="view">
@@ -90,6 +109,25 @@ export function ToolsView(): React.JSX.Element {
         <div>
           <h1>{t('tools.title')}</h1>
           <p>{t('tools.sub')}</p>
+        </div>
+        <div className="spacer" />
+        <div className="tool-search">
+          <Search size={16} className="lead" />
+          <input
+            className="input"
+            value={query}
+            placeholder={t('tools.search')}
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') setQuery('')
+            }}
+            aria-label={t('tools.search')}
+          />
+          {query ? (
+            <button className="btn ghost icon sm clear" onClick={() => setQuery('')} aria-label={t('action.clear')}>
+              <X size={14} />
+            </button>
+          ) : null}
         </div>
       </div>
 
@@ -102,33 +140,67 @@ export function ToolsView(): React.JSX.Element {
         onGoToViewer={() => navigate('viewer')}
       />
 
-      {TOOL_GROUPS.map((group) => (
-        <section key={group.id}>
-          <h2 className="section-title">{t(group.labelKey)}</h2>
-          <div className="grid cols-3">
-            {TOOLS.filter((tool) => tool.group === group.id).map((tool, index) => (
-              <motion.button
+      {!needle && recent.length > 0 ? (
+        <section className="tool-section">
+          <div className="group-head">
+            <span className="g-icon"><History size={15} /></span>
+            <h2 className="section-title">{t('tools.recent')}</h2>
+          </div>
+          <div className="chips">
+            {recent.map((tool) => (
+              <button
                 key={tool.id}
-                className="tool"
-                {...spotlight}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.02, duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
-                onClick={() => requestTool(tool.id, Boolean(tool.needsDocument))}
+                className={`chip tone-${tool.tone}`}
+                onClick={() => requestTool(tool.id, tool.needsDocument)}
               >
-                <span className="icon">{tool.icon}</span>
-                <h3>{t(tool.titleKey)}</h3>
-                <p>{t(tool.descriptionKey)}</p>
-              </motion.button>
+                {tool.icon}
+                {t(tool.titleKey)}
+              </button>
             ))}
           </div>
         </section>
-      ))}
+      ) : null}
+
+      {visible.length === 0 ? (
+        <p className="muted" style={{ marginTop: 24 }}>{t('tools.noMatch')}</p>
+      ) : null}
+
+      {TOOL_GROUPS.map((group) => {
+        const tools = visible.filter((tool) => tool.group === group.id)
+        if (tools.length === 0) return null
+        return (
+          <section key={group.id} className="tool-section">
+            <div className={`group-head tone-${group.tone}`}>
+              <span className="g-icon">{group.icon}</span>
+              <h2 className="section-title">{t(group.labelKey)}</h2>
+              <span className="badge">{t('tools.count', { n: tools.length })}</span>
+            </div>
+            <div className="grid cols-3">
+              {tools.map((tool, index) => (
+                <motion.button
+                  key={tool.id}
+                  className={`tool tone-${tool.tone}`}
+                  {...spotlight}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.02, duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+                  onClick={() => requestTool(tool.id, Boolean(tool.needsDocument))}
+                >
+                  <span className="icon">{tool.icon}</span>
+                  <h3>{t(tool.titleKey)}</h3>
+                  <p>{t(tool.descriptionKey)}</p>
+                </motion.button>
+              ))}
+            </div>
+          </section>
+        )
+      })}
 
       <Modal
         open={Boolean(openTool)}
         onClose={closeTool}
         title={descriptor ? t(descriptor.titleKey) : ''}
+        icon={descriptor ? <span className={`m-icon tone-${descriptor.tone}`}>{descriptor.icon}</span> : undefined}
         wide={openTool === 'compare'}
       >
         {Panel ? <Panel onClose={closeTool} /> : null}

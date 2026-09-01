@@ -23,7 +23,15 @@ import {
   PDFFont,
   type PDFImage
 } from '@cantoo/pdf-lib'
-import { hexToRgb, needsComplexShaping, PAGE_PRESETS, MM_TO_PT, stripExtension } from '../format'
+import {
+  formatGregorian,
+  formatHijri,
+  hexToRgb,
+  needsComplexShaping,
+  PAGE_PRESETS,
+  MM_TO_PT,
+  stripExtension
+} from '../format'
 import {
   drawSmartText,
   isRtlText,
@@ -1103,29 +1111,46 @@ export async function addHeaderFooter(
     return `${band}${physical}` as Anchor
   }
 
-  for (const index of options.indices) {
+  // Tokens are resolved per page. Digits follow the script of the text around
+  // them, so "صفحة {page}" gets Arabic-Indic numerals and "Page {page}" does
+  // not; the dates do the same with their language.
+  const today = new Date()
+  const expand = (text: string, position: number): string => {
+    if (!/\{(page|total|date|hijri)\}/.test(text)) return text
+    const arabic = isRtlText(text)
+    const digits = (value: number): string => (arabic ? toArabicIndicDigits(value) : String(value))
+    return text
+      .replaceAll('{page}', digits(position + 1))
+      .replaceAll('{total}', digits(options.indices.length))
+      .replaceAll('{date}', formatGregorian(today, arabic ? 'ar' : 'en'))
+      .replaceAll('{hijri}', formatHijri(today, arabic ? 'ar' : 'en'))
+  }
+
+  for (const [position, index] of options.indices.entries()) {
     const page = pages[index]
     if (!page) continue
-    if (options.header.trim()) {
+    const header = expand(options.header, position)
+    const footer = expand(options.footer, position)
+    if (header.trim()) {
       await drawLabel({
         page,
-        text: options.header,
+        text: header,
         fontSize: options.fontSize,
         color: options.color,
         opacity: 1,
-        anchor: anchorFor('top', options.header),
+        anchor: anchorFor('top', header),
         margin: options.margin,
         cache
       })
     }
-    if (options.footer.trim()) {
+    if (footer.trim()) {
       await drawLabel({
         page,
-        text: options.footer,
+        text: footer,
         fontSize: options.fontSize,
         color: options.color,
         opacity: 1,
-        anchor: anchorFor('bottom', options.footer),
+        anchor: anchorFor('bottom', footer),
         margin: options.margin,
         cache
       })

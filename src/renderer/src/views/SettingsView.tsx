@@ -10,7 +10,15 @@ const ACCENTS: { id: AppSettings['accent']; color: string }[] = [
   { id: 'pink', color: '#ff2d78' },
   { id: 'green', color: '#22a565' },
   { id: 'orange', color: '#ff8a00' },
+  { id: 'teal', color: '#0fa3a3' },
+  { id: 'indigo', color: '#5b5bd6' },
   { id: 'graphite', color: '#5a6474' }
+]
+
+const THEMES: { id: AppSettings['theme']; labelKey: 'settings.theme.light' | 'settings.theme.dark' | 'settings.theme.system'; icon: React.ReactNode }[] = [
+  { id: 'light', labelKey: 'settings.theme.light', icon: <Sun size={14} /> },
+  { id: 'dark', labelKey: 'settings.theme.dark', icon: <Moon size={14} /> },
+  { id: 'system', labelKey: 'settings.theme.system', icon: <SunMoon size={14} /> }
 ]
 
 export function SettingsView(): React.JSX.Element {
@@ -53,15 +61,27 @@ export function SettingsView(): React.JSX.Element {
       <Card>
         <div className="stack">
           <Field label={t('settings.theme')}>
-            <Segmented
-              value={settings.theme}
-              onChange={(value) => void setSettings({ theme: value })}
-              options={[
-                { value: 'light', label: t('settings.theme.light'), icon: <Sun size={14} /> },
-                { value: 'dark', label: t('settings.theme.dark'), icon: <Moon size={14} /> },
-                { value: 'system', label: t('settings.theme.system'), icon: <SunMoon size={14} /> }
-              ]}
-            />
+            <div className="theme-cards" role="radiogroup" aria-label={t('settings.theme')}>
+              {THEMES.map((theme) => (
+                <button
+                  key={theme.id}
+                  role="radio"
+                  aria-checked={settings.theme === theme.id}
+                  className={`theme-card${settings.theme === theme.id ? ' active' : ''}`}
+                  onClick={() => void setSettings({ theme: theme.id })}
+                >
+                  <span className={`tc-preview ${theme.id}`} aria-hidden>
+                    <span className="tc-line" style={{ top: 24, width: '40%' }} />
+                    <span className="tc-line" style={{ top: 34, width: '30%' }} />
+                    <span className="tc-line" style={{ top: 44, width: '36%' }} />
+                  </span>
+                  <span className="tc-label">
+                    {theme.icon}
+                    {t(theme.labelKey)}
+                  </span>
+                </button>
+              ))}
+            </div>
           </Field>
 
           <Field label={t('settings.accent')}>

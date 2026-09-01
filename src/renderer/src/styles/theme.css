@@ -78,6 +78,17 @@
   --red: #e5484d;
   --purple: #8250df;
 
+  /* Tones: a fixed palette for the tool tiles and stat cards, independent of
+     the accent, so thirty tools read as a few families rather than one blue
+     field. Each is used at ~14% as a fill and at full strength for the glyph. */
+  --tone-blue: #0a84ff;
+  --tone-green: #22a565;
+  --tone-purple: #8b5cf6;
+  --tone-amber: #e08a00;
+  --tone-rose: #ef4a7b;
+  --tone-teal: #0fa3a3;
+  --tone-indigo: #5b5bd6;
+
   /* Light surfaces */
   --bg: #eef0f4;
   --bg-grad-1: rgba(120, 160, 255, 0.16);
@@ -157,6 +168,28 @@
   --accent: #5a6474; --accent-strong: #3d4553;
   --accent-soft: rgba(90, 100, 116, 0.16); --accent-ring: rgba(90, 100, 116, 0.3);
   --accent-text: #3d4553;
+}
+:root[data-accent='teal'] {
+  --accent: #0fa3a3; --accent-strong: #0b7f7f;
+  --accent-soft: rgba(15, 163, 163, 0.16); --accent-ring: rgba(15, 163, 163, 0.32);
+  --accent-text: #0a6b6b;
+}
+:root[data-accent='indigo'] {
+  --accent: #5b5bd6; --accent-strong: #4242b8;
+  --accent-soft: rgba(91, 91, 214, 0.16); --accent-ring: rgba(91, 91, 214, 0.32);
+  --accent-text: #3d3daa;
+}
+
+/* The tones are lifted slightly on dark surfaces, where the light-mode values
+   sit too close to the background to carry a glyph. */
+:root[data-theme='dark'] {
+  --tone-blue: #4da3ff;
+  --tone-green: #3dc47f;
+  --tone-purple: #a78bfa;
+  --tone-amber: #f5a524;
+  --tone-rose: #ff6b98;
+  --tone-teal: #2ec4c4;
+  --tone-indigo: #8484f0;
 }
 
 /* On a dark surface the soft fill is dark too, so the plain accent is already

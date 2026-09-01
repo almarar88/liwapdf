@@ -171,3 +171,33 @@ export function escapeHtml(value: string): string {
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;')
 }
+
+/* ------------------------------------------------------------- calendars */
+
+/**
+ * Formats a date on the Umm al-Qura Hijri calendar, which Chromium ships with
+ * ICU. Used on the dashboard and in headers, footers and page-number
+ * templates.
+ */
+export function formatHijri(date: Date, language: 'ar' | 'en'): string {
+  try {
+    return new Intl.DateTimeFormat(
+      language === 'ar' ? 'ar-SA-u-ca-islamic-umalqura' : 'en-US-u-ca-islamic-umalqura',
+      { day: 'numeric', month: 'long', year: 'numeric' }
+    ).format(date)
+  } catch {
+    return date.toISOString().slice(0, 10)
+  }
+}
+
+export function formatGregorian(date: Date, language: 'ar' | 'en'): string {
+  try {
+    return new Intl.DateTimeFormat(language === 'ar' ? 'ar' : 'en-GB', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric'
+    }).format(date)
+  } catch {
+    return date.toISOString().slice(0, 10)
+  }
+}

@@ -295,7 +295,8 @@ export function Modal({
   title,
   children,
   footer,
-  wide
+  wide,
+  icon
 }: {
   open: boolean
   onClose: () => void
@@ -303,6 +304,8 @@ export function Modal({
   children: ReactNode
   footer?: ReactNode
   wide?: boolean
+  /** A ready-styled glyph shown before the title (see `.m-icon`). */
+  icon?: ReactNode
 }): React.JSX.Element {
   const panelRef = useRef<HTMLDivElement>(null)
   const returnFocusTo = useRef<HTMLElement | null>(null)
@@ -390,6 +393,7 @@ export function Modal({
             transition={SPRING}
           >
             <div className="modal-head">
+              {icon}
               <h2 id={headingId}>{title}</h2>
               <button className="btn ghost icon sm close" onClick={onClose} aria-label="Close">
                 <X size={16} />

@@ -262,7 +262,7 @@ export function HeaderFooterPanel({ onClose }: ToolPanelProps): React.JSX.Elemen
       <Field label={t('opt.headerText')}>
         <TextInput value={header} onChange={setHeader} />
       </Field>
-      <Field label={t('opt.footerText')}>
+      <Field label={t('opt.footerText')} hint={t('opt.hfTokens')}>
         <TextInput value={footer} onChange={setFooter} />
       </Field>
       <Field label={t('opt.position')}>

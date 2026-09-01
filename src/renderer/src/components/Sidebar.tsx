@@ -10,7 +10,8 @@ import {
   Settings,
   PanelLeftClose,
   PanelLeftOpen,
-  FolderOpen
+  FolderOpen,
+  ShieldCheck
 } from 'lucide-react'
 import { useApp, type Route } from '../store/app'
 import type { TranslationKey } from '../i18n'
@@ -69,6 +70,14 @@ export function Sidebar({ onOpenFile }: { onOpenFile: () => void }): React.JSX.E
       {SECONDARY.map(renderItem)}
 
       <div className="sidebar-footer">
+        {collapsed ? null : (
+          <div className="side-pill">
+            <ShieldCheck size={14} />
+            <span>
+              {t('home.stat.offline')} · {t('home.stat.privacy')}
+            </span>
+          </div>
+        )}
         {collapsed ? null : (
           <div style={{ padding: '0 2px 10px' }}>
             <Button variant="primary" block onClick={onOpenFile}>

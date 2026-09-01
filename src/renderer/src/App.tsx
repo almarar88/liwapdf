@@ -9,6 +9,7 @@ import {
   Repeat2,
   Save,
   Settings as SettingsIcon,
+  UploadCloud,
   Wrench
 } from 'lucide-react'
 import { useApp, type Route } from './store/app'
@@ -52,9 +53,75 @@ export default function App(): React.JSX.Element {
   const { openDialog, openPaths, saveActive, saveActiveAs } = useDocumentActions()
 
   const [platform, setPlatform] = useState('win32')
+  const [dragging, setDragging] = useState(false)
+
+  // Files can be dropped anywhere in the window, not only on the two zones
+  // that draw a dashed border. The zones keep their own handlers: they call
+  // preventDefault on the drop, and the window listener yields to that.
+  useEffect(() => {
+    let depth = 0
+    const hasFiles = (event: DragEvent): boolean =>
+      Array.from(event.dataTransfer?.types ?? []).includes('Files')
+    const onEnter = (event: DragEvent): void => {
+      if (!hasFiles(event)) return
+      depth += 1
+      setDragging(true)
+    }
+    const onLeave = (): void => {
+      depth = Math.max(0, depth - 1)
+      if (depth === 0) setDragging(false)
+    }
+    const onOver = (event: DragEvent): void => {
+      if (hasFiles(event)) event.preventDefault()
+    }
+    const onDrop = (event: DragEvent): void => {
+      depth = 0
+      setDragging(false)
+      if (event.defaultPrevented || !hasFiles(event)) return
+      event.preventDefault()
+      const paths = Array.from(event.dataTransfer?.files ?? [])
+        .map((file) => {
+          try {
+            return window.alcode.pathForFile(file)
+          } catch {
+            return ''
+          }
+        })
+        .filter(Boolean)
+      if (paths.length > 0) void openPaths(paths)
+    }
+    window.addEventListener('dragenter', onEnter)
+    window.addEventListener('dragleave', onLeave)
+    window.addEventListener('dragover', onOver)
+    window.addEventListener('drop', onDrop)
+    return () => {
+      window.removeEventListener('dragenter', onEnter)
+      window.removeEventListener('dragleave', onLeave)
+      window.removeEventListener('dragover', onOver)
+      window.removeEventListener('drop', onDrop)
+    }
+  }, [openPaths])
 
   useEffect(() => {
     void init()
+    // Chromium hands initial focus to the first enabled control when the
+    // window is activated, which is a title-bar button — and that paints a
+    // keyboard focus ring on a fresh launch nobody pressed a key for. Until
+    // the first key or pointer, focus arriving in the title bar is not the
+    // user's doing and is dropped.
+    let interacted = false
+    const onInput = (): void => {
+      interacted = true
+    }
+    const onFocusIn = (event: FocusEvent): void => {
+      const target = event.target
+      if (!interacted && target instanceof HTMLElement && target.closest('.titlebar')) target.blur()
+    }
+    window.addEventListener('keydown', onInput, true)
+    window.addEventListener('pointerdown', onInput, true)
+    window.addEventListener('focusin', onFocusIn)
+    const active = document.activeElement
+    if (active instanceof HTMLElement && active.closest('.titlebar')) active.blur()
     void window.alcode.app.info().then((info) => setPlatform(info.platform))
     void window.alcode.app.takePendingFile().then((path) => {
       if (path) void openPaths([path])
@@ -87,6 +154,9 @@ export default function App(): React.JSX.Element {
     const offNavigate = window.alcode.on.menuNavigate((target) => navigate(target as Route))
 
     return () => {
+      window.removeEventListener('keydown', onInput, true)
+      window.removeEventListener('pointerdown', onInput, true)
+      window.removeEventListener('focusin', onFocusIn)
       offTheme()
       offOpen()
       offMenu()
@@ -194,6 +264,24 @@ export default function App(): React.JSX.Element {
         </main>
       </div>
 
+      <AnimatePresence>
+        {dragging ? (
+          <motion.div
+            className="drop-veil"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.14 }}
+          >
+            <div className="dz-card">
+              <span className="dz-icon">
+                <UploadCloud size={30} />
+              </span>
+              {t('msg.dropHere')}
+            </div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
       <CommandPalette commands={commands} />
       <PasswordDialog />
       <ConfirmDialog />
