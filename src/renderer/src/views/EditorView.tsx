@@ -41,6 +41,7 @@ export function EditorView(): React.JSX.Element {
   const t = useApp((state) => state.t)
   const doc = useApp((state) => state.editorDoc)
   const updateHtml = useApp((state) => state.updateEditorHtml)
+  const replaceHtml = useApp((state) => state.replaceEditorHtml)
   const updateSheets = useApp((state) => state.updateEditorSheets)
   const updateText = useApp((state) => state.updateEditorText)
   const setActiveSheet = useApp((state) => state.setActiveSheet)
@@ -190,6 +191,7 @@ export function EditorView(): React.JSX.Element {
               zoom={zoom}
               spellCheck={spellCheck}
               documentKey={doc.id}
+              revision={doc.revision}
               onChange={updateHtml}
             />
           )}
@@ -231,7 +233,7 @@ export function EditorView(): React.JSX.Element {
             html: doc.html,
             text: doc.text,
             sheets: doc.sheets,
-            setHtml: updateHtml,
+            setHtml: replaceHtml,
             setText: updateText,
             setSheets: updateSheets
           })

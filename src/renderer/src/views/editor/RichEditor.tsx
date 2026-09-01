@@ -57,6 +57,8 @@ interface RichEditorProps {
   spellCheck: boolean
   /** Identity of the loaded document; changing it reloads the surface. */
   documentKey: string
+  /** Bumped when the html changed by some route other than typing here. */
+  revision: number
   onChange: (html: string) => void
 }
 
@@ -66,20 +68,25 @@ export function RichEditor({
   zoom,
   spellCheck,
   documentKey,
+  revision,
   onChange
 }: RichEditorProps): React.JSX.Element {
   const t = useApp((state) => state.t)
   const editorRef = useRef<HTMLDivElement>(null)
   const loadedKey = useRef<string | null>(null)
 
-  // innerHTML is only written when a different document arrives; doing it on
-  // every keystroke would destroy the caret.
+  // innerHTML is written on a new document and on a change this surface did
+  // not make — never on its own output, which would destroy the caret on every
+  // keystroke. Keying on identity alone was the reason find and replace
+  // reported a count over a document it had not visibly touched: the store
+  // held the new markup and the DOM never saw it.
   useEffect(() => {
     const editor = editorRef.current
-    if (!editor || loadedKey.current === documentKey) return
+    const key = `${documentKey}:${revision}`
+    if (!editor || loadedKey.current === key) return
     editor.innerHTML = html || '<p><br /></p>'
-    loadedKey.current = documentKey
-  }, [documentKey, html])
+    loadedKey.current = key
+  }, [documentKey, revision, html])
 
   const sync = (): void => {
     if (editorRef.current) onChange(editorRef.current.innerHTML)

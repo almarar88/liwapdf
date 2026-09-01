@@ -65,6 +65,17 @@ export interface EditorDoc {
    * editor kept showing the previous contents.
    */
   id: string
+  /**
+   * Bumped only by a change the editing surface did not make itself.
+   *
+   * The surface writes its own innerHTML on every keystroke, so it must not
+   * reload on its own output — that would destroy the caret. It therefore
+   * reloads on identity alone, which meant a programmatic edit (find and
+   * replace, most visibly) updated the store, never reached the DOM, and was
+   * overwritten by the next sync: the toast said "replaced 1" over an
+   * unchanged document.
+   */
+  revision: number
   source: LoadedDocument
   html: string
   sheets: SheetData[]
@@ -205,6 +216,8 @@ interface AppActions {
 
   openEditorDocument: (loaded: LoadedDocument) => void
   updateEditorHtml: (html: string) => void
+  /** For content the editing surface did not type: it must reload to show it. */
+  replaceEditorHtml: (html: string) => void
   updateEditorSheets: (sheets: SheetData[]) => void
   updateEditorText: (text: string) => void
   setActiveSheet: (index: number) => void
@@ -570,6 +583,7 @@ export const useApp = create<AppState & AppActions>((set, get) => ({
     set({
       editorDoc: {
         id: uid(),
+        revision: 0,
         source: loaded,
         html: loaded.html ?? '',
         sheets: loaded.sheets ?? [],
@@ -585,6 +599,12 @@ export const useApp = create<AppState & AppActions>((set, get) => ({
     const doc = get().editorDoc
     if (!doc || doc.html === html) return
     set({ editorDoc: { ...doc, html, dirty: true } })
+  },
+
+  replaceEditorHtml(html) {
+    const doc = get().editorDoc
+    if (!doc || doc.html === html) return
+    set({ editorDoc: { ...doc, html, dirty: true, revision: doc.revision + 1 } })
   },
 
   updateEditorSheets(sheets) {
