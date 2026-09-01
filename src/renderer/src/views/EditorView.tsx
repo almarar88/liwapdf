@@ -350,28 +350,28 @@ function EditorLanding({
       ) : null}
 
       <div className="grid cols-2">
-        <button className="tool" {...spotlight} onClick={() => void onOpen()}>
+        <button className="tool tone-blue" {...spotlight} onClick={() => void onOpen()}>
           <span className="icon">
             <FolderOpen size={19} />
           </span>
           <h3>{t('editor.openAny')}</h3>
           <p>{t('editor.openAny.d')}</p>
         </button>
-        <button className="tool" {...spotlight} onClick={() => onNew('rich')}>
+        <button className="tool tone-indigo" {...spotlight} onClick={() => onNew('rich')}>
           <span className="icon">
             <FilePlus2 size={19} />
           </span>
           <h3>{t('editor.new.rich')}</h3>
           <p>{t('editor.new.rich.d')}</p>
         </button>
-        <button className="tool" {...spotlight} onClick={() => onNew('sheet')}>
+        <button className="tool tone-green" {...spotlight} onClick={() => onNew('sheet')}>
           <span className="icon">
             <FileSpreadsheet size={19} />
           </span>
           <h3>{t('editor.new.sheet')}</h3>
           <p>{t('editor.new.sheet.d')}</p>
         </button>
-        <button className="tool" {...spotlight} onClick={() => onNew('code')}>
+        <button className="tool tone-amber" {...spotlight} onClick={() => onNew('code')}>
           <span className="icon">
             <FileText size={19} />
           </span>

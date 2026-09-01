@@ -48,7 +48,7 @@ export function CompressAnyPanel({ onClose }: ToolPanelProps): React.JSX.Element
   const [level, setLevel] = useState<CompressionLevel>('balanced')
   const [maxDimension, setMaxDimension] = useState(2000)
   const [grayscale, setGrayscale] = useState(false)
-  const [rasterizePdf, setRasterizePdf] = useState(true)
+  const [rasterizePdf, setRasterizePdf] = useState(false)
   const [convertPngToJpeg, setConvertPngToJpeg] = useState(true)
   const [result, setResult] = useState<UniversalCompressResult | null>(null)
 

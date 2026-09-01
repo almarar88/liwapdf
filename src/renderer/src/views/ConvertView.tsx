@@ -43,6 +43,7 @@ import {
 } from '../lib/convert'
 import { useRunner } from './tools/shared'
 import type { TranslationKey } from '../i18n'
+import type { Tone } from './toolRegistry'
 
 type ConverterId =
   | 'pdfToImages'
@@ -59,17 +60,18 @@ interface Converter {
   titleKey: TranslationKey
   descriptionKey: TranslationKey
   icon: React.JSX.Element
+  tone: Tone
 }
 
 const CONVERTERS: Converter[] = [
-  { id: 'pdfToImages', titleKey: 'convert.pdfToImages', descriptionKey: 'convert.pdfToImages.d', icon: <Images size={19} /> },
-  { id: 'imagesToPdf', titleKey: 'convert.imagesToPdf', descriptionKey: 'convert.imagesToPdf.d', icon: <FileImage size={19} /> },
-  { id: 'pdfToText', titleKey: 'convert.pdfToText', descriptionKey: 'convert.pdfToText.d', icon: <FileText size={19} /> },
-  { id: 'pdfToWord', titleKey: 'convert.pdfToWord', descriptionKey: 'convert.pdfToWord.d', icon: <FileType2 size={19} /> },
-  { id: 'wordToPdf', titleKey: 'convert.wordToPdf', descriptionKey: 'convert.wordToPdf.d', icon: <FileDown size={19} /> },
-  { id: 'wordToHtml', titleKey: 'convert.wordToHtml', descriptionKey: 'convert.wordToHtml.d', icon: <FileCode2 size={19} /> },
-  { id: 'textToPdf', titleKey: 'convert.textToPdf', descriptionKey: 'convert.textToPdf.d', icon: <FileText size={19} /> },
-  { id: 'htmlToPdf', titleKey: 'convert.htmlToPdf', descriptionKey: 'convert.htmlToPdf.d', icon: <FileCode2 size={19} /> }
+  { id: 'pdfToImages', tone: 'teal', titleKey: 'convert.pdfToImages', descriptionKey: 'convert.pdfToImages.d', icon: <Images size={19} /> },
+  { id: 'imagesToPdf', tone: 'teal', titleKey: 'convert.imagesToPdf', descriptionKey: 'convert.imagesToPdf.d', icon: <FileImage size={19} /> },
+  { id: 'pdfToText', tone: 'indigo', titleKey: 'convert.pdfToText', descriptionKey: 'convert.pdfToText.d', icon: <FileText size={19} /> },
+  { id: 'pdfToWord', tone: 'blue', titleKey: 'convert.pdfToWord', descriptionKey: 'convert.pdfToWord.d', icon: <FileType2 size={19} /> },
+  { id: 'wordToPdf', tone: 'rose', titleKey: 'convert.wordToPdf', descriptionKey: 'convert.wordToPdf.d', icon: <FileDown size={19} /> },
+  { id: 'wordToHtml', tone: 'purple', titleKey: 'convert.wordToHtml', descriptionKey: 'convert.wordToHtml.d', icon: <FileCode2 size={19} /> },
+  { id: 'textToPdf', tone: 'amber', titleKey: 'convert.textToPdf', descriptionKey: 'convert.textToPdf.d', icon: <FileText size={19} /> },
+  { id: 'htmlToPdf', tone: 'green', titleKey: 'convert.htmlToPdf', descriptionKey: 'convert.htmlToPdf.d', icon: <FileCode2 size={19} /> }
 ]
 
 export function ConvertView(): React.JSX.Element {
@@ -91,7 +93,7 @@ export function ConvertView(): React.JSX.Element {
         {CONVERTERS.map((converter, index) => (
           <motion.button
             key={converter.id}
-            className="tool"
+            className={`tool tone-${converter.tone}`}
             {...spotlight}
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}

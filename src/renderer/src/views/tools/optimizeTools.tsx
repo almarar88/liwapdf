@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { ShieldCheck } from 'lucide-react'
 import { useApp } from '../../store/app'
-import { Button, Bytes, Card, Checkbox, Field, Select, Switch, TextInput } from '../../components/ui'
+import { Button, Bytes, Card, Checkbox, Field, Segmented, Select, Switch, TextInput } from '../../components/ui'
 import { FILTERS, pickOneFile, saveBytes } from '../../lib/files'
 import { formatBytes, ltr, stripExtension } from '../../lib/format'
 import * as ops from '../../lib/pdf/ops'
@@ -19,7 +19,9 @@ export function CompressPanel({ onClose }: ToolPanelProps): React.JSX.Element {
   const run = useRunner()
   const [level, setLevel] = useState<CompressionLevel>('balanced')
   const [grayscale, setGrayscale] = useState(false)
-  const [rasterize, setRasterize] = useState(true)
+  // Pictures-only by default: it keeps the text as text. Re-rendering pages
+  // is offered, not assumed.
+  const [rasterize, setRasterize] = useState(false)
 
   if (!doc) return <p className="muted">{t('msg.noDocument')}</p>
 
@@ -38,7 +40,16 @@ export function CompressPanel({ onClose }: ToolPanelProps): React.JSX.Element {
         />
       </Field>
 
-      <Switch checked={rasterize} onChange={setRasterize} label={t('opt.rasterize')} />
+      <Field label={t('opt.compressMode')} hint={rasterize ? t('opt.compressMode.rasterHint') : t('opt.compressMode.smartHint')}>
+        <Segmented
+          value={rasterize ? 'raster' : 'smart'}
+          onChange={(value) => setRasterize(value === 'raster')}
+          options={[
+            { value: 'smart', label: t('opt.compressMode.smart') },
+            { value: 'raster', label: t('opt.compressMode.raster') }
+          ]}
+        />
+      </Field>
       <Checkbox checked={grayscale} onChange={setGrayscale} label={t('opt.grayscale')} />
 
       <Card style={{ background: 'var(--surface-2)' }}>
@@ -66,7 +77,11 @@ export function CompressPanel({ onClose }: ToolPanelProps): React.JSX.Element {
               notify({
                 kind: 'success',
                 title: `${t('msg.sizeAfter')}: ${ltr(formatBytes(result.after))}`,
-                message: `${t('msg.reduction')}: ${ltr(formatBytes(saved))} (${percent}%)`
+                message:
+                  `${t('msg.reduction')}: ${ltr(formatBytes(saved))} (${percent}%)` +
+                  (result.imagesRecompressed > 0
+                    ? ` · ${t('msg.imagesRecompressed', { n: result.imagesRecompressed })}`
+                    : '')
               })
               onClose()
             },

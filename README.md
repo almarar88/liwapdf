@@ -21,10 +21,10 @@ format — PDF, Word, Excel, PowerPoint, EPUB and more. Fully offline.*
 
 | النظام / Platform | نوع الملف | رابط التحميل | رابط بديل |
 | --- | --- | --- | --- |
-| 🪟 **Windows 10/11 (64-bit)** | مثبّت `.exe` | [تحميل / Download](https://almarar88.github.io/liwapdf/Alcode-Editor-Setup.exe) | [Releases](../../releases/latest/download/Alcode-Editor-1.7.0-x64-Setup.exe) |
-| 🪟 **Windows (نسخة محمولة)** | `Portable.exe` بدون تثبيت | [تحميل / Download](https://almarar88.github.io/liwapdf/Alcode-Editor-Portable.exe) | [Releases](../../releases/latest/download/Alcode-Editor-1.7.0-Portable.exe) |
-| 🍎 **macOS — Apple Silicon (M1/M2/M3/M4)** | `.dmg` | [تحميل / Download](https://almarar88.github.io/liwapdf/Alcode-Editor-macOS-AppleSilicon.dmg) | [Releases](../../releases/latest/download/Alcode-Editor-1.7.0-arm64.dmg) |
-| 🍎 **macOS — Intel** | `.dmg` | [تحميل / Download](https://almarar88.github.io/liwapdf/Alcode-Editor-macOS-Intel.dmg) | [Releases](../../releases/latest/download/Alcode-Editor-1.7.0-x64.dmg) |
+| 🪟 **Windows 10/11 (64-bit)** | مثبّت `.exe` | [تحميل / Download](https://almarar88.github.io/liwapdf/Alcode-Editor-Setup.exe) | [Releases](../../releases/latest/download/Alcode-Editor-1.8.0-x64-Setup.exe) |
+| 🪟 **Windows (نسخة محمولة)** | `Portable.exe` بدون تثبيت | [تحميل / Download](https://almarar88.github.io/liwapdf/Alcode-Editor-Portable.exe) | [Releases](../../releases/latest/download/Alcode-Editor-1.8.0-Portable.exe) |
+| 🍎 **macOS — Apple Silicon (M1/M2/M3/M4)** | `.dmg` | [تحميل / Download](https://almarar88.github.io/liwapdf/Alcode-Editor-macOS-AppleSilicon.dmg) | [Releases](../../releases/latest/download/Alcode-Editor-1.8.0-arm64.dmg) |
+| 🍎 **macOS — Intel** | `.dmg` | [تحميل / Download](https://almarar88.github.io/liwapdf/Alcode-Editor-macOS-Intel.dmg) | [Releases](../../releases/latest/download/Alcode-Editor-1.8.0-x64.dmg) |
 
 > ملفات صفحة الإصدارات تُخدَّم من `objects.githubusercontent.com`، وهو محجوب على بعض الشبكات
 > رغم أن `github.com` نفسه يفتح — فيفشل التحميل بخطأ اتصال لا بخطأ «الملف غير موجود».
@@ -49,6 +49,7 @@ format — PDF, Word, Excel, PowerPoint, EPUB and more. Fully offline.*
 - **تحديد ونسخ النص مباشرة من الصفحة** عبر طبقة نص شفافة فوق الرسم.
 - بحث يُبرز كل تطابق في مكانه داخل الصفحة، مع تنقّل بين النتائج وعدّاد «٣ من ١٢».
 - تكبير وتصغير، ملء العرض، ملء الصفحة، حجم فعلي، وتدوير العرض.
+- **أوضاع قراءة:** عادي، ورقي (دافئ)، وليلي (معكوس) — تلوين للرسم فقط، والتحديد والبحث لا يتأثران.
 - شريط مصغّرات جانبي بتحميل كسول (يفتح مستندات بمئات الصفحات دون تأخير).
 - فهرس المستند (Outline) والانتقال المباشر لأي قسم.
 - بحث نصي كامل داخل المستند مع مقتطفات ونتائج قابلة للنقر، وبحث عربي مطبَّع
@@ -162,7 +163,10 @@ Tesseract بالكامل داخل جهازك — العامل ونواة WebAsse
 النتيجة: ملف CSV عربي قديم بترميز Windows‑1256 يُفتح بنص سليم بدل الرموز المشوّهة.
 
 ### تصغير حجم الملفات
-- **PDF:** سباق بين إعادة بناء بلا فقد وإعادة رسم الصفحات كصور — ويُبقى الأصغر فقط.
+- **PDF — ضغط ذكي:** تُفكّ الصور المضمّنة داخل الملف وتُصغَّر وتُعاد كتابتها JPEG، ويبقى النص
+  والخطوط والرسوم المتجهة كما هي — حادّة وقابلة للتحديد والبحث. الصور ذات القناع أو اللوحة أو CMYK
+  تُترك كما هي بدل المخاطرة. وخيار «كصور» ما زال متاحاً لمن يريد أقصى تصغير.
+- **PDF:** يُقارَن الناتج مع إعادة بناء بلا فقد ومع الأصل — ويُبقى الأصغر فقط.
 - **الصور:** إعادة ترميز عبر canvas مع حدّ لأقصى بُعد، وتجربة JPEG و WebP واختيار الأصغر.
 - **ملفات Office (DOCX/XLSX/PPTX/ODT/ODS/EPUB):** فكّ الحزمة، وضغط الصور المضمّنة بداخلها،
   ثم إعادة الحزم بأقصى مستوى deflate.
@@ -298,8 +302,8 @@ npm run dist:mac       # حزمة macOS (تتطلب macOS)
 الملفات التنفيذية تُبنى تلقائياً على GitHub Actions لويندوز وماك:
 
 ```bash
-git tag v1.7.0
-git push origin v1.7.0
+git tag v1.8.0
+git push origin v1.8.0
 ```
 
 سير العمل في `.github/workflows/release.yml` يبني النسختين وينشرهما في Release واحد

@@ -14,7 +14,10 @@ import {
   Square,
   X,
   ListTree,
-  Printer
+  Printer,
+  Sun,
+  Moon,
+  BookOpen
 } from 'lucide-react'
 import { useApp } from '../store/app'
 import { useDocumentActions } from '../hooks/useDocumentActions'
@@ -26,6 +29,18 @@ import { readOutline, searchDocument, type OutlineNode, type SearchHit } from '.
 import { clamp } from '../lib/format'
 
 type FitMode = 'width' | 'page' | 'custom'
+
+type ReadingMode = 'normal' | 'sepia' | 'night'
+const READING_KEY = 'alcode.readingMode'
+
+function readReadingMode(): ReadingMode {
+  try {
+    const value = localStorage.getItem(READING_KEY)
+    return value === 'sepia' || value === 'night' ? value : 'normal'
+  } catch {
+    return 'normal'
+  }
+}
 
 export function ViewerView(): React.JSX.Element {
   const t = useApp((state) => state.t)
@@ -39,6 +54,16 @@ export function ViewerView(): React.JSX.Element {
   const [fit, setFit] = useState<FitMode>('width')
   const [rotation, setRotation] = useState(0)
   const [mode, setMode] = useState<'continuous' | 'single'>('continuous')
+  // Night and paper tints are applied to the rendered page through a CSS
+  // filter, so the document itself is never touched; remembered per machine.
+  const [reading, setReading] = useState<ReadingMode>(() => readReadingMode())
+  useEffect(() => {
+    try {
+      localStorage.setItem(READING_KEY, reading)
+    } catch {
+      // Not worth an error.
+    }
+  }, [reading])
   const [railTab, setRailTab] = useState<'thumbs' | 'outline'>('thumbs')
   const [outline, setOutline] = useState<OutlineNode[]>([])
   const [searchOpen, setSearchOpen] = useState(false)
@@ -350,6 +375,20 @@ export function ViewerView(): React.JSX.Element {
           ]}
         />
 
+        <span className="sep" />
+
+        <div title={t('viewer.reading')}>
+          <Segmented
+            value={reading}
+            onChange={setReading}
+            options={[
+              { value: 'normal', label: '', icon: <Sun size={14} /> },
+              { value: 'sepia', label: '', icon: <BookOpen size={14} /> },
+              { value: 'night', label: '', icon: <Moon size={14} /> }
+            ]}
+          />
+        </div>
+
         <span className="spacer" />
 
         <Button
@@ -497,7 +536,7 @@ export function ViewerView(): React.JSX.Element {
                 ))}
         </aside>
 
-        <div className="canvas-area" ref={scrollRef}>
+        <div className={`canvas-area reading-${reading}`} ref={scrollRef}>
           {mode === 'continuous' ? (
             <div className="page-stack virtual" style={{ height: layout.total }}>
               {visiblePages.map((pageNumber) => (

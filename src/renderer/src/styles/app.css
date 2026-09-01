@@ -1073,6 +1073,19 @@ html[dir='rtl'] .hero-art .sheet:nth-child(2) { transform: rotate(6deg) translat
   background: var(--accent-soft); color: var(--accent);
 }
 
+/* ------------------------------------------------------- reading modes
+
+   Tints for long reading, applied to the rendered bitmap only. The text
+   layer above it is transparent and unaffected, so selection and search
+   behave exactly as in the plain view. */
+
+.canvas-area.reading-sepia { background: #e9e1d2; }
+.canvas-area.reading-sepia .pdf-page canvas { filter: sepia(0.42) saturate(0.9) brightness(0.97); }
+.canvas-area.reading-night { background: #0a0c10; }
+.canvas-area.reading-night .pdf-page { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06), var(--shadow-lg); }
+.canvas-area.reading-night .pdf-page canvas { filter: invert(0.92) hue-rotate(180deg) contrast(0.88) brightness(0.9); }
+.canvas-area.reading-night .text-layer ::selection { background: rgba(255, 204, 0, 0.4); }
+
 /* --------------------------------------------------------- theme cards */
 
 .theme-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; max-width: 470px; }
