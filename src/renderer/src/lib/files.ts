@@ -134,7 +134,7 @@ export async function saveBatch(
 }
 
 /** `report.pdf` → `report (2).pdf` when the first name is already in use. */
-async function freeName(
+export async function freeName(
   directory: string,
   separator: string,
   name: string,

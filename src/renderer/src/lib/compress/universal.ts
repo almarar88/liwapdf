@@ -38,6 +38,11 @@ export interface UniversalCompressResult {
   keptOriginal: boolean
   /** Human-readable note, e.g. how many embedded images were re-encoded. */
   detail?: string
+  /**
+   * Set when a loose image was re-encoded into a different format, so the
+   * caller can offer the right extension instead of saving JPEG bytes as .png.
+   */
+  mimeType?: 'image/jpeg' | 'image/webp' | 'image/png'
 }
 
 export const IMAGE_QUALITY: Record<CompressionLevel, number> = {
@@ -49,6 +54,23 @@ export const IMAGE_QUALITY: Record<CompressionLevel, number> = {
 
 const ZIP_OFFICE_EXTENSIONS = ['docx', 'xlsx', 'pptx', 'odt', 'ods', 'odp', 'epub', 'docm', 'xlsm']
 const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif', 'avif', 'tif', 'tiff']
+
+/**
+ * The single image type an archive entry may be rewritten as, given its name.
+ *
+ * Returns null for anything else in the package — including the formats no
+ * canvas can re-encode faithfully — so those entries are copied through
+ * untouched rather than converted into something their name does not describe.
+ */
+function allowedTypeFor(
+  name: string
+): readonly ('image/jpeg' | 'image/webp' | 'image/png')[] | null {
+  const extension = /\.([a-z0-9]+)$/i.exec(name)?.[1]?.toLowerCase()
+  if (extension === 'png') return ['image/png']
+  if (extension === 'jpg' || extension === 'jpeg') return ['image/jpeg']
+  if (extension === 'webp') return ['image/webp']
+  return null
+}
 
 export function compressionTargetFor(name: string, bytes: Uint8Array): CompressTarget {
   const extension = extensionOf(name)
@@ -84,12 +106,15 @@ export async function compressFile(
   }
 
   if (target === 'image') {
-    const compressed = await compressImage(bytes, options)
-    const better = compressed !== null && compressed.byteLength < before
+    // A loose image file is the one place the type may change freely: the
+    // caller is saving it under a name of its own choosing.
+    const compressed = await compressImage(bytes, options, ['image/jpeg', 'image/webp', 'image/png'])
+    const better = compressed !== null && compressed.bytes.byteLength < before
     return {
-      bytes: better ? compressed! : bytes,
+      bytes: better ? compressed!.bytes : bytes,
+      mimeType: better ? compressed!.mimeType : undefined,
       before,
-      after: better ? compressed!.byteLength : before,
+      after: better ? compressed!.bytes.byteLength : before,
       target,
       keptOriginal: !better
     }
@@ -115,10 +140,24 @@ export async function compressFile(
  * Re-encodes an image through a canvas, capping its longest edge. Both JPEG and
  * WebP are tried because which one wins depends entirely on the picture.
  */
+export interface CompressedImage {
+  bytes: Uint8Array
+  /** What the bytes actually are, so a caller never mislabels them. */
+  mimeType: 'image/jpeg' | 'image/webp' | 'image/png'
+}
+
 export async function compressImage(
   bytes: Uint8Array,
-  options: UniversalCompressOptions
-): Promise<Uint8Array | null> {
+  options: UniversalCompressOptions,
+  /**
+   * Types the caller is able to store. Inside an office document that is the
+   * one type the entry's own extension declares — see compressZipContainer.
+   */
+  allowedTypes: readonly ('image/jpeg' | 'image/webp' | 'image/png')[] = [
+    'image/jpeg',
+    'image/webp'
+  ]
+): Promise<CompressedImage | null> {
   let bitmap: ImageBitmap
   try {
     bitmap = await createImageBitmap(new Blob([bytes.slice().buffer as ArrayBuffer]))
@@ -139,29 +178,69 @@ export async function compressImage(
     bitmap.close()
     return null
   }
-  // Flatten onto white: JPEG has no alpha channel to preserve.
-  context.fillStyle = '#ffffff'
-  context.fillRect(0, 0, width, height)
   context.imageSmoothingQuality = 'high'
   context.drawImage(bitmap, 0, 0, width, height)
   bitmap.close()
 
+  // A transparent logo flattened onto white comes back with a white rectangle
+  // behind it, which is worse than not compressing it at all. So transparency
+  // is detected first, and an image that has any decides the question: it can
+  // only be stored in a format with an alpha channel.
+  const transparent = hasTransparency(context, width, height)
+  const types = transparent
+    ? allowedTypes.filter((type) => type !== 'image/jpeg')
+    : options.convertPngToJpeg
+      ? allowedTypes
+      : allowedTypes.filter((type) => type !== 'image/jpeg')
+
+  if (!transparent && types.includes('image/jpeg')) {
+    // JPEG has no alpha, so an opaque image is put on white deliberately
+    // rather than left to whatever the encoder does with unset pixels.
+    const flattened = document.createElement('canvas')
+    flattened.width = width
+    flattened.height = height
+    const target = flattened.getContext('2d')
+    if (target) {
+      target.fillStyle = '#ffffff'
+      target.fillRect(0, 0, width, height)
+      target.drawImage(canvas, 0, 0)
+      context.clearRect(0, 0, width, height)
+      context.drawImage(flattened, 0, 0)
+    }
+  }
+
   if (options.grayscale) applyGrayscale(context, width, height)
 
   const quality = IMAGE_QUALITY[options.level]
-  const candidates: Uint8Array[] = []
-  for (const type of ['image/jpeg', 'image/webp'] as const) {
+  const candidates: CompressedImage[] = []
+  for (const type of types.length > 0 ? types : (['image/png'] as const)) {
     try {
-      candidates.push(await blobToBytes(await canvasToBlob(canvas, type, quality)))
+      candidates.push({
+        bytes: await blobToBytes(await canvasToBlob(canvas, type, quality)),
+        mimeType: type
+      })
     } catch {
-      /* the browser may refuse a codec; the other one still counts */
+      /* the browser may refuse a codec; the others still count */
     }
   }
   if (candidates.length === 0) return null
 
   return candidates.reduce((smallest, candidate) =>
-    candidate.byteLength < smallest.byteLength ? candidate : smallest
+    candidate.bytes.byteLength < smallest.bytes.byteLength ? candidate : smallest
   )
+}
+
+/** True as soon as one pixel is not fully opaque — no need to scan the rest. */
+function hasTransparency(
+  context: CanvasRenderingContext2D,
+  width: number,
+  height: number
+): boolean {
+  const { data } = context.getImageData(0, 0, width, height)
+  for (let index = 3; index < data.length; index += 4) {
+    if (data[index] < 255) return true
+  }
+  return false
 }
 
 function applyGrayscale(context: CanvasRenderingContext2D, width: number, height: number): void {
@@ -203,14 +282,24 @@ async function compressZipContainer(
       continue
     }
 
-    const isImage = /\.(png|jpe?g|webp|bmp|gif|tiff?)$/i.test(entry.name)
-    if (isImage && raw.byteLength > RECOMPRESS_THRESHOLD) {
-      const shrunk = await compressImage(raw, options)
-      if (shrunk && shrunk.byteLength < raw.byteLength) {
-        // Keep the original entry name so the document's relationships still resolve.
-        output.file(entry.name, shrunk, { compression: 'DEFLATE', compressionOptions: { level: 9 } })
+    // An office part's format is declared by its extension in
+    // [Content_Types].xml, and the entry name has to stay put or the
+    // relationships stop resolving — so the bytes must match the name. The
+    // previous version kept the name and wrote whichever of JPEG or WebP came
+    // out smaller, which is how a .docx ends up with broken pictures or Word
+    // offering to repair it. Only a type the extension already declares is
+    // accepted; for a .png that means re-encoding as PNG, where the resize
+    // alone is most of the saving anyway.
+    const allowed = allowedTypeFor(entry.name)
+    if (allowed && raw.byteLength > RECOMPRESS_THRESHOLD) {
+      const shrunk = await compressImage(raw, options, allowed)
+      if (shrunk && shrunk.bytes.byteLength < raw.byteLength) {
+        output.file(entry.name, shrunk.bytes, {
+          compression: 'DEFLATE',
+          compressionOptions: { level: 9 }
+        })
         rewritten += 1
-        saved += raw.byteLength - shrunk.byteLength
+        saved += raw.byteLength - shrunk.bytes.byteLength
         continue
       }
     }

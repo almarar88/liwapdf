@@ -37,6 +37,7 @@ import {
 } from './tools/contentTools'
 import { OcrPanel } from './tools/ocrTools'
 import { RedactPanel } from './tools/redactTools'
+import { BatchPanel } from './tools/batchTools'
 
 const PANELS: Record<ToolId, (props: { onClose: () => void }) => React.JSX.Element> = {
   merge: MergePanel,
@@ -65,7 +66,8 @@ const PANELS: Record<ToolId, (props: { onClose: () => void }) => React.JSX.Eleme
   bookmarks: BookmarksPanel,
   attachments: AttachmentsPanel,
   ocr: OcrPanel,
-  redact: RedactPanel
+  redact: RedactPanel,
+  batch: BatchPanel
 }
 
 export function ToolsView(): React.JSX.Element {

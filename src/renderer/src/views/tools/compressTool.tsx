@@ -179,7 +179,14 @@ export function CompressAnyPanel({ onClose }: ToolPanelProps): React.JSX.Element
               return
             }
 
-            const extension = outcome.target === 'image' ? guessImageExtension(outcome.bytes) : extensionOf(file!.name)
+            // The compressor now says what it produced, which beats sniffing:
+            // it is the only source that knows a PNG was kept as PNG because
+            // the picture had transparency.
+            const extension =
+              outcome.target === 'image'
+                ? (outcome.mimeType?.split('/')[1]?.replace('jpeg', 'jpg') ??
+                  guessImageExtension(outcome.bytes))
+                : extensionOf(file!.name)
             const saved = await saveBytes(
               outcome.bytes,
               `${stripExtension(file!.name)}-compressed.${extension}`,

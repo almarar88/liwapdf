@@ -678,6 +678,18 @@ html[dir='rtl'] .toolbar .select { background-position: 8px 12px, 13px 12px; }
 .open-doc b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .open-doc .muted { font-size: var(--text-xs); }
 
+.batch-list {
+  max-height: 220px; overflow-y: auto;
+  border: 1px solid var(--hairline-soft); border-radius: var(--r-sm);
+  background: var(--surface-sunken); padding: 5px;
+}
+.batch-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 8px; border-radius: 5px; font-size: var(--text-sm);
+}
+.batch-row:hover { background: var(--surface-solid); }
+.batch-row bdi { flex: 1; min-width: 0; }
+
 .workspace-bar {
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
   padding: 10px 14px; margin-bottom: 20px;

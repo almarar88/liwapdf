@@ -25,7 +25,8 @@ import {
   ListTree,
   Paperclip,
   ScanText,
-  EyeOff
+  EyeOff,
+  Layers
 } from 'lucide-react'
 import type { TranslationKey } from '../i18n'
 
@@ -57,6 +58,7 @@ export type ToolId =
   | 'attachments'
   | 'ocr'
   | 'redact'
+  | 'batch'
 
 export type ToolGroup = 'pages' | 'optimize' | 'content'
 
@@ -99,7 +101,8 @@ export const TOOLS: ToolDescriptor[] = [
   { id: 'compare', group: 'content', titleKey: 'tool.compare', descriptionKey: 'tool.compare.d', icon: <GitCompare size={19} />, needsDocument: false },
   { id: 'bookmarks', group: 'content', titleKey: 'tool.bookmarks', descriptionKey: 'tool.bookmarks.d', icon: <ListTree size={19} />, needsDocument: true },
   { id: 'attachments', group: 'content', titleKey: 'tool.attachments', descriptionKey: 'tool.attachments.d', icon: <Paperclip size={19} />, needsDocument: true },
-  { id: 'ocr', group: 'content', titleKey: 'tool.ocr', descriptionKey: 'tool.ocr.d', icon: <ScanText size={19} />, needsDocument: true }
+  { id: 'ocr', group: 'content', titleKey: 'tool.ocr', descriptionKey: 'tool.ocr.d', icon: <ScanText size={19} />, needsDocument: true },
+  { id: 'batch', group: 'content', titleKey: 'tool.batch', descriptionKey: 'tool.batch.d', icon: <Layers size={19} />, needsDocument: false }
 ]
 
 /** Tools plus the eight converters shown on the Convert screen. */
