@@ -62,6 +62,44 @@ export async function readDocument(
   bytes: Uint8Array,
   path: string | null
 ): Promise<LoadedDocument> {
+  // Normalising here rather than inside each reader is the point: it used to
+  // be applied to .txt and .md only, so a Word file carrying shaped glyphs —
+  // the common case, and the one people actually hit — opened with every
+  // Arabic letter standing apart. A central pass cannot be forgotten by the
+  // next format added.
+  return unshapeArabic(await readByFormat(name, bytes, path))
+}
+
+/**
+ * Folds Arabic presentation forms in whatever the reader produced.
+ *
+ * The check inside normalizeArabicPresentation returns the string untouched
+ * when it holds no shaped glyphs, so this costs one regex test per document
+ * that does not need it.
+ */
+function unshapeArabic(document_: LoadedDocument): LoadedDocument {
+  const fixed: LoadedDocument = { ...document_ }
+  if (fixed.html !== undefined) fixed.html = normalizeArabicPresentation(fixed.html)
+  if (fixed.text !== undefined) fixed.text = normalizeArabicPresentation(fixed.text)
+  if (fixed.sheets) {
+    fixed.sheets = fixed.sheets.map((sheet) => ({
+      ...sheet,
+      rows: sheet.rows.map((row) =>
+        row.map((cell) => {
+          const text = normalizeArabicPresentation(cell.text)
+          return text === cell.text ? cell : { ...cell, text }
+        })
+      )
+    }))
+  }
+  return fixed
+}
+
+async function readByFormat(
+  name: string,
+  bytes: Uint8Array,
+  path: string | null
+): Promise<LoadedDocument> {
   const format = await detectFormat(name, bytes)
   const info = formatInfo(format)
   const kind: DocumentKind = info?.kind ?? 'code'

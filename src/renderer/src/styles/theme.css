@@ -28,6 +28,12 @@
     'Segoe UI Variable Text', 'Segoe UI', system-ui, 'Helvetica Neue', Arial, sans-serif;
   --font-ar: 'SF Arabic', 'Geeza Pro', 'Dubai', 'Segoe UI', 'Noto Naskh Arabic', 'Traditional Arabic',
     'Alcode Amiri', var(--font-ui);
+  /* The editing surface is a document, not the app chrome: it wants the naskh
+     text faces a reader expects in a letter or a report, not the interface
+     font. Amiri closes the list only as the bundled guarantee — it is
+     calligraphic, and looks unusual as body text in a form or a memo. */
+  --font-ar-doc: 'Sakkal Majalla', 'Segoe UI', 'Geeza Pro', 'SF Arabic', 'Traditional Arabic',
+    'Simplified Arabic', 'Dubai', 'Noto Naskh Arabic', 'Alcode Amiri', Arial, sans-serif;
   --font-mono: 'SF Mono', 'JetBrains Mono', 'Cascadia Mono', ui-monospace, Menlo, Consolas, monospace;
 
   --text-xs: 11px;

@@ -607,9 +607,12 @@ html[dir='rtl'] .toolbar .select { background-position: 8px 12px, 13px 12px; }
   padding: 72px 76px;
   background: #fff; color: #111;
   border-radius: 4px; box-shadow: var(--shadow-lg);
-  font-family: 'Calibri', 'Segoe UI', var(--font-ar);
+  font-family: 'Calibri', var(--font-ar-doc);
   font-size: 15px; line-height: 1.75;
   outline: none;
+  /* The body carries a slight negative tracking that suits the interface font
+     and does nothing good for a document — least of all a cursive script. */
+  letter-spacing: normal;
 }
 .doc-sheet:focus { box-shadow: var(--shadow-lg), 0 0 0 3px var(--accent-ring); }
 .doc-sheet h1 { font-size: 30px; margin: 0 0 12px; }

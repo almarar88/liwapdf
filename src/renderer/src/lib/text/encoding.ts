@@ -220,14 +220,28 @@ export function containsArabic(text: string): boolean {
   return /[؀-ۿݐ-ݿﭐ-﷿ﹰ-﻿]/.test(text)
 }
 
+/** U+FB50..U+FDFF and U+FE70..U+FEFF — the Arabic presentation-form blocks. */
+const PRESENTATION_FORMS = /[\uFB50-\uFDFF\uFE70-\uFEFF]/
+const PRESENTATION_FORMS_G = /[\uFB50-\uFDFF\uFE70-\uFEFF]/g
+
 /**
- * Normalizes Arabic presentation forms (U+FB50..U+FEFF) back to their base
- * letters. Some PDF and legacy DOC producers emit the shaped glyphs directly,
- * which breaks search, copy and re-layout.
+ * Normalizes Arabic presentation forms back to their base letters.
+ *
+ * Word, old DOC producers and anything converted out of a PDF frequently emit
+ * the *shaped* glyphs — one codepoint per drawn form — instead of the letters.
+ * A shaper cannot join those, so the text renders with every letter standing
+ * apart, and search and copy fail against it too.
  */
 export function normalizeArabicPresentation(text: string): string {
-  if (!/[ﭐ-﷿ﹰ-﻿]/.test(text)) return text
-  return text.normalize('NFKC').replace(/‏|‎/g, '')
+  if (!PRESENTATION_FORMS.test(text)) return text
+  // Folded per character, never over the whole string: NFKC on a document also
+  // rewrites Latin typography — the fi ligature splits, a fraction becomes
+  // three characters — and none of that was asked for. Only the Arabic
+  // presentation blocks come back to base letters, which is what lets the
+  // shaper join them again; left as shaped glyphs every letter stands alone.
+  return text
+    .replace(PRESENTATION_FORMS_G, (glyph) => glyph.normalize('NFKC'))
+    .replace(/\u200f|\u200e/g, '')
 }
 
 /**

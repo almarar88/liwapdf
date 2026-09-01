@@ -26,6 +26,10 @@ import { Button, Select } from '../../components/ui'
 import { FILTERS, pickOneFile } from '../../lib/files'
 import { sanitize } from '../../lib/documents/read'
 
+// Latin faces first, then the Arabic document faces people actually expect to
+// find — Word's own Arabic defaults and the two classic naskh text faces.
+// Amiri is calligraphic and belongs at the end of that group, not as the only
+// Arabic option on offer.
 const FONTS = [
   'Calibri',
   'Arial',
@@ -35,9 +39,14 @@ const FONTS = [
   'Verdana',
   'Segoe UI',
   'Consolas',
-  'Amiri',
+  'Sakkal Majalla',
+  'Traditional Arabic',
+  'Simplified Arabic',
+  'Arabic Typesetting',
+  'Noto Naskh Arabic',
   'Dubai',
-  'Cairo'
+  'Cairo',
+  'Amiri'
 ]
 const SIZES = ['10', '11', '12', '14', '16', '18', '20', '24', '28', '32', '40', '48']
 
