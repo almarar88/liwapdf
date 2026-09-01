@@ -235,8 +235,25 @@ export async function htmlToOdt(html: string, rightToLeft: boolean): Promise<Uin
   const container = document.createElement('div')
   container.innerHTML = html
 
+  // ODF keeps pictures as real files inside the package and references them by
+  // path, so the images have to be pulled out before the body is written. The
+  // writer used to walk past every <img>, and a logo vanished on export without
+  // a word — a silent loss, which is what makes it a bug and not a limit.
+  const pictures = new Map<string, { path: string; mediaType: string; base64: string }>()
+  for (const image of Array.from(container.querySelectorAll('img'))) {
+    const source = image.getAttribute('src') ?? ''
+    const match = /^data:(image\/[a-z+.-]+);base64,(.+)$/i.exec(source)
+    if (!match || pictures.has(source)) continue
+    const extension = match[1].split('/')[1].replace('jpeg', 'jpg').replace(/[^a-z0-9]/g, '')
+    pictures.set(source, {
+      path: `Pictures/image${pictures.size + 1}.${extension || 'png'}`,
+      mediaType: match[1],
+      base64: match[2]
+    })
+  }
+
   const body = Array.from(container.childNodes)
-    .map((node) => odtBlockFrom(node, rightToLeft))
+    .map((node) => odtBlockFrom(node, rightToLeft, pictures))
     .filter(Boolean)
     .join('')
 
@@ -277,6 +294,12 @@ export async function htmlToOdt(html: string, rightToLeft: boolean): Promise<Uin
  <manifest:file-entry manifest:full-path="/" manifest:media-type="application/vnd.oasis.opendocument.text"/>
  <manifest:file-entry manifest:full-path="content.xml" manifest:media-type="text/xml"/>
  <manifest:file-entry manifest:full-path="styles.xml" manifest:media-type="text/xml"/>
+${Array.from(pictures.values())
+  .map(
+    (picture) =>
+      ` <manifest:file-entry manifest:full-path="${picture.path}" manifest:media-type="${picture.mediaType}"/>`
+  )
+  .join('\n')}
 </manifest:manifest>`
 
   const zip = new JSZip()
@@ -285,6 +308,9 @@ export async function htmlToOdt(html: string, rightToLeft: boolean): Promise<Uin
   zip.file('content.xml', content)
   zip.file('styles.xml', styles)
   zip.file('META-INF/manifest.xml', manifest)
+  for (const picture of pictures.values()) {
+    zip.file(picture.path, picture.base64, { base64: true })
+  }
 
   return zip.generateAsync({
     type: 'uint8array',
@@ -293,7 +319,9 @@ export async function htmlToOdt(html: string, rightToLeft: boolean): Promise<Uin
   })
 }
 
-function odtBlockFrom(node: Node, rightToLeft: boolean): string {
+type OdtPictures = Map<string, { path: string; mediaType: string; base64: string }>
+
+function odtBlockFrom(node: Node, rightToLeft: boolean, pictures?: OdtPictures): string {
   if (node.nodeType === Node.TEXT_NODE) {
     const text = node.textContent?.trim()
     return text ? `<text:p>${escapeXml(text)}</text:p>` : ''
@@ -303,13 +331,17 @@ function odtBlockFrom(node: Node, rightToLeft: boolean): string {
   const tag = element.tagName
 
   if (tag === 'HR') return '<text:p/>'
+  if (tag === 'IMG') {
+    const frame = odtFrameFor(element as HTMLImageElement, pictures)
+    return frame ? `<text:p>${frame}</text:p>` : ''
+  }
   if (/^H[1-6]$/.test(tag)) {
-    return `<text:h text:outline-level="${tag[1]}">${odtInlineFrom(element)}</text:h>`
+    return `<text:h text:outline-level="${tag[1]}">${odtInlineFrom(element, pictures)}</text:h>`
   }
   if (tag === 'UL' || tag === 'OL') {
     const items = Array.from(element.children)
       .filter((child) => child.tagName === 'LI')
-      .map((item) => `<text:list-item><text:p>${odtInlineFrom(item as HTMLElement)}</text:p></text:list-item>`)
+      .map((item) => `<text:list-item><text:p>${odtInlineFrom(item as HTMLElement, pictures)}</text:p></text:list-item>`)
       .join('')
     return `<text:list>${items}</text:list>`
   }
@@ -320,7 +352,8 @@ function odtBlockFrom(node: Node, rightToLeft: boolean): string {
           .map(
             (cell) =>
               `<table:table-cell office:value-type="string"><text:p>${odtInlineFrom(
-                cell as HTMLElement
+                cell as HTMLElement,
+                pictures
               )}</text:p></table:table-cell>`
           )
           .join('')
@@ -334,10 +367,34 @@ function odtBlockFrom(node: Node, rightToLeft: boolean): string {
       .map((child) => odtBlockFrom(child, rightToLeft))
       .join('')
   }
-  return `<text:p>${odtInlineFrom(element) || ''}</text:p>`
+  return `<text:p>${odtInlineFrom(element, pictures) || ''}</text:p>`
 }
 
-function odtInlineFrom(element: HTMLElement): string {
+/**
+ * A picture placed in the text flow.
+ *
+ * ODF sizes a frame in real units, so the pixel width the editor carries is
+ * converted rather than passed through: a frame with no size, or one sized in
+ * pixels, comes out at whatever the reader guesses.
+ */
+function odtFrameFor(image: HTMLImageElement, pictures?: OdtPictures): string {
+  const picture = pictures?.get(image.getAttribute('src') ?? '')
+  if (!picture) return ''
+  const pixelWidth = Number(image.getAttribute('width')) || image.naturalWidth || 240
+  const pixelHeight =
+    Number(image.getAttribute('height')) ||
+    image.naturalHeight ||
+    Math.round(pixelWidth * 0.62)
+  const width = (pixelWidth / 96).toFixed(3)
+  const height = (pixelHeight / 96).toFixed(3)
+  return (
+    `<draw:frame text:anchor-type="as-char" svg:width="${width}in" svg:height="${height}in">` +
+    `<draw:image xlink:href="${picture.path}" xlink:type="simple" xlink:show="embed" xlink:actuate="onLoad"/>` +
+    `</draw:frame>`
+  )
+}
+
+function odtInlineFrom(element: HTMLElement, pictures?: OdtPictures): string {
   let output = ''
   for (const node of Array.from(element.childNodes)) {
     if (node.nodeType === Node.TEXT_NODE) {
@@ -351,20 +408,24 @@ function odtInlineFrom(element: HTMLElement): string {
       output += '<text:line-break/>'
       continue
     }
+    if (tag === 'IMG') {
+      output += odtFrameFor(child as HTMLImageElement, pictures)
+      continue
+    }
     if (tag === 'B' || tag === 'STRONG') {
-      output += `<text:span text:style-name="Bold">${odtInlineFrom(child)}</text:span>`
+      output += `<text:span text:style-name="Bold">${odtInlineFrom(child, pictures)}</text:span>`
       continue
     }
     if (tag === 'I' || tag === 'EM') {
-      output += `<text:span text:style-name="Italic">${odtInlineFrom(child)}</text:span>`
+      output += `<text:span text:style-name="Italic">${odtInlineFrom(child, pictures)}</text:span>`
       continue
     }
     if (tag === 'A') {
       const href = child.getAttribute('href') ?? ''
-      output += `<text:a xlink:href="${escapeXml(href)}">${odtInlineFrom(child)}</text:a>`
+      output += `<text:a xlink:href="${escapeXml(href)}">${odtInlineFrom(child, pictures)}</text:a>`
       continue
     }
-    output += odtInlineFrom(child)
+    output += odtInlineFrom(child, pictures)
   }
   return output
 }
@@ -394,6 +455,26 @@ export async function pptxToHtml(bytes: Uint8Array): Promise<OfficeReadResult> {
   const parser = new DOMParser()
   const sections: string[] = []
 
+  // Each slide names its pictures through its own relationship file, so the
+  // map is keyed by slide as well as id: two slides reuse the same r:id for
+  // different images, and a flat map would show the wrong one.
+  const relationships = new Map<string, string>()
+  for (const slide of slideFiles) {
+    const rels = zip.file(`ppt/slides/_rels/slide${slide.index}.xml.rels`)
+    if (!rels) continue
+    const relsXml = parser.parseFromString(await rels.async('string'), 'application/xml')
+    for (const relationship of Array.from(relsXml.getElementsByTagNameNS('*', 'Relationship'))) {
+      const id = relationship.getAttribute('Id')
+      const targetPath = relationship.getAttribute('Target')
+      if (!id || !targetPath || !/image/i.test(relationship.getAttribute('Type') ?? '')) continue
+      relationships.set(`${slide.index}:${id}`, resolveZipPath('ppt/slides/', targetPath))
+    }
+  }
+
+  let imageBudget = 24 * 1024 * 1024
+  const inlinedImages = new Map<string, string>()
+  let droppedImages = 0
+
   for (const slide of slideFiles) {
     const xml = parser.parseFromString(await slide.file.async('string'), 'application/xml')
     const paragraphs = Array.from(xml.getElementsByTagNameNS('*', 'p'))
@@ -422,17 +503,45 @@ export async function pptxToHtml(bytes: Uint8Array): Promise<OfficeReadResult> {
         .trim()
     }
 
+    // A deck is pictures as much as words — a slide read as text alone loses
+    // the chart, the diagram and the logo that carried its point.
+    const images: string[] = []
+    for (const embed of Array.from(xml.getElementsByTagNameNS('*', 'blip'))) {
+      const id = embed.getAttribute('r:embed') ?? embed.getAttributeNS('*', 'embed')
+      if (!id) continue
+      const target = relationships.get(`${slide.index}:${id}`)
+      if (!target) continue
+      let dataUrl = inlinedImages.get(target)
+      if (dataUrl === undefined) {
+        const entry = zip.file(target)
+        if (!entry) continue
+        const base64 = await entry.async('base64')
+        const cost = Math.ceil((base64.length * 3) / 4)
+        if (cost > imageBudget) {
+          droppedImages += 1
+          continue
+        }
+        imageBudget -= cost
+        dataUrl = `data:${mimeFromName(target)};base64,${base64}`
+        inlinedImages.set(target, dataUrl)
+      }
+      images.push(`<p><img src="${dataUrl}" alt="" /></p>`)
+    }
+
     // The first line of a slide is almost always its title.
     const [title, ...rest] = paragraphs
     sections.push(
       `<h2>${escapeHtml(title ?? `Slide ${slide.index}`)}</h2>` +
         rest.map((line) => `<p>${escapeHtml(line)}</p>`).join('') +
+        images.join('') +
         (notes ? `<blockquote>${escapeHtml(notes)}</blockquote>` : '') +
         (slide.index < slideFiles.length ? '<hr />' : '')
     )
   }
 
-  return { html: sections.join('\n'), warnings: ['pptx-text-only'] }
+  const warnings = ['pptx-layout-only']
+  if (droppedImages > 0) warnings.push('pptx-images-dropped')
+  return { html: sections.join('\n'), warnings }
 }
 
 /** Follows slideN.xml.rels to whichever notesSlide it actually points at. */

@@ -604,9 +604,19 @@ export const useApp = create<AppState & AppActions>((set, get) => ({
   },
 
   openTool(id, needsDocument) {
+    // A tool that needs a document is asking for a PDF, but the app keeps a
+    // second slot for everything else — so with a Word file open on screen
+    // every tool used to answer "open a document first", which the user can
+    // plainly see is untrue. Say what is actually needed instead, and leave
+    // the panel to offer the conversion.
     if (needsDocument && !get().doc) {
-      get().notify({ kind: 'info', title: get().t('msg.noDocument') })
-      return
+      const editor = get().editorDoc
+      get().notify({
+        kind: 'info',
+        title: editor ? get().t('workspace.needsPdf') : get().t('msg.noDocument'),
+        message: editor ? get().t('workspace.needsPdfHint', { name: editor.source.name }) : undefined
+      })
+      if (!editor) return
     }
     set({ route: 'tools', activeTool: id, paletteOpen: false })
   },

@@ -658,6 +658,44 @@ html[dir='rtl'] .toolbar .select { background-position: 8px 12px, 13px 12px; }
 }
 .goal-fill.done { background: #2f9e44; }
 
+/* States which document the tools will act on. Without it the two slots the
+   app keeps are invisible, and a refusal to run reads as a bug. */
+/* The document you already have open, offered as the first thing on the
+   dashboard: the previous home page showed product claims instead. */
+.open-doc {
+  display: flex; align-items: center; gap: 13px; text-align: start;
+  padding: 15px 17px; border-radius: var(--r-md);
+  border: 1px solid var(--hairline-soft); background: var(--surface-solid);
+  transition: border-color 160ms var(--ease-out), transform 160ms var(--ease-out);
+}
+.open-doc:hover { border-color: var(--accent); transform: translateY(-1px); }
+.open-doc .icon {
+  width: 40px; height: 40px; flex: none;
+  display: grid; place-items: center; border-radius: var(--r-sm);
+  background: var(--accent-soft); color: var(--accent);
+}
+.open-doc .grow { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.open-doc b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.open-doc .muted { font-size: var(--text-xs); }
+
+.workspace-bar {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 10px 14px; margin-bottom: 20px;
+  border: 1px solid var(--hairline-soft); border-radius: var(--r-md);
+  background: var(--surface-solid);
+}
+.ws-doc {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 5px 11px; border-radius: var(--r-full);
+  border: 1px solid var(--hairline-soft); background: var(--surface-sunken);
+  color: var(--fg-2); font-size: var(--text-sm);
+  transition: border-color 140ms var(--ease-out), color 140ms var(--ease-out);
+}
+.ws-doc:hover { border-color: var(--accent); color: var(--fg); }
+.ws-doc.active { border-color: var(--accent); color: var(--fg); background: var(--accent-soft); }
+.ws-kind { font-size: var(--text-xs); color: var(--fg-3); }
+.ws-name { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 .sign-pad {
   width: 100%; height: 220px;
   border-radius: var(--r-md);

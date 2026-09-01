@@ -440,6 +440,45 @@ function renderRun(text: string, style: RunStyle, colors: string[]): string {
 /* ------------------------------------------------------------------ writer */
 
 /** Serializes editor HTML into RTF that Word and TextEdit both open. */
+/**
+ * Encodes an image as an RTF picture group.
+ *
+ * RTF carries pictures as hexadecimal inside `\\pict`, so a data URL has to be
+ * decoded to bytes and written back out as hex. Without this the writer walked
+ * straight past every <img>, and a logo or a diagram simply disappeared on
+ * export — silently, which is the part that makes it a bug rather than a
+ * limitation.
+ */
+function rtfPicture(image: HTMLImageElement): string {
+  const source = image.getAttribute('src') ?? ''
+  const match = /^data:image\/(png|jpe?g);base64,(.+)$/i.exec(source)
+  // Only the two formats RTF readers actually understand; anything else would
+  // be written as a picture nothing can draw.
+  if (!match) return ''
+
+  const kind = match[1].toLowerCase().startsWith('jp') ? 'jpegblip' : 'pngblip'
+  let binary: string
+  try {
+    binary = atob(match[2])
+  } catch {
+    return ''
+  }
+
+  let hex = ''
+  for (let index = 0; index < binary.length; index += 1) {
+    hex += binary.charCodeAt(index).toString(16).padStart(2, '0')
+  }
+
+  // Twips, because that is what \\picwgoal is measured in: a picture with no
+  // stated size renders at whatever the reader guesses, usually far too large.
+  const width = Number(image.getAttribute('width')) || image.naturalWidth || 240
+  const height = Number(image.getAttribute('height')) || image.naturalHeight || 0
+  const widthTwips = Math.round(width * 15)
+  const heightTwips = height > 0 ? Math.round(height * 15) : 0
+  const goals = `\\picwgoal${widthTwips}${heightTwips > 0 ? `\\pichgoal${heightTwips}` : ''}`
+  return `{\\pict\\${kind}${goals} ${hex}}`
+}
+
 export function htmlToRtf(html: string, rightToLeft: boolean): Uint8Array {
   const container = document.createElement('div')
   container.innerHTML = html
@@ -464,6 +503,7 @@ export function htmlToRtf(html: string, rightToLeft: boolean): Uint8Array {
     const element = node as HTMLElement
     const tag = element.tagName
     if (tag === 'BR') return '\\line '
+    if (tag === 'IMG') return rtfPicture(element as HTMLImageElement)
 
     const next: Partial<RunStyle> = { ...style }
     if (tag === 'B' || tag === 'STRONG') next.bold = true

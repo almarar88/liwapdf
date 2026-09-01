@@ -25,6 +25,8 @@ export interface DocumentActions {
   savePdfAs: () => Promise<void>
   exportEditorAs: (target: DocumentFormat) => Promise<void>
   newDocument: (kind: 'rich' | 'sheet' | 'code', template?: string) => Promise<void>
+  /** Renders the open editor document to PDF so the PDF tools can act on it. */
+  bridgeEditorToPdf: () => Promise<boolean>
 }
 
 /**
@@ -126,6 +128,43 @@ export function useDocumentActions(): DocumentActions {
       }
     } catch (error) {
       store.getState().reportError(error)
+    }
+  }, [store])
+
+  /**
+   * Puts whatever is open into the shape a PDF tool can act on.
+   *
+   * The app keeps two document slots — the PDF one the viewer and the tools
+   * use, and the editor one everything else lives in — and they never spoke to
+   * each other. So with a Word file plainly open on screen, every tool refused
+   * with "open a document first", which is both wrong and impossible to argue
+   * with. Rendering the editor's document to PDF and handing that to the tool
+   * is what the user was going to do by hand anyway.
+   */
+  const bridgeEditorToPdf = useCallback(async (): Promise<boolean> => {
+    const state = store.getState()
+    const doc = state.editorDoc
+    if (!doc) return false
+    if (doc.source.kind === 'image' || doc.source.kind === 'pdf') return false
+
+    state.setBusy({ label: state.t('workspace.converting'), progress: null })
+    try {
+      const result = await (await writers()).exportDocument(requestFor(doc, 'pdf'))
+      const opened = await store
+        .getState()
+        .openPdfBytes(result.fileName, result.bytes, null)
+      if (opened) {
+        store.getState().notify({
+          kind: 'success',
+          title: store.getState().t('workspace.converted', { name: doc.source.name })
+        })
+      }
+      return opened
+    } catch (error) {
+      store.getState().reportError(error)
+      return false
+    } finally {
+      store.getState().setBusy(null)
     }
   }, [store])
 
@@ -286,7 +325,16 @@ export function useDocumentActions(): DocumentActions {
     await savePdfAs()
   }, [exportEditorAs, savePdfAs, store])
 
-  return { openDialog, openPaths, saveActive, saveActiveAs, savePdfAs, exportEditorAs, newDocument }
+  return {
+    openDialog,
+    openPaths,
+    saveActive,
+    saveActiveAs,
+    savePdfAs,
+    exportEditorAs,
+    newDocument,
+    bridgeEditorToPdf
+  }
 }
 
 interface ExportRequestShape {
@@ -335,7 +383,8 @@ function announceSaved(path: string): void {
 
 const WARNING_MESSAGES: Record<string, Parameters<ReturnType<typeof useApp.getState>['t']>[0]> = {
   'doc-text-only': 'msg.legacyDocNote',
-  'pptx-text-only': 'msg.slidesTextNote',
+  'pptx-layout-only': 'warn.pptx-layout-only',
+  'pptx-images-dropped': 'warn.pptx-images-dropped',
   'unknown-format-as-text': 'msg.openedAsText',
   'sheet-truncated': 'msg.sheetTruncated',
   'epub-images-dropped': 'msg.epubImagesDropped'

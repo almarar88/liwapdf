@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import {
   FileText,
@@ -16,13 +17,15 @@ import {
   WifiOff,
   Lock,
   FileSpreadsheet,
+  Signature,
   Minimize2
 } from 'lucide-react'
 import { useApp } from '../store/app'
 import { useDocumentActions } from '../hooks/useDocumentActions'
 import { Button, Bytes, Card, Dropzone, Empty, useSpotlight } from '../components/ui'
 import { formatRelativeTime } from '../lib/format'
-import { TOOL_COUNT } from './toolRegistry'
+import { clearDraft, documentFromDraft, readDraft, type Draft } from '../lib/documents/draft'
+import { listSignatures } from '../components/SignaturePad'
 
 export function HomeView(): React.JSX.Element {
   const t = useApp((state) => state.t)
@@ -30,8 +33,32 @@ export function HomeView(): React.JSX.Element {
   const clearRecents = useApp((state) => state.clearRecents)
   const language = useApp((state) => state.settings.language)
   const navigate = useApp((state) => state.navigate)
+  const doc = useApp((state) => state.doc)
+  const editorDoc = useApp((state) => state.editorDoc)
+  const openEditorDocument = useApp((state) => state.openEditorDocument)
   const { openDialog, openPaths } = useDocumentActions()
   const spotlight = useSpotlight()
+
+  const [draft, setDraft] = useState<Draft | null>(null)
+  const [signatureCount, setSignatureCount] = useState(0)
+
+  useEffect(() => {
+    void readDraft().then(setDraft)
+    void listSignatures().then((items) => setSignatureCount(items.length))
+  }, [])
+
+  // Words in whatever is open, so the figure describes the user's work rather
+  // than the product. A marketing number on a dashboard is wasted space.
+  const editorWords = useMemo(() => {
+    if (!editorDoc) return 0
+    const text =
+      editorDoc.source.kind === 'sheet'
+        ? editorDoc.sheets.flatMap((sheet) => sheet.rows.flatMap((row) => row.map((c) => c.text))).join(' ')
+        : editorDoc.source.kind === 'code'
+          ? editorDoc.text
+          : editorDoc.html.replace(/<[^>]*>/g, ' ')
+    return text.split(/\s+/).filter(Boolean).length
+  }, [editorDoc])
 
   const quick = [
     { icon: <FileText size={19} />, label: t('action.openPdf'), run: () => void openDialog() },
@@ -65,39 +92,103 @@ export function HomeView(): React.JSX.Element {
           </Button>
         </div>
 
-        <Dropzone
-          onBrowse={() => void openDialog()}
-          onFiles={(paths) => void openPaths(paths)}
-          icon={<UploadCloud size={26} />}
-          title={t('home.dropTitle')}
-          subtitle={t('home.dropSub')}
-        />
+        {draft ? (
+          <div className="recovery">
+            <div>
+              <b>{t('editor.recoverTitle')}</b>
+              <p className="muted" style={{ margin: '2px 0 0' }}>
+                {t('editor.recoverBody', { name: draft.name })}
+              </p>
+            </div>
+            <span className="spacer" />
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => {
+                openEditorDocument(documentFromDraft(draft))
+                navigate('editor')
+                setDraft(null)
+              }}
+            >
+              {t('editor.recoverOpen')}
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => { void clearDraft(); setDraft(null) }}>
+              {t('editor.recoverDiscard')}
+            </Button>
+          </div>
+        ) : null}
 
-        <div className="grid cols-3" style={{ marginTop: 16 }}>
+        {doc || editorDoc ? (
+          <div className="grid cols-2" style={{ marginBottom: 16 }}>
+            {doc ? (
+              <button className="open-doc" onClick={() => navigate('viewer')} {...spotlight}>
+                <span className="icon"><FileText size={19} /></span>
+                <span className="grow">
+                  <b><bdi>{doc.name}</bdi></b>
+                  <span className="muted">
+                    {t('home.openPdf', { pages: doc.pageCount })}
+                    {doc.dirty ? ` · ${t('home.unsaved')}` : ''}
+                  </span>
+                </span>
+              </button>
+            ) : null}
+            {editorDoc ? (
+              <button className="open-doc" onClick={() => navigate('editor')} {...spotlight}>
+                <span className="icon"><FileType2 size={19} /></span>
+                <span className="grow">
+                  <b><bdi>{editorDoc.source.name}</bdi></b>
+                  <span className="muted">
+                    {t('home.openWords', { words: editorWords })}
+                    {editorDoc.dirty ? ` · ${t('home.unsaved')}` : ''}
+                  </span>
+                </span>
+              </button>
+            ) : null}
+          </div>
+        ) : (
+          <Dropzone
+            onBrowse={() => void openDialog()}
+            onFiles={(paths) => void openPaths(paths)}
+            icon={<UploadCloud size={26} />}
+            title={t('home.dropTitle')}
+            subtitle={t('home.dropSub')}
+          />
+        )}
+
+        <div className="grid cols-4" style={{ marginTop: 16 }}>
           <Card style={{ padding: 0 }} pad={false}>
             <div className="stat">
-              <span className="value">{TOOL_COUNT}+</span>
+              <span className="value">{doc ? doc.pageCount : '—'}</span>
               <span className="label">
-                <Sparkles size={12} style={{ verticalAlign: -2, marginInlineEnd: 4 }} />
-                {t('home.stat.tools')}
+                <FileText size={12} style={{ verticalAlign: -2, marginInlineEnd: 4 }} />
+                {t('home.stat.pages')}
               </span>
             </div>
           </Card>
           <Card style={{ padding: 0 }} pad={false}>
             <div className="stat">
-              <span className="value">100%</span>
+              <span className="value">{editorDoc ? editorWords : '—'}</span>
               <span className="label">
-                <WifiOff size={12} style={{ verticalAlign: -2, marginInlineEnd: 4 }} />
-                {t('home.stat.offline')}
+                <FileType2 size={12} style={{ verticalAlign: -2, marginInlineEnd: 4 }} />
+                {t('home.stat.words')}
               </span>
             </div>
           </Card>
           <Card style={{ padding: 0 }} pad={false}>
             <div className="stat">
-              <span className="value">AES-256</span>
+              <span className="value">{recents.length}</span>
               <span className="label">
-                <Lock size={12} style={{ verticalAlign: -2, marginInlineEnd: 4 }} />
-                {t('home.stat.privacy')}
+                <Clock3 size={12} style={{ verticalAlign: -2, marginInlineEnd: 4 }} />
+                {t('home.stat.recent')}
+              </span>
+            </div>
+          </Card>
+          <Card style={{ padding: 0 }} pad={false}>
+            <div className="stat">
+              <span className="value">{signatureCount}</span>
+              <span className="label">
+                <Signature size={12} style={{ verticalAlign: -2, marginInlineEnd: 4 }} />
+                {t('home.stat.signatures')}
               </span>
             </div>
           </Card>
