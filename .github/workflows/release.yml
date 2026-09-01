@@ -90,12 +90,19 @@ jobs:
 
             | النظام | الملف |
             | --- | --- |
-            | Windows 10/11 (مثبّت) | `Alcode-Editor-1.2.5-x64-Setup.exe` |
-            | Windows (محمول) | `Alcode-Editor-1.2.5-Portable.exe` |
-            | macOS Apple Silicon | `Alcode-Editor-1.2.5-arm64.dmg` |
-            | macOS Intel | `Alcode-Editor-1.2.5-x64.dmg` |
+            | Windows 10/11 (مثبّت) | `Alcode-Editor-1.2.6-x64-Setup.exe` |
+            | Windows (محمول) | `Alcode-Editor-1.2.6-Portable.exe` |
+            | macOS Apple Silicon | `Alcode-Editor-1.2.6-arm64.dmg` |
+            | macOS Intel | `Alcode-Editor-1.2.6-x64.dmg` |
 
             ### الجديد في هذا الإصدار
+
+            **أزرار الجداول لم تكن تظهر أبدًا**
+
+            - أزرار «إضافة صف» و«إضافة عمود» و«حذف الصف» و«حذف العمود» كانت
+              مشروطة بفحص لموضع مؤشر الكتابة يُجرى أثناء الرسم — وتحريك المؤشر
+              لا يُعيد الرسم، فلم تظهر الأزرار ولو مرة، وتحرير الجداول كان
+              غير ممكن من شريط الأدوات أصلًا. صارت تتابع المؤشر فعليًا.
 
             **«بحث واستبدال» كان يقول «تم» ولا يغيّر شيئًا**
 

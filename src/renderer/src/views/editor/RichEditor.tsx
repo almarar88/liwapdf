@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   AlignCenter,
   AlignJustify,
@@ -159,7 +159,25 @@ export function RichEditor({
       Array.from(table.rows).forEach((row) => row.cells[index]?.remove())
     })
 
-  const inTable = () => Boolean(currentCell())
+  // Whether the caret sits in a table has to be state, not a call made while
+  // rendering: moving the caret does not re-render, so the row and column
+  // buttons were gated on a value that was only ever sampled at mount — they
+  // never appeared, and table editing was unreachable from the toolbar.
+  const [inTable, setInTable] = useState(false)
+  useEffect(() => {
+    const update = (): void => {
+      const editor = editorRef.current
+      const node = window.getSelection()?.anchorNode
+      if (!editor || !node || !editor.contains(node)) {
+        setInTable(false)
+        return
+      }
+      const element = node.nodeType === Node.ELEMENT_NODE ? (node as Element) : node.parentElement
+      setInTable(Boolean(element?.closest('td, th')))
+    }
+    document.addEventListener('selectionchange', update)
+    return () => document.removeEventListener('selectionchange', update)
+  }, [])
 
   return (
     <div className="rich-shell">
@@ -322,7 +340,7 @@ export function RichEditor({
         </Button>
       </div>
 
-      {inTable() ? (
+      {inTable ? (
         <div className="toolbar sub">
           <span className="muted">{t('word.insertTable')}</span>
           <Button size="sm" variant="ghost" onClick={addTableRow}>
