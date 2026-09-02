@@ -16,7 +16,7 @@ import {
 } from '../../components/ui'
 import { FILTERS, pickFiles, pickOneFile, describeBatch,
   saveBatch, saveBytes, normalizeImage } from '../../lib/files'
-import { stripExtension } from '../../lib/format'
+import { formatBytes, MM_TO_PT, stripExtension } from '../../lib/format'
 import * as ops from '../../lib/pdf/ops'
 import { extractImages, readOutline, type OutlineNode } from '../../lib/pdf/render'
 import { diffLines, documentTextLines } from '../../lib/convert'
@@ -577,19 +577,40 @@ export function ComparePanel(_: ToolPanelProps): React.JSX.Element {
   const doc = useApp((state) => state.doc)
   const notify = useApp((state) => state.notify)
   const run = useRunner()
+  const [mode, setMode] = useState<'text' | 'visual'>('text')
   const [left, setLeft] = useState<{ name: string; bytes: Uint8Array } | null>(
     doc ? { name: doc.name, bytes: doc.bytes } : null
   )
   const [right, setRight] = useState<{ name: string; bytes: Uint8Array } | null>(null)
   const [result, setResult] = useState<ReturnType<typeof diffLines> | null>(null)
+  const [visual, setVisual] = useState<import('../../lib/pdf/visualdiff').VisualDiffResult | null>(null)
+  const [shown, setShown] = useState(0)
 
   const pick = async (setter: typeof setLeft): Promise<void> => {
-    const picked = await pickOneFile(FILTERS.documents)
+    const picked = await pickOneFile(mode === 'visual' ? FILTERS.pdf : FILTERS.documents)
     if (picked) setter({ name: picked.name, bytes: picked.data })
   }
 
+  const isPdf = (file: { name: string; bytes: Uint8Array } | null): boolean =>
+    Boolean(file && (/\.pdf$/i.test(file.name) || (file.bytes[0] === 0x25 && file.bytes[1] === 0x50)))
+
   return (
     <div className="stack">
+      <Field label={t('compare.mode')} hint={mode === 'visual' ? t('compare.visual.d') : undefined}>
+        <Segmented
+          value={mode}
+          onChange={(value) => {
+            setMode(value)
+            setResult(null)
+            setVisual(null)
+          }}
+          options={[
+            { value: 'text', label: t('compare.text') },
+            { value: 'visual', label: t('compare.visual') }
+          ]}
+        />
+      </Field>
+
       <div className="row">
         <Button block onClick={() => void pick(setLeft)}>
           {left ? left.name : `${t('action.browse')} A`}
@@ -601,19 +622,36 @@ export function ComparePanel(_: ToolPanelProps): React.JSX.Element {
 
       <Button
         variant="primary"
-        disabled={!left || !right}
+        disabled={!left || !right || (mode === 'visual' && (!isPdf(left) || !isPdf(right)))}
         onClick={() =>
-          void run(t('msg.working'), async () => {
-            const [a, b] = await Promise.all([
-              documentTextLines(left!.name, left!.bytes),
-              documentTextLines(right!.name, right!.bytes)
-            ])
-            const diff = diffLines(a, b)
-            setResult(diff)
-            if (!diff.some((line) => line.kind !== 'same')) {
-              notify({ kind: 'info', title: t('msg.identical') })
-            }
-          })
+          void run(
+            t('msg.working'),
+            async (report, signal) => {
+              if (mode === 'visual') {
+                const { visualDiff } = await import('../../lib/pdf/visualdiff')
+                const outcome = await visualDiff(left!.bytes, right!.bytes, {
+                  withImages: true,
+                  onProgress: report,
+                  signal,
+                  passwordA: doc && left!.bytes === doc.bytes ? doc.password : undefined
+                })
+                setVisual(outcome)
+                setShown(Math.max(0, outcome.pages.findIndex((page) => page.changed > 0.0005)))
+                if (outcome.changedPages === 0) notify({ kind: 'info', title: t('compare.noVisual') })
+                return
+              }
+              const [a, b] = await Promise.all([
+                documentTextLines(left!.name, left!.bytes),
+                documentTextLines(right!.name, right!.bytes)
+              ])
+              const diff = diffLines(a, b)
+              setResult(diff)
+              if (!diff.some((line) => line.kind !== 'same')) {
+                notify({ kind: 'info', title: t('msg.identical') })
+              }
+            },
+            { cancellable: mode === 'visual' }
+          )
         }
       >
         {t('action.run')}
@@ -632,6 +670,200 @@ export function ComparePanel(_: ToolPanelProps): React.JSX.Element {
           ))}
         </Card>
       ) : null}
+
+      {visual ? (
+        <div className="stack tight">
+          <div className="row between">
+            <span className="badge accent">
+              {t('compare.changedPages', { n: visual.changedPages, total: visual.pages.length })}
+            </span>
+            <div className="row" style={{ gap: 6 }}>
+              <Button size="sm" disabled={shown <= 0} onClick={() => setShown(shown - 1)}>‹</Button>
+              <span className="muted">
+                {t('compare.pageChanged', {
+                  n: visual.pages[shown]?.page ?? 0,
+                  percent: Math.round((visual.pages[shown]?.changed ?? 0) * 1000) / 10
+                })}
+              </span>
+              <Button size="sm" disabled={shown >= visual.pages.length - 1} onClick={() => setShown(shown + 1)}>›</Button>
+            </div>
+          </div>
+          {visual.pages[shown]?.image ? (
+            <Card pad={false} style={{ maxHeight: 420, overflow: 'auto' }}>
+              <img src={visual.pages[shown].image} alt="" style={{ display: 'block', width: '100%' }} />
+            </Card>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+/* -------------------------------------------------------------------- qr */
+
+export function QrPanel({ onClose }: ToolPanelProps): React.JSX.Element {
+  const t = useApp((state) => state.t)
+  const applied = useApplied()
+  const doc = useApp((state) => state.doc)
+  const run = useRunner()
+  const [text, setText] = useState('')
+  const [sizeMm, setSizeMm] = useState(30)
+  const [anchor, setAnchor] = useState<ops.Anchor>('bottomRight')
+  const [margin, setMargin] = useState(10)
+  const [range, setRange] = useState('')
+  const [preview, setPreview] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    if (!text.trim()) {
+      setPreview(null)
+      return undefined
+    }
+    void import('../../lib/qr').then(({ qrDataUrl }) => qrDataUrl(text.trim(), 160)).then((url) => {
+      if (!cancelled) setPreview(url)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [text])
+
+  if (!doc) return <p className="muted">{t('msg.noDocument')}</p>
+
+  return (
+    <div className="stack">
+      <Field label={t('qr.content')}>
+        <TextInput value={text} onChange={setText} placeholder="https://" />
+      </Field>
+      {preview ? (
+        <div className="row" style={{ justifyContent: 'center' }}>
+          <img src={preview} alt="" width={120} height={120} style={{ borderRadius: 8, border: '1px solid var(--hairline)' }} />
+        </div>
+      ) : null}
+      <Field label={t('qr.size')}>
+        <Slider value={sizeMm} onChange={setSizeMm} min={10} max={80} suffix=" mm" />
+      </Field>
+      <Field label={t('opt.position')}>
+        <AnchorPicker value={anchor} onChange={setAnchor} />
+      </Field>
+      <Field label={t('opt.margin')}>
+        <Slider value={margin} onChange={setMargin} min={0} max={40} suffix=" mm" />
+      </Field>
+      <RangeField value={range} onChange={setRange} />
+      <Button
+        variant="primary"
+        disabled={!text.trim()}
+        onClick={() =>
+          void run(t('msg.working'), async () => {
+            const next = await ops.stampQr(
+              doc.bytes,
+              {
+                text: text.trim(),
+                sizePt: sizeMm * MM_TO_PT,
+                anchor,
+                margin: margin * MM_TO_PT,
+                indices: resolveRange(range, doc.pageCount)
+              },
+              doc.password
+            )
+            await applied(next, 'tool.qr')
+            onClose()
+          })
+        }
+      >
+        {t('action.apply')}
+      </Button>
+    </div>
+  )
+}
+
+/* --------------------------------------------------------------- inspect */
+
+export function InspectPanel(_: ToolPanelProps): React.JSX.Element {
+  const t = useApp((state) => state.t)
+  const doc = useApp((state) => state.doc)
+  const notify = useApp((state) => state.notify)
+  const [report, setReport] = useState<import('../../lib/pdf/inspect').DocumentReport | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!doc) return
+    let cancelled = false
+    void import('../../lib/pdf/inspect')
+      .then(({ inspectDocument }) => inspectDocument(doc.bytes, doc.password))
+      .then((next) => {
+        if (!cancelled) setReport(next)
+      })
+      .catch((failure: Error) => {
+        if (!cancelled) setError(String(failure.message ?? failure))
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [doc])
+
+  if (!doc) return <p className="muted">{t('msg.noDocument')}</p>
+  if (error) return <p className="muted">{error}</p>
+  if (!report) return <p className="muted">{t('msg.loading')}</p>
+
+  const rows: [string, string][] = [
+    [t('inspect.version'), `PDF ${report.version}`],
+    [t('inspect.size'), formatBytes(report.bytes)],
+    [t('inspect.pages'), String(report.pages)],
+    [
+      t('inspect.pageSizes'),
+      report.pageSizes
+        .map((size) => `${size.label ?? ''} ${size.widthMm} × ${size.heightMm} مم${size.count > 1 ? ` ×${size.count}` : ''}`.trim())
+        .join(' · ')
+    ],
+    [t('inspect.images'), String(report.images)],
+    [t('inspect.forms'), String(report.formFields)],
+    [t('inspect.bookmarks'), String(report.bookmarks)],
+    [t('inspect.attachments'), String(report.attachments)],
+    [t('inspect.encrypted'), report.encrypted ? t('inspect.yes') : t('inspect.no')]
+  ]
+  if (report.title) rows.push([t('inspect.title'), report.title])
+  if (report.author) rows.push([t('inspect.author'), report.author])
+  if (report.producer) rows.push([t('inspect.producer'), report.producer])
+
+  const text = [
+    ...rows.map(([label, value]) => `${label}: ${value}`),
+    `${t('inspect.fonts')}: ${report.fonts.map((font) => `${font.name} (${font.type}, ${font.embedded ? t('inspect.embedded') : t('inspect.notEmbedded')})`).join('; ') || t('inspect.noFonts')}`
+  ].join('\n')
+
+  return (
+    <div className="stack">
+      {report.scanned ? <span className="badge accent">{t('inspect.scanned')}</span> : null}
+      <Card pad={false}>
+        {rows.map(([label, value]) => (
+          <div className="list-row" key={label}>
+            <span className="grow muted">{label}</span>
+            <bdi>{value}</bdi>
+          </div>
+        ))}
+      </Card>
+      <h4 style={{ margin: 0 }}>{t('inspect.fonts')}</h4>
+      <Card pad={false}>
+        {report.fonts.length === 0 ? (
+          <div className="list-row muted">{t('inspect.noFonts')}</div>
+        ) : (
+          report.fonts.map((font) => (
+            <div className="list-row" key={`${font.name}:${font.type}`}>
+              <span className="grow mono" dir="ltr">{font.name}</span>
+              <span className="muted">{font.type}</span>
+              <span className={`badge ${font.embedded ? 'green' : 'red'}`}>
+                {font.embedded ? t('inspect.embedded') : t('inspect.notEmbedded')}
+              </span>
+            </div>
+          ))
+        )}
+      </Card>
+      <Button
+        onClick={() => {
+          void navigator.clipboard.writeText(text).then(() => notify({ kind: 'success', title: t('inspect.copied') }))
+        }}
+      >
+        {t('inspect.copy')}
+      </Button>
     </div>
   )
 }

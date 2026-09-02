@@ -30,7 +30,9 @@ import {
   Files,
   Gauge,
   PenTool,
-  BookCopy
+  BookCopy,
+  QrCode,
+  ScanSearch
 } from 'lucide-react'
 import type { TranslationKey } from '../i18n'
 
@@ -45,6 +47,8 @@ export type ToolId =
   | 'resize'
   | 'crop'
   | 'booklet'
+  | 'qr'
+  | 'inspect'
   | 'compress'
   | 'compressAny'
   | 'protect'
@@ -105,12 +109,14 @@ export const TOOLS: ToolDescriptor[] = [
   { id: 'redact', group: 'optimize', titleKey: 'tool.redact', descriptionKey: 'tool.redact.d', icon: <EyeOff size={19} />, needsDocument: true, tone: 'rose' },
   { id: 'optimize', group: 'optimize', titleKey: 'tool.optimize', descriptionKey: 'tool.optimize.d', icon: <Wand2 size={19} />, needsDocument: true, tone: 'green' },
   { id: 'metadata', group: 'optimize', titleKey: 'tool.metadata', descriptionKey: 'tool.metadata.d', icon: <Info size={19} />, needsDocument: true, tone: 'indigo' },
+  { id: 'inspect', group: 'optimize', titleKey: 'tool.inspect', descriptionKey: 'tool.inspect.d', icon: <ScanSearch size={19} />, needsDocument: true, tone: 'indigo' },
 
   { id: 'watermark', group: 'content', titleKey: 'tool.watermark', descriptionKey: 'tool.watermark.d', icon: <Droplets size={19} />, needsDocument: true, tone: 'blue' },
   { id: 'pageNumbers', group: 'content', titleKey: 'tool.pageNumbers', descriptionKey: 'tool.pageNumbers.d', icon: <Hash size={19} />, needsDocument: true, tone: 'indigo' },
   { id: 'headerFooter', group: 'content', titleKey: 'tool.headerFooter', descriptionKey: 'tool.headerFooter.d', icon: <PanelTop size={19} />, needsDocument: true, tone: 'indigo' },
   { id: 'background', group: 'content', titleKey: 'tool.background', descriptionKey: 'tool.background.d', icon: <Paintbrush size={19} />, needsDocument: true, tone: 'purple' },
   { id: 'stamp', group: 'content', titleKey: 'tool.stamp', descriptionKey: 'tool.stamp.d', icon: <Stamp size={19} />, needsDocument: true, tone: 'rose' },
+  { id: 'qr', group: 'content', titleKey: 'tool.qr', descriptionKey: 'tool.qr.d', icon: <QrCode size={19} />, needsDocument: true, tone: 'teal' },
   { id: 'extractImages', group: 'content', titleKey: 'tool.extractImages', descriptionKey: 'tool.extractImages.d', icon: <Images size={19} />, needsDocument: true, tone: 'teal' },
   { id: 'forms', group: 'content', titleKey: 'tool.forms', descriptionKey: 'tool.forms.d', icon: <ClipboardList size={19} />, needsDocument: true, tone: 'amber' },
   { id: 'compare', group: 'content', titleKey: 'tool.compare', descriptionKey: 'tool.compare.d', icon: <GitCompare size={19} />, needsDocument: false, tone: 'purple' },

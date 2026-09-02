@@ -36,7 +36,9 @@ import {
   FormsPanel,
   ComparePanel,
   BookmarksPanel,
-  AttachmentsPanel
+  AttachmentsPanel,
+  QrPanel,
+  InspectPanel
 } from './tools/contentTools'
 import { OcrPanel } from './tools/ocrTools'
 import { RedactPanel } from './tools/redactTools'
@@ -69,6 +71,8 @@ const PANELS: Record<ToolId, (props: { onClose: () => void }) => React.JSX.Eleme
   compare: ComparePanel,
   bookmarks: BookmarksPanel,
   attachments: AttachmentsPanel,
+  qr: QrPanel,
+  inspect: InspectPanel,
   ocr: OcrPanel,
   redact: RedactPanel,
   batch: BatchPanel

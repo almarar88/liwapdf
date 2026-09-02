@@ -268,7 +268,7 @@ export function ViewerView(): React.JSX.Element {
   // once the layout knows where the page is. Only after the first page:
   // resuming at page 1 is not resuming.
   useEffect(() => {
-    if (!doc?.path || resumedFor.current === doc.id) return
+    if (!doc?.path || resumedFor.current === doc.path) return
     let saved = 0
     try {
       saved = Number(localStorage.getItem(`alcode.lastPage:${doc.path}`) ?? 0)
@@ -276,18 +276,18 @@ export function ViewerView(): React.JSX.Element {
       return
     }
     if (!(saved > 1 && saved <= doc.pageCount)) {
-      resumedFor.current = doc.id
+      resumedFor.current = doc.path
       return
     }
     if (mode === 'continuous' && layout.offsets[saved - 1] === undefined) return
-    resumedFor.current = doc.id
+    resumedFor.current = doc.path
     goToPage(saved)
     notify({ kind: 'info', title: t('viewer.resumed', { n: saved }) })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [doc, layout, mode])
 
   useEffect(() => {
-    if (!doc?.path || resumedFor.current !== doc.id) return
+    if (!doc?.path || resumedFor.current !== doc.path) return
     try {
       if (currentPage > 1) localStorage.setItem(`alcode.lastPage:${doc.path}`, String(currentPage))
       else localStorage.removeItem(`alcode.lastPage:${doc.path}`)

@@ -21,10 +21,10 @@ format — PDF, Word, Excel, PowerPoint, EPUB and more. Fully offline.*
 
 | النظام / Platform | نوع الملف | رابط التحميل | رابط بديل |
 | --- | --- | --- | --- |
-| 🪟 **Windows 10/11 (64-bit)** | مثبّت `.exe` | [تحميل / Download](https://almarar88.github.io/liwapdf/Alcode-Editor-Setup.exe) | [Releases](../../releases/latest/download/Alcode-Editor-1.10.0-x64-Setup.exe) |
-| 🪟 **Windows (نسخة محمولة)** | `Portable.exe` بدون تثبيت | [تحميل / Download](https://almarar88.github.io/liwapdf/Alcode-Editor-Portable.exe) | [Releases](../../releases/latest/download/Alcode-Editor-1.10.0-Portable.exe) |
-| 🍎 **macOS — Apple Silicon (M1/M2/M3/M4)** | `.dmg` | [تحميل / Download](https://almarar88.github.io/liwapdf/Alcode-Editor-macOS-AppleSilicon.dmg) | [Releases](../../releases/latest/download/Alcode-Editor-1.10.0-arm64.dmg) |
-| 🍎 **macOS — Intel** | `.dmg` | [تحميل / Download](https://almarar88.github.io/liwapdf/Alcode-Editor-macOS-Intel.dmg) | [Releases](../../releases/latest/download/Alcode-Editor-1.10.0-x64.dmg) |
+| 🪟 **Windows 10/11 (64-bit)** | مثبّت `.exe` | [تحميل / Download](https://almarar88.github.io/liwapdf/Alcode-Editor-Setup.exe) | [Releases](../../releases/latest/download/Alcode-Editor-1.11.0-x64-Setup.exe) |
+| 🪟 **Windows (نسخة محمولة)** | `Portable.exe` بدون تثبيت | [تحميل / Download](https://almarar88.github.io/liwapdf/Alcode-Editor-Portable.exe) | [Releases](../../releases/latest/download/Alcode-Editor-1.11.0-Portable.exe) |
+| 🍎 **macOS — Apple Silicon (M1/M2/M3/M4)** | `.dmg` | [تحميل / Download](https://almarar88.github.io/liwapdf/Alcode-Editor-macOS-AppleSilicon.dmg) | [Releases](../../releases/latest/download/Alcode-Editor-1.11.0-arm64.dmg) |
+| 🍎 **macOS — Intel** | `.dmg` | [تحميل / Download](https://almarar88.github.io/liwapdf/Alcode-Editor-macOS-Intel.dmg) | [Releases](../../releases/latest/download/Alcode-Editor-1.11.0-x64.dmg) |
 
 > ملفات صفحة الإصدارات تُخدَّم من `objects.githubusercontent.com`، وهو محجوب على بعض الشبكات
 > رغم أن `github.com` نفسه يفتح — فيفشل التحميل بخطأ اتصال لا بخطأ «الملف غير موجود».
@@ -126,12 +126,15 @@ Tesseract بالكامل داخل جهازك — العامل ونواة WebAsse
 | دمج صفحات في ورقة (2/4/6/9) | | النماذج: عرض وتعبئة وتسطيح |
 | تغيير قياس الصفحة | | مقارنة مستندين سطراً بسطر |
 | قص الهوامش | تصغير حجم أي ملف | الفهرس والمرفقات |
-| كتيّب للطباعة (تجليد سرجي) | | |
+| كتيّب للطباعة (تجليد سرجي) | فحص المستند (الخطوط، الصور، المقاسات) | رمز QR على الصفحات |
+| | | مقارنة بصرية نقطةً نقطة |
 | | تنقيح وحذف نهائي بالبحث | |
 | | | التعرّف الضوئي على النص (OCR) |
 | | | معالجة دفعية (ضغط/تحويل/علامة/حماية لعشرات الملفات) |
 
 ### محرر المستندات الشامل
+- **دمج المراسلات:** حقول `{{الاسم}}` + جدول بيانات = مستند لكل صف، PDF أو Word، في مجلد واحد.
+- **رموز QR** في المستند وعلى صفحات PDF — تُولَّد محليًا وتُقرأ بأي قارئ.
 - **تفقيط:** المبلغ كتابةً بقواعد العربية الصحيحة لعشر عملات وبصيغة الشيك، وفي الجداول `=TAFQEET()`.
 - **تنظيف النص العربي:** تشكيل، تطويل، أرقام، مسافات الترقيم — كل خيار على حدة.
 - **معادلات في الجداول:** SUM و AVERAGE و IF و SUMIF و COUNTIF وعشرات غيرها، مع مراجع ونطاقات
@@ -183,6 +186,7 @@ Tesseract بالكامل داخل جهازك — العامل ونواة WebAsse
 
 ### التحويل بين الصيغ
 - **PDF إلى Excel:** استخراج الجداول من الصفحات إلى ورقة لكل صفحة، والأرقام أرقامًا.
+- **صور إلى PDF مع تحسين المسح:** صورة الهاتف الرمادية تخرج صفحة بيضاء بحبر أسود.
 `PDF → صور (PNG/JPG بأي دقة)` · `صور → PDF` · `PDF → نص` · `PDF → Word`
 `Word → PDF` · `Word → HTML` · `نص/Markdown → PDF` · `HTML → PDF`
 
@@ -312,8 +316,8 @@ npm run dist:mac       # حزمة macOS (تتطلب macOS)
 الملفات التنفيذية تُبنى تلقائياً على GitHub Actions لويندوز وماك:
 
 ```bash
-git tag v1.10.0
-git push origin v1.10.0
+git tag v1.11.0
+git push origin v1.11.0
 ```
 
 سير العمل في `.github/workflows/release.yml` يبني النسختين وينشرهما في Release واحد

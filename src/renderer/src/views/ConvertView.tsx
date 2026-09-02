@@ -14,6 +14,7 @@ import { useApp } from '../store/app'
 import {
   Button,
   Card,
+  Checkbox,
   Field,
   Modal,
   Segmented,
@@ -140,6 +141,7 @@ function ConverterPanel({
   const [margins, setMargins] = useState(18)
   const [fit, setFit] = useState<'contain' | 'cover' | 'actual'>('contain')
   const [files, setFiles] = useState<{ name: string; bytes: Uint8Array }[]>([])
+  const [enhance, setEnhance] = useState(false)
 
   const sizeTuple = (): [number, number] | null => {
     if (pageSize === 'auto') return null
@@ -266,6 +268,8 @@ function ConverterPanel({
               ]}
             />
           </Field>
+          <Checkbox checked={enhance} onChange={setEnhance} label={t('convert.enhanceScan')} />
+          <p className="hint">{t('convert.enhanceScan.d')}</p>
           <Button
             variant="primary"
             disabled={files.length === 0}
@@ -276,7 +280,8 @@ function ConverterPanel({
                   sizeTuple(),
                   fit,
                   margins * MM_TO_PT,
-                  report
+                  report,
+                  enhance
                 )
                 const outcome = await saveBytes(
                   bytes,

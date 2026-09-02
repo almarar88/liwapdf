@@ -902,11 +902,22 @@ export interface WatermarkOptions {
   indices: number[]
 }
 
+/** {date} and {hijri} in a label become today's date, in the text's own language. */
+export function expandDateTokens(text: string): string {
+  if (!/\{(date|hijri)\}/.test(text)) return text
+  const arabic = isRtlText(text)
+  const today = new Date()
+  return text
+    .replaceAll('{date}', formatGregorian(today, arabic ? 'ar' : 'en'))
+    .replaceAll('{hijri}', formatHijri(today, arabic ? 'ar' : 'en'))
+}
+
 export async function addWatermark(
   bytes: PdfBytes,
   options: WatermarkOptions,
   password?: string
 ): Promise<PdfBytes> {
+  if (options.text) options = { ...options, text: expandDateTokens(options.text) }
   const document = await load(bytes, password)
   const pages = document.getPages()
   const cache = await newOverlayCache(document)
@@ -1645,4 +1656,38 @@ export async function imposeBooklet(
   }
   await carryMetadata(source, output)
   return save(output)
+}
+
+/* -------------------------------------------------------------------- qr */
+
+export interface QrStampOptions {
+  text: string
+  /** Side of the square, in points. */
+  sizePt: number
+  anchor: Anchor
+  margin: number
+  indices: number[]
+}
+
+/**
+ * Draws a QR code on the chosen pages. The code is embedded once as a PNG
+ * at ten pixels per module — sharp at any print size a page allows — and
+ * placed through the same rotation-aware anchor the watermark uses.
+ */
+export async function stampQr(bytes: PdfBytes, options: QrStampOptions, password?: string): Promise<PdfBytes> {
+  const { qrDataUrl } = await import('../qr')
+  const dataUrl = await qrDataUrl(options.text, 10 * 60)
+  const png = Uint8Array.from(atob(dataUrl.split(',')[1]), (char) => char.charCodeAt(0))
+  const document = await load(bytes, password)
+  const image = await document.embedPng(png)
+  const pages = document.getPages()
+  for (const index of options.indices) {
+    const page = pages[index]
+    if (!page) continue
+    const box = visibleBox(page)
+    const size = Math.min(options.sizePt, box.width - options.margin * 2, box.height - options.margin * 2)
+    const placed = anchorPosition(options.anchor, box, size, size, options.margin)
+    page.drawImage(image, { x: placed.x, y: placed.y, width: size, height: size, rotate: degrees(placed.rotate) })
+  }
+  return save(document)
 }

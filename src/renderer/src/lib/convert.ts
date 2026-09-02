@@ -144,12 +144,19 @@ export async function imagesToPdf(
   pageSize: [number, number] | null,
   fit: 'contain' | 'cover' | 'actual',
   marginPt: number,
-  onProgress?: Progress
+  onProgress?: Progress,
+  /** Treat each picture as a photographed page: whiten the paper, darken the ink. */
+  enhance = false
 ): Promise<Uint8Array> {
   const prepared: { bytes: Uint8Array; type: 'png' | 'jpg' }[] = []
   for (const [index, file] of files.entries()) {
     onProgress?.(index, files.length)
-    prepared.push(await normalizeImage(file.name, file.bytes))
+    if (enhance) {
+      const { enhanceImageBytes } = await import('./images/scan')
+      prepared.push({ bytes: await enhanceImageBytes(file.bytes), type: 'jpg' })
+    } else {
+      prepared.push(await normalizeImage(file.name, file.bytes))
+    }
   }
   onProgress?.(files.length, files.length)
   return buildPdfFromImages(prepared, pageSize, fit, marginPt)

@@ -9,6 +9,8 @@ import {
   Eraser,
   Sparkles,
   Coins,
+  QrCode,
+  Users,
   Image as ImageIcon,
   Italic,
   Link2,
@@ -29,6 +31,10 @@ import { useApp } from '../../store/app'
 import { Button, Select, Modal, Field, Checkbox, TextInput, Segmented } from '../../components/ui'
 import { cleanArabicDom, DEFAULT_CLEANUP, type CleanupOptions } from '../../lib/text/cleanup'
 import { CURRENCIES, spellNumber, tafqeet, type Currency } from '../../lib/text/tafqeet'
+import { mergeDocuments, mergeFields, sheetRecords } from '../../lib/documents/mailmerge'
+import { saveBatch } from '../../lib/files'
+import type { SheetData } from '../../lib/documents/sheets'
+import { useRunner } from '../../views/tools/shared'
 import { FILTERS, pickOneFile } from '../../lib/files'
 import { sanitize } from '../../lib/documents/read'
 import { formatGregorian, formatHijri } from '../../lib/pdf/typography'
@@ -111,6 +117,37 @@ export function RichEditor({
   const editorRef = useRef<HTMLDivElement>(null)
   const loadedKey = useRef<string | null>(null)
   const [cleanupOpen, setCleanupOpen] = useState(false)
+  const runJob = useRunner()
+  const [qrOpen, setQrOpen] = useState(false)
+  const [qrText, setQrText] = useState('')
+  const [qrPreview, setQrPreview] = useState<string | null>(null)
+  const [mergeOpen, setMergeOpen] = useState(false)
+  const [mergeSheet, setMergeSheet] = useState<{ name: string; sheet: SheetData } | null>(null)
+  const [mergeNameField, setMergeNameField] = useState('')
+  const [mergeFormat, setMergeFormat] = useState<'pdf' | 'docx'>('pdf')
+
+  useEffect(() => {
+    let cancelled = false
+    if (!qrText.trim()) {
+      setQrPreview(null)
+      return undefined
+    }
+    void import('../../lib/qr')
+      .then(({ qrDataUrl }) => qrDataUrl(qrText.trim(), 320))
+      .then((url) => {
+        if (!cancelled) setQrPreview(url)
+      })
+      .catch(() => setQrPreview(null))
+    return () => {
+      cancelled = true
+    }
+  }, [qrText])
+
+  const templateFields = mergeOpen && editorRef.current ? mergeFields(editorRef.current.innerHTML) : []
+  const mergeInfo = mergeSheet ? sheetRecords(mergeSheet.sheet) : null
+  const missingFields = mergeInfo
+    ? templateFields.filter((field) => !mergeInfo.columns.some((column) => column.trim().toLowerCase() === field.trim().toLowerCase()))
+    : []
   const [cleanup, setCleanup] = useState<CleanupOptions>(DEFAULT_CLEANUP)
   const [amountOpen, setAmountOpen] = useState(false)
   const [amount, setAmount] = useState('')
@@ -427,6 +464,12 @@ export function RichEditor({
         <Button size="sm" variant="ghost" icon title={t('word.cleanup')} onClick={() => setCleanupOpen(true)}>
           <Sparkles size={15} />
         </Button>
+        <Button size="sm" variant="ghost" icon title={t('qr.insert')} onClick={() => setQrOpen(true)}>
+          <QrCode size={15} />
+        </Button>
+        <Button size="sm" variant="ghost" icon title={t('merge.title')} onClick={() => setMergeOpen(true)}>
+          <Users size={15} />
+        </Button>
         <Button size="sm" variant="ghost" icon title={t('word.amountWords')} onClick={() => setAmountOpen(true)}>
           <Coins size={15} />
         </Button>
@@ -576,6 +619,143 @@ export function RichEditor({
             <div className="card card-pad" style={{ fontSize: 'var(--text-md)', lineHeight: 1.8 }}>
               <bdi>{amountText}</bdi>
             </div>
+          ) : null}
+        </div>
+      </Modal>
+
+      <Modal
+        open={qrOpen}
+        onClose={() => setQrOpen(false)}
+        title={t('qr.insert')}
+        footer={
+          <>
+            <Button onClick={() => setQrOpen(false)}>{t('action.cancel')}</Button>
+            <Button
+              variant="primary"
+              disabled={!qrPreview}
+              onClick={() => {
+                if (!qrPreview) return
+                insertHtml(`<img src="${qrPreview}" alt="QR" style="width:32mm;height:32mm" />`)
+                setQrOpen(false)
+              }}
+            >
+              {t('word.insert')}
+            </Button>
+          </>
+        }
+      >
+        <div className="stack">
+          <Field label={t('qr.content')} hint={qrText.trim() ? undefined : t('qr.empty')}>
+            <TextInput value={qrText} onChange={setQrText} placeholder="https://" autoFocus />
+          </Field>
+          {qrPreview ? (
+            <div className="row" style={{ justifyContent: 'center' }}>
+              <img src={qrPreview} alt="" width={160} height={160} style={{ borderRadius: 8, border: '1px solid var(--hairline)' }} />
+            </div>
+          ) : null}
+        </div>
+      </Modal>
+
+      <Modal
+        open={mergeOpen}
+        onClose={() => setMergeOpen(false)}
+        title={t('merge.title')}
+        footer={
+          <>
+            <Button onClick={() => setMergeOpen(false)}>{t('action.cancel')}</Button>
+            <Button
+              variant="primary"
+              disabled={!mergeSheet || !mergeInfo || mergeInfo.records.length === 0 || templateFields.length === 0}
+              onClick={() => {
+                const editor = editorRef.current
+                if (!editor || !mergeSheet) return
+                const documents = mergeDocuments(editor.innerHTML, mergeSheet.sheet, {
+                  nameField: mergeNameField || undefined
+                })
+                setMergeOpen(false)
+                void runJob(t('msg.working'), async (report) => {
+                  const { exportDocument } = await import('../../lib/documents/write')
+                  const files: { name: string; bytes: Uint8Array }[] = []
+                  for (const [index, entry] of documents.entries()) {
+                    report(index, documents.length)
+                    const result = await exportDocument({
+                      target: mergeFormat,
+                      name: `${entry.name}.${mergeFormat}`,
+                      rightToLeft: direction === 'rtl',
+                      html: entry.html
+                    })
+                    files.push({ name: result.fileName, bytes: result.bytes })
+                  }
+                  const outcome = await saveBatch(files)
+                  if (!outcome.saved) return
+                  notify({ kind: 'success', title: t('merge.done', { n: outcome.count }) })
+                })
+              }}
+            >
+              {t('merge.run', { n: mergeInfo?.records.length ?? 0 })}
+            </Button>
+          </>
+        }
+      >
+        <div className="stack">
+          <p className="muted">{t('merge.d')}</p>
+          <Field label={t('merge.fields')}>
+            {templateFields.length === 0 ? (
+              <span className="muted">{t('merge.noFields')}</span>
+            ) : (
+              <div className="chips">
+                {templateFields.map((field) => (
+                  <span key={field} className={`chip${missingFields.includes(field) ? ' tone-rose' : ' tone-green'}`}>
+                    <span dir="ltr">{`{{${field}}}`}</span>
+                  </span>
+                ))}
+              </div>
+            )}
+          </Field>
+          <Button
+            onClick={async () => {
+              const picked = await pickOneFile(FILTERS.documents)
+              if (!picked) return
+              const { readWorkbook } = await import('../../lib/documents/sheets')
+              const read = readWorkbook(picked.data)
+              if (read.sheets.length > 0) {
+                setMergeSheet({ name: picked.name, sheet: read.sheets[0] })
+                setMergeNameField('')
+              }
+            }}
+          >
+            {mergeSheet ? mergeSheet.name : t('merge.pickSheet')}
+          </Button>
+          {mergeInfo ? (
+            <>
+              <Field label={t('merge.columns')} hint={t('merge.rows', { n: mergeInfo.records.length })}>
+                <div className="chips">
+                  {mergeInfo.columns.filter(Boolean).map((column) => (
+                    <span key={column} className="chip">{column}</span>
+                  ))}
+                </div>
+              </Field>
+              {missingFields.length > 0 ? (
+                <span className="badge red">{t('merge.missing', { names: missingFields.join('، ') })}</span>
+              ) : null}
+              <Field label={t('merge.nameField')}>
+                <Select
+                  value={mergeNameField}
+                  onChange={setMergeNameField}
+                  options={mergeInfo.columns.filter(Boolean).map((column) => ({ value: column, label: column }))}
+                />
+              </Field>
+              <Field label={t('merge.format')}>
+                <Segmented
+                  value={mergeFormat}
+                  onChange={setMergeFormat}
+                  options={[
+                    { value: 'pdf', label: 'PDF' },
+                    { value: 'docx', label: 'Word (DOCX)' }
+                  ]}
+                />
+              </Field>
+            </>
           ) : null}
         </div>
       </Modal>
