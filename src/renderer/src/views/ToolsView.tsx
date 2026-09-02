@@ -15,7 +15,8 @@ import {
   RotatePanel,
   NUpPanel,
   ResizePanel,
-  CropPanel
+  CropPanel,
+  BookletPanel
 } from './tools/pageTools'
 import { CompressAnyPanel } from './tools/compressTool'
 import {
@@ -51,6 +52,7 @@ const PANELS: Record<ToolId, (props: { onClose: () => void }) => React.JSX.Eleme
   nup: NUpPanel,
   resize: ResizePanel,
   crop: CropPanel,
+  booklet: BookletPanel,
   compress: CompressPanel,
   compressAny: CompressAnyPanel,
   protect: ProtectPanel,

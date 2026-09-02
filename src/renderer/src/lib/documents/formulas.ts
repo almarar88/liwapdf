@@ -1,4 +1,5 @@
 import type { SheetCell, SheetData } from './sheets'
+import { currencyFromText, spellNumber, tafqeet } from '../text/tafqeet'
 
 /**
  * A small formula engine for the spreadsheet grid.
@@ -474,6 +475,17 @@ class Evaluator {
           }
         }
         return name === 'SUMIF' ? total : count
+      }
+      case 'TAFQEET':
+      case 'SPELLNUMBER': {
+        // =TAFQEET(A1; "SAR"; TRUE) — amount in words, with the currency's
+        // grammar, optionally in the cheque form.
+        const value = toNumber(this.evaluate(args[0]))
+        if (value instanceof FormulaError) return value
+        const currency = currencyFromText(args[1] ? toText(scalar(this.evaluate(args[1]))) : '')
+        const formalValue = args[2] ? toNumber(this.evaluate(args[2])) : 0
+        const formal = !(formalValue instanceof FormulaError) && formalValue !== 0
+        return name === 'TAFQEET' ? tafqeet(value, { currency, formal }) : spellNumber(value, { currency, formal })
       }
       case 'PI':
         return Math.PI

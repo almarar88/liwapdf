@@ -29,7 +29,8 @@ import {
   Layers,
   Files,
   Gauge,
-  PenTool
+  PenTool,
+  BookCopy
 } from 'lucide-react'
 import type { TranslationKey } from '../i18n'
 
@@ -43,6 +44,7 @@ export type ToolId =
   | 'nup'
   | 'resize'
   | 'crop'
+  | 'booklet'
   | 'compress'
   | 'compressAny'
   | 'protect'
@@ -94,6 +96,7 @@ export const TOOLS: ToolDescriptor[] = [
   { id: 'nup', group: 'pages', titleKey: 'tool.nup', descriptionKey: 'tool.nup.d', icon: <Rows3 size={19} />, needsDocument: true, tone: 'indigo' },
   { id: 'resize', group: 'pages', titleKey: 'tool.resize', descriptionKey: 'tool.resize.d', icon: <Ruler size={19} />, needsDocument: true, tone: 'purple' },
   { id: 'crop', group: 'pages', titleKey: 'tool.crop', descriptionKey: 'tool.crop.d', icon: <Crop size={19} />, needsDocument: true, tone: 'purple' },
+  { id: 'booklet', group: 'pages', titleKey: 'tool.booklet', descriptionKey: 'tool.booklet.d', icon: <BookCopy size={19} />, needsDocument: true, tone: 'indigo' },
 
   { id: 'compress', group: 'optimize', titleKey: 'tool.compress', descriptionKey: 'tool.compress.d', icon: <Shrink size={19} />, needsDocument: true, tone: 'green' },
   { id: 'compressAny', group: 'optimize', titleKey: 'tool.compressAny', descriptionKey: 'tool.compressAny.d', icon: <Minimize2 size={19} />, needsDocument: false, tone: 'green' },

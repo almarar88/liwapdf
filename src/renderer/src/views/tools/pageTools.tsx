@@ -394,6 +394,51 @@ export function NUpPanel({ onClose }: ToolPanelProps): React.JSX.Element {
   )
 }
 
+export function BookletPanel({ onClose }: ToolPanelProps): React.JSX.Element {
+  const t = useApp((state) => state.t)
+  const applied = useApplied()
+  const doc = useApp((state) => state.doc)
+  const language = useApp((state) => state.settings.language)
+  const run = useRunner()
+  const [size, setSize] = useState<'A4' | 'A3' | 'Letter'>('A4')
+  const [bindRight, setBindRight] = useState(language === 'ar')
+
+  if (!doc) return <p className="muted">{t('msg.noDocument')}</p>
+
+  const sheets = Math.ceil(doc.pageCount / 4)
+
+  return (
+    <div className="stack">
+      <p className="muted">{t('tool.booklet.d')}</p>
+      <Field label={t('convert.pageSize')} hint={t('opt.bookletSheets', { n: sheets })}>
+        <Select
+          value={size}
+          onChange={setSize}
+          options={[
+            { value: 'A4', label: 'A4' },
+            { value: 'A3', label: 'A3' },
+            { value: 'Letter', label: 'Letter' }
+          ]}
+        />
+      </Field>
+      <Checkbox checked={bindRight} onChange={setBindRight} label={t('opt.bindingRight')} />
+      <Button
+        variant="primary"
+        onClick={() =>
+          void run(t('msg.working'), async () => {
+            const preset = PAGE_PRESETS[size]
+            const next = await ops.imposeBooklet(doc.bytes, [preset[1], preset[0]], bindRight, doc.password)
+            await applied(next, 'tool.booklet')
+            onClose()
+          })
+        }
+      >
+        {t('action.apply')}
+      </Button>
+    </div>
+  )
+}
+
 export function ResizePanel({ onClose }: ToolPanelProps): React.JSX.Element {
   const t = useApp((state) => state.t)
   const applied = useApplied()

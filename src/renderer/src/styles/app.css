@@ -1108,6 +1108,17 @@ html[dir='rtl'] .hero-art .sheet:nth-child(2) { transform: rotate(6deg) translat
 
 .shortcut-grid { display: grid; grid-template-columns: 1fr auto; gap: 10px 18px; align-items: center; }
 
+/* Presentation: only the page remains. */
+html[data-presenting] .titlebar,
+html[data-presenting] .sidebar,
+html[data-presenting] .rail,
+html[data-presenting] .view.flush > .toolbar { display: none !important; }
+html[data-presenting] .app { grid-template-rows: 1fr; }
+html[data-presenting] .app-body { grid-template-columns: 1fr; }
+html[data-presenting] .workspace { grid-template-columns: 1fr !important; }
+html[data-presenting] .canvas-area { background: #000 !important; padding: 0; display: grid; place-items: center; }
+html[data-presenting] .pdf-page { box-shadow: none; border-radius: 0; }
+
 /* --------------------------------------------------------- theme cards */
 
 .theme-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; max-width: 470px; }

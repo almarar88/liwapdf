@@ -21,10 +21,10 @@ format — PDF, Word, Excel, PowerPoint, EPUB and more. Fully offline.*
 
 | النظام / Platform | نوع الملف | رابط التحميل | رابط بديل |
 | --- | --- | --- | --- |
-| 🪟 **Windows 10/11 (64-bit)** | مثبّت `.exe` | [تحميل / Download](https://almarar88.github.io/liwapdf/Alcode-Editor-Setup.exe) | [Releases](../../releases/latest/download/Alcode-Editor-1.9.0-x64-Setup.exe) |
-| 🪟 **Windows (نسخة محمولة)** | `Portable.exe` بدون تثبيت | [تحميل / Download](https://almarar88.github.io/liwapdf/Alcode-Editor-Portable.exe) | [Releases](../../releases/latest/download/Alcode-Editor-1.9.0-Portable.exe) |
-| 🍎 **macOS — Apple Silicon (M1/M2/M3/M4)** | `.dmg` | [تحميل / Download](https://almarar88.github.io/liwapdf/Alcode-Editor-macOS-AppleSilicon.dmg) | [Releases](../../releases/latest/download/Alcode-Editor-1.9.0-arm64.dmg) |
-| 🍎 **macOS — Intel** | `.dmg` | [تحميل / Download](https://almarar88.github.io/liwapdf/Alcode-Editor-macOS-Intel.dmg) | [Releases](../../releases/latest/download/Alcode-Editor-1.9.0-x64.dmg) |
+| 🪟 **Windows 10/11 (64-bit)** | مثبّت `.exe` | [تحميل / Download](https://almarar88.github.io/liwapdf/Alcode-Editor-Setup.exe) | [Releases](../../releases/latest/download/Alcode-Editor-1.10.0-x64-Setup.exe) |
+| 🪟 **Windows (نسخة محمولة)** | `Portable.exe` بدون تثبيت | [تحميل / Download](https://almarar88.github.io/liwapdf/Alcode-Editor-Portable.exe) | [Releases](../../releases/latest/download/Alcode-Editor-1.10.0-Portable.exe) |
+| 🍎 **macOS — Apple Silicon (M1/M2/M3/M4)** | `.dmg` | [تحميل / Download](https://almarar88.github.io/liwapdf/Alcode-Editor-macOS-AppleSilicon.dmg) | [Releases](../../releases/latest/download/Alcode-Editor-1.10.0-arm64.dmg) |
+| 🍎 **macOS — Intel** | `.dmg` | [تحميل / Download](https://almarar88.github.io/liwapdf/Alcode-Editor-macOS-Intel.dmg) | [Releases](../../releases/latest/download/Alcode-Editor-1.10.0-x64.dmg) |
 
 > ملفات صفحة الإصدارات تُخدَّم من `objects.githubusercontent.com`، وهو محجوب على بعض الشبكات
 > رغم أن `github.com` نفسه يفتح — فيفشل التحميل بخطأ اتصال لا بخطأ «الملف غير موجود».
@@ -51,6 +51,7 @@ format — PDF, Word, Excel, PowerPoint, EPUB and more. Fully offline.*
 - تكبير وتصغير، ملء العرض، ملء الصفحة، حجم فعلي، وتدوير العرض.
 - **أوضاع قراءة:** عادي، ورقي (دافئ)، وليلي (معكوس) — تلوين للرسم فقط، والتحديد والبحث لا يتأثران.
 - **استئناف القراءة:** يعود العارض إلى آخر صفحة وصلت إليها في كل ملف.
+- **عرض تقديمي بملء الشاشة:** الصفحة وحدها على خلفية سوداء، والأسهم للتنقل.
 - **لقطة من الصفحة:** اسحب فوق جزء من الصفحة فيُنسخ صورةً إلى الحافظة.
 - **قراءة بصوت** بأصوات النظام — عربي أو إنجليزي حسب النص، دون إنترنت.
 - شريط مصغّرات جانبي بتحميل كسول (يفتح مستندات بمئات الصفحات دون تأخير).
@@ -125,11 +126,14 @@ Tesseract بالكامل داخل جهازك — العامل ونواة WebAsse
 | دمج صفحات في ورقة (2/4/6/9) | | النماذج: عرض وتعبئة وتسطيح |
 | تغيير قياس الصفحة | | مقارنة مستندين سطراً بسطر |
 | قص الهوامش | تصغير حجم أي ملف | الفهرس والمرفقات |
+| كتيّب للطباعة (تجليد سرجي) | | |
 | | تنقيح وحذف نهائي بالبحث | |
 | | | التعرّف الضوئي على النص (OCR) |
 | | | معالجة دفعية (ضغط/تحويل/علامة/حماية لعشرات الملفات) |
 
 ### محرر المستندات الشامل
+- **تفقيط:** المبلغ كتابةً بقواعد العربية الصحيحة لعشر عملات وبصيغة الشيك، وفي الجداول `=TAFQEET()`.
+- **تنظيف النص العربي:** تشكيل، تطويل، أرقام، مسافات الترقيم — كل خيار على حدة.
 - **معادلات في الجداول:** SUM و AVERAGE و IF و SUMIF و COUNTIF وعشرات غيرها، مع مراجع ونطاقات
   وكشف للدوران — تُحفظ في XLSX ويعيد Excel حسابها.
 
@@ -178,6 +182,7 @@ Tesseract بالكامل داخل جهازك — العامل ونواة WebAsse
 - في كل الحالات: إن لم ينتج الضغط ملفاً أصغر، يُبقى الأصل كما هو ويُخبرك التطبيق بذلك.
 
 ### التحويل بين الصيغ
+- **PDF إلى Excel:** استخراج الجداول من الصفحات إلى ورقة لكل صفحة، والأرقام أرقامًا.
 `PDF → صور (PNG/JPG بأي دقة)` · `صور → PDF` · `PDF → نص` · `PDF → Word`
 `Word → PDF` · `Word → HTML` · `نص/Markdown → PDF` · `HTML → PDF`
 
@@ -307,8 +312,8 @@ npm run dist:mac       # حزمة macOS (تتطلب macOS)
 الملفات التنفيذية تُبنى تلقائياً على GitHub Actions لويندوز وماك:
 
 ```bash
-git tag v1.9.0
-git push origin v1.9.0
+git tag v1.10.0
+git push origin v1.10.0
 ```
 
 سير العمل في `.github/workflows/release.yml` يبني النسختين وينشرهما في Release واحد

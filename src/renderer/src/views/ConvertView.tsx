@@ -7,6 +7,7 @@ import {
   FileType2,
   FileCode2,
   FileDown,
+  FileSpreadsheet,
   ArrowRight
 } from 'lucide-react'
 import { useApp } from '../store/app'
@@ -49,6 +50,7 @@ type ConverterId =
   | 'pdfToImages'
   | 'imagesToPdf'
   | 'pdfToText'
+  | 'pdfToSheet'
   | 'pdfToWord'
   | 'wordToPdf'
   | 'wordToHtml'
@@ -67,6 +69,7 @@ const CONVERTERS: Converter[] = [
   { id: 'pdfToImages', tone: 'teal', titleKey: 'convert.pdfToImages', descriptionKey: 'convert.pdfToImages.d', icon: <Images size={19} /> },
   { id: 'imagesToPdf', tone: 'teal', titleKey: 'convert.imagesToPdf', descriptionKey: 'convert.imagesToPdf.d', icon: <FileImage size={19} /> },
   { id: 'pdfToText', tone: 'indigo', titleKey: 'convert.pdfToText', descriptionKey: 'convert.pdfToText.d', icon: <FileText size={19} /> },
+  { id: 'pdfToSheet', tone: 'green', titleKey: 'convert.pdfToSheet', descriptionKey: 'convert.pdfToSheet.d', icon: <FileSpreadsheet size={19} /> },
   { id: 'pdfToWord', tone: 'blue', titleKey: 'convert.pdfToWord', descriptionKey: 'convert.pdfToWord.d', icon: <FileType2 size={19} /> },
   { id: 'wordToPdf', tone: 'rose', titleKey: 'convert.wordToPdf', descriptionKey: 'convert.wordToPdf.d', icon: <FileDown size={19} /> },
   { id: 'wordToHtml', tone: 'purple', titleKey: 'convert.wordToHtml', descriptionKey: 'convert.wordToHtml.d', icon: <FileCode2 size={19} /> },
@@ -310,6 +313,45 @@ function ConverterPanel({
                 if (!outcome.saved) return
                 onClose()
                 return outcome.path
+              })
+            }
+          >
+            {t('action.export')}
+          </Button>
+        </div>
+      )
+
+    case 'pdfToSheet':
+      return (
+        <div className="stack">
+          {doc ? <Card style={{ background: 'var(--surface-2)' }}>{doc.name}</Card> : pickerButton(FILTERS.pdf, false)}
+          <p className="muted">{t('convert.pdfToSheet.d')}</p>
+          <Button
+            variant="primary"
+            disabled={!doc && files.length === 0}
+            onClick={() =>
+              void run(t('msg.working'), async (report) => {
+                const source = doc ? { name: doc.name, bytes: doc.bytes } : files[0]
+                const [{ openForRender }, { extractTables }, { writeWorkbook }] = await Promise.all([
+                  import('../lib/pdf/pdfjs'),
+                  import('../lib/pdf/tables'),
+                  import('../lib/documents/sheets')
+                ])
+                const proxy = doc ? doc.proxy : await openForRender(source.bytes)
+                try {
+                  const sheets = await extractTables(proxy, undefined, report)
+                  if (sheets.length === 0) throw new Error(t('msg.noTables'))
+                  const outcome = await saveBytes(
+                    writeWorkbook(sheets, 'xlsx'),
+                    `${stripExtension(source.name)}.xlsx`,
+                    [{ name: 'Excel', extensions: ['xlsx'] }]
+                  )
+                  if (!outcome.saved) return
+                  onClose()
+                  return outcome.path
+                } finally {
+                  if (!doc) await proxy.destroy().catch(() => undefined)
+                }
               })
             }
           >

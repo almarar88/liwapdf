@@ -20,7 +20,8 @@ import {
   BookOpen,
   Camera,
   Volume2,
-  VolumeX
+  VolumeX,
+  Presentation
 } from 'lucide-react'
 import { useApp } from '../store/app'
 import { useDocumentActions } from '../hooks/useDocumentActions'
@@ -66,6 +67,7 @@ export function ViewerView(): React.JSX.Element {
   const [rubber, setRubber] = useState<{ left: number; top: number; width: number; height: number } | null>(null)
   const dragStart = useRef<{ x: number; y: number } | null>(null)
   const [speech, setSpeech] = useState<SpeechHandle | null>(null)
+  const [presenting, setPresenting] = useState(false)
   const resumedFor = useRef<string | null>(null)
   useEffect(() => {
     try {
@@ -322,6 +324,52 @@ export function ViewerView(): React.JSX.Element {
     setSpeech(handle)
   }
 
+  // Presentation: the window goes full screen, the chrome hides through a
+  // root attribute the stylesheet watches, and the arrow keys turn pages.
+  useEffect(() => {
+    document.documentElement.toggleAttribute('data-presenting', presenting)
+    if (!presenting) return undefined
+    setMode('single')
+    setFit('page')
+    const onKey = (event: KeyboardEvent): void => {
+      const forward = rightToLeft ? 'ArrowLeft' : 'ArrowRight'
+      const backward = rightToLeft ? 'ArrowRight' : 'ArrowLeft'
+      if (event.key === forward || event.key === ' ' || event.key === 'PageDown' || event.key === 'ArrowDown') {
+        event.preventDefault()
+        goToPage(currentPage + 1)
+      } else if (event.key === backward || event.key === 'PageUp' || event.key === 'ArrowUp') {
+        event.preventDefault()
+        goToPage(currentPage - 1)
+      } else if (event.key === 'Escape') {
+        setPresenting(false)
+        if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined)
+      }
+    }
+    const onFullscreen = (): void => {
+      if (!document.fullscreenElement) setPresenting(false)
+    }
+    window.addEventListener('keydown', onKey)
+    document.addEventListener('fullscreenchange', onFullscreen)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      document.removeEventListener('fullscreenchange', onFullscreen)
+      document.documentElement.removeAttribute('data-presenting')
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [presenting, currentPage, rightToLeft])
+
+  const togglePresentation = async (): Promise<void> => {
+    if (presenting) {
+      setPresenting(false)
+      if (document.fullscreenElement) await document.exitFullscreen().catch(() => undefined)
+      return
+    }
+    // Full screen can be refused (a kiosk policy, an embedded window); the
+    // presentation still works in the window it has.
+    await document.documentElement.requestFullscreen().catch(() => undefined)
+    setPresenting(true)
+  }
+
   /**
    * Snapshot: drag a rectangle over the page and the pixels under it go to
    * the clipboard as a PNG. Coordinates are kept relative to the scrolling
@@ -563,6 +611,16 @@ export function ViewerView(): React.JSX.Element {
           }}
         >
           <Camera size={15} />
+        </Button>
+        <Button
+          size="sm"
+          icon
+          variant="ghost"
+          title={`${t('viewer.present')} — ${t('viewer.presentHint')}`}
+          aria-label={t('viewer.present')}
+          onClick={() => void togglePresentation()}
+        >
+          <Presentation size={15} />
         </Button>
         <Button
           size="sm"

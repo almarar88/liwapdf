@@ -1588,3 +1588,61 @@ export async function imagesToPdf(
 export function mmToPoints(millimetres: number): number {
   return millimetres * MM_TO_PT
 }
+
+/* --------------------------------------------------------------- booklet */
+
+/**
+ * Orders the pages for a saddle-stitched booklet: print the sheets
+ * double-sided, fold the stack down the middle, staple the spine, and the
+ * pages read in sequence. Each side of a sheet carries two pages; the page
+ * count is padded to a multiple of four with blanks so the fold works.
+ *
+ * The outermost sheet carries the last page beside the first, and the pairs
+ * walk inwards. An Arabic book binds on the right, which mirrors every pair.
+ */
+export async function imposeBooklet(
+  bytes: PdfBytes,
+  sheetSize: [number, number],
+  rightToLeft: boolean,
+  password?: string
+): Promise<PdfBytes> {
+  const source = await load(bytes, password)
+  const output = await PDFDocument.create()
+  const pages = source.getPages()
+  const total = Math.ceil(pages.length / 4) * 4
+  const gap = 10
+  const cellWidth = (sheetSize[0] - gap * 3) / 2
+  const cellHeight = sheetSize[1] - gap * 2
+
+  const place = async (sheet: PDFPage, pageNumber: number, slot: 0 | 1): Promise<void> => {
+    const sourcePage = pages[pageNumber - 1]
+    if (!sourcePage) return
+    const embedded = await output.embedPage(sourcePage, boundingBoxOf(sourcePage))
+    const placement = placePage(sourcePage, embedded, {
+      x: gap + slot * (cellWidth + gap),
+      y: gap,
+      width: cellWidth,
+      height: cellHeight
+    })
+    sheet.drawPage(embedded, {
+      x: placement.x,
+      y: placement.y,
+      width: placement.width,
+      height: placement.height,
+      rotate: degrees(placement.rotate)
+    })
+  }
+
+  for (let side = 0; side < total / 2; side += 1) {
+    const outer = total - side
+    const inner = side + 1
+    let left = side % 2 === 0 ? outer : inner
+    let right = side % 2 === 0 ? inner : outer
+    if (rightToLeft) [left, right] = [right, left]
+    const sheet = output.addPage(sheetSize)
+    await place(sheet, left, 0)
+    await place(sheet, right, 1)
+  }
+  await carryMetadata(source, output)
+  return save(output)
+}

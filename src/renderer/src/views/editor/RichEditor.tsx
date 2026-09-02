@@ -7,6 +7,8 @@ import {
   Bold,
   Columns3,
   Eraser,
+  Sparkles,
+  Coins,
   Image as ImageIcon,
   Italic,
   Link2,
@@ -24,7 +26,9 @@ import {
   Underline
 } from 'lucide-react'
 import { useApp } from '../../store/app'
-import { Button, Select } from '../../components/ui'
+import { Button, Select, Modal, Field, Checkbox, TextInput, Segmented } from '../../components/ui'
+import { cleanArabicDom, DEFAULT_CLEANUP, type CleanupOptions } from '../../lib/text/cleanup'
+import { CURRENCIES, spellNumber, tafqeet, type Currency } from '../../lib/text/tafqeet'
 import { FILTERS, pickOneFile } from '../../lib/files'
 import { sanitize } from '../../lib/documents/read'
 import { formatGregorian, formatHijri } from '../../lib/pdf/typography'
@@ -106,6 +110,19 @@ export function RichEditor({
   const language = useApp((state) => state.settings.language)
   const editorRef = useRef<HTMLDivElement>(null)
   const loadedKey = useRef<string | null>(null)
+  const [cleanupOpen, setCleanupOpen] = useState(false)
+  const [cleanup, setCleanup] = useState<CleanupOptions>(DEFAULT_CLEANUP)
+  const [amountOpen, setAmountOpen] = useState(false)
+  const [amount, setAmount] = useState('')
+  const [amountCurrency, setAmountCurrency] = useState<Currency>('SAR')
+  const [amountLanguage, setAmountLanguage] = useState<'ar' | 'en'>(language)
+  const [amountFormal, setAmountFormal] = useState(true)
+  const amountValue = Number(amount.replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660)).replace(/,/g, ''))
+  const amountText = Number.isFinite(amountValue) && amount.trim() !== ''
+    ? amountLanguage === 'ar'
+      ? tafqeet(amountValue, { currency: amountCurrency, formal: amountFormal })
+      : spellNumber(amountValue, { currency: amountCurrency, formal: amountFormal })
+    : ''
 
   // innerHTML is written on a new document and on a change this surface did
   // not make — never on its own output, which would destroy the caret on every
@@ -407,6 +424,12 @@ export function RichEditor({
         >
           <SeparatorHorizontal size={15} />
         </Button>
+        <Button size="sm" variant="ghost" icon title={t('word.cleanup')} onClick={() => setCleanupOpen(true)}>
+          <Sparkles size={15} />
+        </Button>
+        <Button size="sm" variant="ghost" icon title={t('word.amountWords')} onClick={() => setAmountOpen(true)}>
+          <Coins size={15} />
+        </Button>
         <Button size="sm" variant="ghost" icon title={t('word.clearFormat')} onClick={() => exec('removeFormat')}>
           <Eraser size={15} />
         </Button>
@@ -456,6 +479,106 @@ export function RichEditor({
           }}
         />
       </div>
+
+      <Modal
+        open={cleanupOpen}
+        onClose={() => setCleanupOpen(false)}
+        title={t('word.cleanup')}
+        footer={
+          <>
+            <Button onClick={() => setCleanupOpen(false)}>{t('action.cancel')}</Button>
+            <Button
+              variant="primary"
+              onClick={() => {
+                const editor = editorRef.current
+                if (!editor) return
+                const changed = cleanArabicDom(editor, cleanup)
+                if (changed > 0) sync()
+                notify({
+                  kind: changed > 0 ? 'success' : 'info',
+                  title: changed > 0 ? t('word.cleanupDone', { n: changed }) : t('word.cleanupNone')
+                })
+                setCleanupOpen(false)
+              }}
+            >
+              {t('action.apply')}
+            </Button>
+          </>
+        }
+      >
+        <div className="stack">
+          <p className="muted">{t('word.cleanup.d')}</p>
+          <Checkbox checked={cleanup.tashkeel} onChange={(v) => setCleanup({ ...cleanup, tashkeel: v })} label={t('word.cleanup.tashkeel')} />
+          <Checkbox checked={cleanup.tatweel} onChange={(v) => setCleanup({ ...cleanup, tatweel: v })} label={t('word.cleanup.tatweel')} />
+          <Checkbox checked={cleanup.punctuation} onChange={(v) => setCleanup({ ...cleanup, punctuation: v })} label={t('word.cleanup.punctuation')} />
+          <Checkbox checked={cleanup.spaces} onChange={(v) => setCleanup({ ...cleanup, spaces: v })} label={t('word.cleanup.spaces')} />
+          <Checkbox checked={cleanup.hamza} onChange={(v) => setCleanup({ ...cleanup, hamza: v })} label={t('word.cleanup.hamza')} />
+          <Field label={t('word.cleanup.digits')}>
+            <Segmented
+              value={cleanup.digits}
+              onChange={(value) => setCleanup({ ...cleanup, digits: value })}
+              options={[
+                { value: 'keep', label: t('word.cleanup.digits.keep') },
+                { value: 'arabic', label: t('word.cleanup.digits.arabic') },
+                { value: 'western', label: t('word.cleanup.digits.western') }
+              ]}
+            />
+          </Field>
+        </div>
+      </Modal>
+
+      <Modal
+        open={amountOpen}
+        onClose={() => setAmountOpen(false)}
+        title={t('word.amountWords')}
+        footer={
+          <>
+            <Button onClick={() => setAmountOpen(false)}>{t('action.cancel')}</Button>
+            <Button
+              variant="primary"
+              disabled={!amountText}
+              onClick={() => {
+                insertHtml(escapeHtml(amountText))
+                setAmountOpen(false)
+              }}
+            >
+              {t('word.insert')}
+            </Button>
+          </>
+        }
+      >
+        <div className="stack">
+          <Field label={t('word.amount')}>
+            <TextInput value={amount} onChange={setAmount} placeholder="1250.50" autoFocus />
+          </Field>
+          <Field label={t('word.currency')}>
+            <Select
+              value={amountCurrency}
+              onChange={setAmountCurrency}
+              options={[
+                { value: 'none', label: t('cur.none') },
+                ...(Object.keys(CURRENCIES) as Currency[]).map((code) => ({ value: code, label: `${t(`cur.${code}` as never)} (${code})` }))
+              ]}
+            />
+          </Field>
+          <Field label={t('settings.language')}>
+            <Segmented
+              value={amountLanguage}
+              onChange={setAmountLanguage}
+              options={[
+                { value: 'ar', label: 'العربية' },
+                { value: 'en', label: 'English' }
+              ]}
+            />
+          </Field>
+          <Checkbox checked={amountFormal} onChange={setAmountFormal} label={t('word.formal')} />
+          {amountText ? (
+            <div className="card card-pad" style={{ fontSize: 'var(--text-md)', lineHeight: 1.8 }}>
+              <bdi>{amountText}</bdi>
+            </div>
+          ) : null}
+        </div>
+      </Modal>
 
       <SignaturePad
         open={signOpen}
