@@ -162,10 +162,15 @@ function pushHistory(stack: Uint8Array[], entry: Uint8Array): Uint8Array[] {
  * and losing them costs nothing.
  */
 const RECENT_TOOLS_KEY = 'alcode.recentTools'
+const PINNED_TOOLS_KEY = 'alcode.pinnedTools'
 
 function readRecentTools(): string[] {
+  return readList(RECENT_TOOLS_KEY)
+}
+
+function readList(key: string): string[] {
   try {
-    const raw = localStorage.getItem(RECENT_TOOLS_KEY)
+    const raw = localStorage.getItem(key)
     const parsed: unknown = raw ? JSON.parse(raw) : []
     return Array.isArray(parsed) ? parsed.filter((entry): entry is string => typeof entry === 'string') : []
   } catch {
@@ -174,8 +179,12 @@ function readRecentTools(): string[] {
 }
 
 function writeRecentTools(ids: string[]): void {
+  writeList(RECENT_TOOLS_KEY, ids)
+}
+
+function writeList(key: string, ids: string[]): void {
   try {
-    localStorage.setItem(RECENT_TOOLS_KEY, JSON.stringify(ids))
+    localStorage.setItem(key, JSON.stringify(ids))
   } catch {
     // Storage can be full or disabled; the chips are not worth an error.
   }
@@ -214,6 +223,9 @@ interface AppState {
   activeTool: string | null
   /** Tool ids most recently opened, newest first; the toolbox shows them as chips. */
   recentTools: string[]
+  /** Tool ids pinned to the dashboard's quick actions. */
+  pinnedTools: string[]
+  togglePin: (id: string) => void
 
   /** Set when a file needs a password before it can be opened. */
   passwordPrompt: { name: string; bytes: Uint8Array; path: string | null; wrong: boolean } | null
@@ -383,6 +395,7 @@ export const useApp = create<AppState & AppActions>((set, get) => ({
   editorDoc: null,
   activeTool: null,
   recentTools: readRecentTools(),
+  pinnedTools: readList(PINNED_TOOLS_KEY),
   passwordPrompt: null,
   confirmPrompt: null,
 
@@ -414,6 +427,13 @@ export const useApp = create<AppState & AppActions>((set, get) => ({
 
   navigate(route) {
     set({ route, paletteOpen: false })
+  },
+
+  togglePin(id) {
+    const current = get().pinnedTools
+    const pinnedTools = current.includes(id) ? current.filter((entry) => entry !== id) : [...current, id].slice(-12)
+    writeList(PINNED_TOOLS_KEY, pinnedTools)
+    set({ pinnedTools })
   },
 
   toggleSidebar() {

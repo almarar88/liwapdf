@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
+  Volume2,
+  VolumeX,
   FileDown,
   FilePlus2,
   FileSpreadsheet,
@@ -44,6 +46,7 @@ import { clearDraft, documentFromDraft, readDraft, type Draft } from '../lib/doc
 import { normalizeForSearch } from '../lib/text/encoding'
 import { foldWithOffsets } from '../lib/pdf/render'
 import { TEMPLATES } from './editor/templates'
+import { speak, type SpeechHandle } from '../lib/speech'
 
 export function EditorView(): React.JSX.Element {
   const t = useApp((state) => state.t)
@@ -256,6 +259,14 @@ export function EditorView(): React.JSX.Element {
         ) : null}
         {stats.words !== null ? (
           <GoalMeter words={stats.words} goal={goal} onGoalChange={setGoal} />
+        ) : null}
+        {stats.words !== null ? (
+          <ReadAloudButton
+            text={() =>
+              window.getSelection()?.toString().trim() ||
+              (doc.source.kind === 'code' ? doc.text : doc.source.kind === 'sheet' ? '' : htmlToPlainText(doc.html))
+            }
+          />
         ) : null}
         <span style={{ marginInlineStart: 'auto' }}>
           {doc.dirty ? '● ' : ''}
@@ -785,4 +796,42 @@ function defaultTarget(kind: string): DocumentFormat {
 
 function fallbackLabel(kind: string): string {
   return formatInfo(defaultTarget(kind))?.label ?? 'DOCX'
+}
+
+/**
+ * Reads the selection, or the whole document when nothing is selected,
+ * through the system's voices. Stops on its own at the end and when the
+ * document changes underneath it.
+ */
+function ReadAloudButton({ text }: { text: () => string }): React.JSX.Element {
+  const t = useApp((state) => state.t)
+  const notify = useApp((state) => state.notify)
+  const [speech, setSpeech] = useState<SpeechHandle | null>(null)
+
+  useEffect(() => () => speech?.stop(), [speech])
+
+  return (
+    <button
+      className="btn ghost sm"
+      title={speech ? t('viewer.stopReading') : t('viewer.readAloud')}
+      onClick={() => {
+        if (speech) {
+          speech.stop()
+          setSpeech(null)
+          return
+        }
+        const content = text()
+        if (!content.trim()) return
+        const handle = speak(content, { onEnd: () => setSpeech(null) })
+        if (!handle) {
+          notify({ kind: 'info', title: t('viewer.noVoice') })
+          return
+        }
+        setSpeech(handle)
+      }}
+    >
+      {speech ? <VolumeX size={14} /> : <Volume2 size={14} />}
+      {speech ? t('viewer.stopReading') : t('viewer.readAloud')}
+    </button>
+  )
 }

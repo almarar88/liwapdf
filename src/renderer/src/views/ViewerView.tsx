@@ -17,7 +17,10 @@ import {
   Printer,
   Sun,
   Moon,
-  BookOpen
+  BookOpen,
+  Camera,
+  Volume2,
+  VolumeX
 } from 'lucide-react'
 import { useApp } from '../store/app'
 import { useDocumentActions } from '../hooks/useDocumentActions'
@@ -27,6 +30,7 @@ import { Thumbnail } from '../components/Thumbnail'
 import { PrintDialog } from './PrintDialog'
 import { readOutline, searchDocument, type OutlineNode, type SearchHit } from '../lib/pdf/render'
 import { clamp } from '../lib/format'
+import { speak, type SpeechHandle } from '../lib/speech'
 
 type FitMode = 'width' | 'page' | 'custom'
 
@@ -57,6 +61,12 @@ export function ViewerView(): React.JSX.Element {
   // Night and paper tints are applied to the rendered page through a CSS
   // filter, so the document itself is never touched; remembered per machine.
   const [reading, setReading] = useState<ReadingMode>(() => readReadingMode())
+  const notify = useApp((state) => state.notify)
+  const [snapshot, setSnapshot] = useState(false)
+  const [rubber, setRubber] = useState<{ left: number; top: number; width: number; height: number } | null>(null)
+  const dragStart = useRef<{ x: number; y: number } | null>(null)
+  const [speech, setSpeech] = useState<SpeechHandle | null>(null)
+  const resumedFor = useRef<string | null>(null)
   useEffect(() => {
     try {
       localStorage.setItem(READING_KEY, reading)
@@ -252,6 +262,154 @@ export function ViewerView(): React.JSX.Element {
     }
   }
 
+  // Reading position, remembered per file on this machine and offered back
+  // once the layout knows where the page is. Only after the first page:
+  // resuming at page 1 is not resuming.
+  useEffect(() => {
+    if (!doc?.path || resumedFor.current === doc.id) return
+    let saved = 0
+    try {
+      saved = Number(localStorage.getItem(`alcode.lastPage:${doc.path}`) ?? 0)
+    } catch {
+      return
+    }
+    if (!(saved > 1 && saved <= doc.pageCount)) {
+      resumedFor.current = doc.id
+      return
+    }
+    if (mode === 'continuous' && layout.offsets[saved - 1] === undefined) return
+    resumedFor.current = doc.id
+    goToPage(saved)
+    notify({ kind: 'info', title: t('viewer.resumed', { n: saved }) })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doc, layout, mode])
+
+  useEffect(() => {
+    if (!doc?.path || resumedFor.current !== doc.id) return
+    try {
+      if (currentPage > 1) localStorage.setItem(`alcode.lastPage:${doc.path}`, String(currentPage))
+      else localStorage.removeItem(`alcode.lastPage:${doc.path}`)
+    } catch {
+      // Storage full or disabled: the position is a convenience.
+    }
+  }, [doc, currentPage])
+
+  // Stop reading aloud when the document goes away or the view unmounts.
+  useEffect(() => () => speech?.stop(), [speech])
+  useEffect(() => {
+    speech?.stop()
+    setSpeech(null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doc?.id])
+
+  const toggleReadAloud = async (): Promise<void> => {
+    if (speech) {
+      speech.stop()
+      setSpeech(null)
+      return
+    }
+    if (!doc) return
+    const page = await doc.proxy.getPage(currentPage)
+    const content = await page.getTextContent()
+    const text = content.items
+      .map((item) => ('str' in item ? item.str + (item.hasEOL ? '\n' : '') : ''))
+      .join(' ')
+    const handle = speak(text, { onEnd: () => setSpeech(null) })
+    if (!handle) {
+      notify({ kind: 'info', title: t('viewer.noVoice') })
+      return
+    }
+    setSpeech(handle)
+  }
+
+  /**
+   * Snapshot: drag a rectangle over the page and the pixels under it go to
+   * the clipboard as a PNG. Coordinates are kept relative to the scrolling
+   * area so the rubber band survives a scroll mid-drag.
+   */
+  const areaPoint = (event: React.MouseEvent): { x: number; y: number } => {
+    const area = scrollRef.current!
+    const rect = area.getBoundingClientRect()
+    return { x: event.clientX - rect.left + area.scrollLeft, y: event.clientY - rect.top + area.scrollTop }
+  }
+
+  const onSnapDown = (event: React.MouseEvent): void => {
+    if (!snapshot || event.button !== 0) return
+    event.preventDefault()
+    dragStart.current = areaPoint(event)
+    setRubber({ ...dragStart.current, left: dragStart.current.x, top: dragStart.current.y, width: 0, height: 0 })
+  }
+
+  const onSnapMove = (event: React.MouseEvent): void => {
+    if (!snapshot || !dragStart.current) return
+    const point = areaPoint(event)
+    setRubber({
+      left: Math.min(point.x, dragStart.current.x),
+      top: Math.min(point.y, dragStart.current.y),
+      width: Math.abs(point.x - dragStart.current.x),
+      height: Math.abs(point.y - dragStart.current.y)
+    })
+  }
+
+  const onSnapUp = async (): Promise<void> => {
+    if (!snapshot || !dragStart.current) return
+    dragStart.current = null
+    const box = rubber
+    setRubber(null)
+    setSnapshot(false)
+    const area = scrollRef.current
+    if (!box || !area || box.width < 4 || box.height < 4) return
+
+    const areaRect = area.getBoundingClientRect()
+    const output = document.createElement('canvas')
+    // Device pixels: the page canvas is rendered at the display ratio, so
+    // the copy keeps that sharpness rather than the CSS size.
+    const ratio = Math.min(window.devicePixelRatio || 1, 2)
+    output.width = Math.round(box.width * ratio)
+    output.height = Math.round(box.height * ratio)
+    const context = output.getContext('2d')
+    if (!context) return
+    context.fillStyle = '#ffffff'
+    context.fillRect(0, 0, output.width, output.height)
+
+    let painted = false
+    for (const canvas of Array.from(area.querySelectorAll<HTMLCanvasElement>('.pdf-page canvas'))) {
+      const rect = canvas.getBoundingClientRect()
+      // Page position in the same area-relative space as the box.
+      const left = rect.left - areaRect.left + area.scrollLeft
+      const top = rect.top - areaRect.top + area.scrollTop
+      const x1 = Math.max(box.left, left)
+      const y1 = Math.max(box.top, top)
+      const x2 = Math.min(box.left + box.width, left + rect.width)
+      const y2 = Math.min(box.top + box.height, top + rect.height)
+      if (x2 <= x1 || y2 <= y1) continue
+      const scaleX = canvas.width / rect.width
+      const scaleY = canvas.height / rect.height
+      context.drawImage(
+        canvas,
+        (x1 - left) * scaleX,
+        (y1 - top) * scaleY,
+        (x2 - x1) * scaleX,
+        (y2 - y1) * scaleY,
+        (x1 - box.left) * ratio,
+        (y1 - box.top) * ratio,
+        (x2 - x1) * ratio,
+        (y2 - y1) * ratio
+      )
+      painted = true
+    }
+    if (!painted) return
+
+    const blob = await new Promise<Blob | null>((resolve) => output.toBlob(resolve, 'image/png'))
+    if (!blob) return
+    try {
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
+      notify({ kind: 'success', title: t('viewer.snapshotCopied') })
+    } catch (error) {
+      notify({ kind: 'error', title: String((error as Error).message ?? error) })
+    }
+  }
+
   if (!doc) {
     return (
       <div className="view">
@@ -388,6 +546,34 @@ export function ViewerView(): React.JSX.Element {
             ]}
           />
         </div>
+
+        <span className="sep" />
+
+        <Button
+          size="sm"
+          icon
+          variant={snapshot ? 'primary' : 'ghost'}
+          title={`${t('viewer.snapshot')} — ${t('viewer.snapshotHint')}`}
+          aria-label={t('viewer.snapshot')}
+          aria-pressed={snapshot}
+          onClick={() => {
+            setSnapshot((value) => !value)
+            setRubber(null)
+            dragStart.current = null
+          }}
+        >
+          <Camera size={15} />
+        </Button>
+        <Button
+          size="sm"
+          icon
+          variant={speech ? 'primary' : 'ghost'}
+          title={speech ? t('viewer.stopReading') : t('viewer.readAloud')}
+          aria-label={speech ? t('viewer.stopReading') : t('viewer.readAloud')}
+          onClick={() => void toggleReadAloud()}
+        >
+          {speech ? <VolumeX size={15} /> : <Volume2 size={15} />}
+        </Button>
 
         <span className="spacer" />
 
@@ -536,7 +722,14 @@ export function ViewerView(): React.JSX.Element {
                 ))}
         </aside>
 
-        <div className={`canvas-area reading-${reading}`} ref={scrollRef}>
+        <div
+          className={`canvas-area reading-${reading}${snapshot ? ' snapping' : ''}`}
+          ref={scrollRef}
+          onMouseDown={onSnapDown}
+          onMouseMove={onSnapMove}
+          onMouseUp={() => void onSnapUp()}
+        >
+          {rubber ? <div className="snap-rubber" style={rubber} /> : null}
           {mode === 'continuous' ? (
             <div className="page-stack virtual" style={{ height: layout.total }}>
               {visiblePages.map((pageNumber) => (

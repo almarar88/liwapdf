@@ -1086,6 +1086,28 @@ html[dir='rtl'] .hero-art .sheet:nth-child(2) { transform: rotate(6deg) translat
 .canvas-area.reading-night .pdf-page canvas { filter: invert(0.92) hue-rotate(180deg) contrast(0.88) brightness(0.9); }
 .canvas-area.reading-night .text-layer ::selection { background: rgba(255, 204, 0, 0.4); }
 
+/* Pin a tool to the dashboard. Hidden until the tile is hovered, except when on. */
+.tool .pin {
+  position: absolute; top: 10px; inset-inline-end: 10px;
+  width: 26px; height: 26px; border-radius: 8px;
+  display: grid; place-items: center; color: var(--fg-3);
+  opacity: 0; transition: opacity var(--dur-fast), background var(--dur-fast), color var(--dur-fast);
+}
+.tool:hover .pin, .tool .pin.on, .tool .pin:focus-visible { opacity: 1; }
+.tool .pin:hover { background: var(--surface-sunken); color: var(--fg); }
+.tool .pin.on { color: var(--tone-amber); }
+
+/* Snapshot: crosshair over the page, the text layer stands aside. */
+.canvas-area.snapping { cursor: crosshair; user-select: none; }
+.canvas-area.snapping .text-layer { pointer-events: none; }
+.snap-rubber {
+  position: absolute; z-index: 5; pointer-events: none;
+  border: 1.5px dashed var(--accent); border-radius: 3px;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.shortcut-grid { display: grid; grid-template-columns: 1fr auto; gap: 10px 18px; align-items: center; }
+
 /* --------------------------------------------------------- theme cards */
 
 .theme-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; max-width: 470px; }

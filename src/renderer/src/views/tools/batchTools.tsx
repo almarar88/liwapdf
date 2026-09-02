@@ -8,9 +8,9 @@ import { runBatch, type BatchItem } from '../../lib/batch'
 import { stripExtension } from '../../lib/format'
 import { useRunner, type ToolPanelProps } from './shared'
 
-type Operation = 'compress' | 'toPdf' | 'watermark' | 'protect'
+type Operation = 'compress' | 'toPdf' | 'watermark' | 'protect' | 'ocr'
 
-const OPERATIONS: Operation[] = ['compress', 'toPdf', 'watermark', 'protect']
+const OPERATIONS: Operation[] = ['compress', 'toPdf', 'watermark', 'protect', 'ocr']
 
 /**
  * One job, many files.
@@ -69,6 +69,8 @@ export function BatchPanel({ onClose }: ToolPanelProps): React.JSX.Element {
           },
           signal
         )
+        // The OCR models are ~40 MB; worth keeping between files, not afterwards.
+        if (operation === 'ocr') void import('../../lib/ocr').then((ocr) => ocr.releaseOcr())
         if (outcome.cancelled && outcome.succeeded === 0) return
 
         notify({
@@ -210,6 +212,12 @@ async function apply(
   // The two PDF operations only make sense on a PDF; anything else is skipped
   // rather than reported as a failure the user did not cause.
   if (!/\.pdf$/i.test(input.name)) return null
+
+  if (operation === 'ocr') {
+    const { makeSearchable } = await import('../../lib/ocr')
+    const result = await makeSearchable(input.bytes, { language: 'ara+eng' })
+    return { bytes: result.bytes, name: `${base}-searchable.pdf` }
+  }
   const ops = await import('../../lib/pdf/ops')
 
   if (operation === 'watermark') {

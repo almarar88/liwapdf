@@ -21,10 +21,10 @@ format — PDF, Word, Excel, PowerPoint, EPUB and more. Fully offline.*
 
 | النظام / Platform | نوع الملف | رابط التحميل | رابط بديل |
 | --- | --- | --- | --- |
-| 🪟 **Windows 10/11 (64-bit)** | مثبّت `.exe` | [تحميل / Download](https://almarar88.github.io/liwapdf/Alcode-Editor-Setup.exe) | [Releases](../../releases/latest/download/Alcode-Editor-1.8.0-x64-Setup.exe) |
-| 🪟 **Windows (نسخة محمولة)** | `Portable.exe` بدون تثبيت | [تحميل / Download](https://almarar88.github.io/liwapdf/Alcode-Editor-Portable.exe) | [Releases](../../releases/latest/download/Alcode-Editor-1.8.0-Portable.exe) |
-| 🍎 **macOS — Apple Silicon (M1/M2/M3/M4)** | `.dmg` | [تحميل / Download](https://almarar88.github.io/liwapdf/Alcode-Editor-macOS-AppleSilicon.dmg) | [Releases](../../releases/latest/download/Alcode-Editor-1.8.0-arm64.dmg) |
-| 🍎 **macOS — Intel** | `.dmg` | [تحميل / Download](https://almarar88.github.io/liwapdf/Alcode-Editor-macOS-Intel.dmg) | [Releases](../../releases/latest/download/Alcode-Editor-1.8.0-x64.dmg) |
+| 🪟 **Windows 10/11 (64-bit)** | مثبّت `.exe` | [تحميل / Download](https://almarar88.github.io/liwapdf/Alcode-Editor-Setup.exe) | [Releases](../../releases/latest/download/Alcode-Editor-1.9.0-x64-Setup.exe) |
+| 🪟 **Windows (نسخة محمولة)** | `Portable.exe` بدون تثبيت | [تحميل / Download](https://almarar88.github.io/liwapdf/Alcode-Editor-Portable.exe) | [Releases](../../releases/latest/download/Alcode-Editor-1.9.0-Portable.exe) |
+| 🍎 **macOS — Apple Silicon (M1/M2/M3/M4)** | `.dmg` | [تحميل / Download](https://almarar88.github.io/liwapdf/Alcode-Editor-macOS-AppleSilicon.dmg) | [Releases](../../releases/latest/download/Alcode-Editor-1.9.0-arm64.dmg) |
+| 🍎 **macOS — Intel** | `.dmg` | [تحميل / Download](https://almarar88.github.io/liwapdf/Alcode-Editor-macOS-Intel.dmg) | [Releases](../../releases/latest/download/Alcode-Editor-1.9.0-x64.dmg) |
 
 > ملفات صفحة الإصدارات تُخدَّم من `objects.githubusercontent.com`، وهو محجوب على بعض الشبكات
 > رغم أن `github.com` نفسه يفتح — فيفشل التحميل بخطأ اتصال لا بخطأ «الملف غير موجود».
@@ -50,6 +50,9 @@ format — PDF, Word, Excel, PowerPoint, EPUB and more. Fully offline.*
 - بحث يُبرز كل تطابق في مكانه داخل الصفحة، مع تنقّل بين النتائج وعدّاد «٣ من ١٢».
 - تكبير وتصغير، ملء العرض، ملء الصفحة، حجم فعلي، وتدوير العرض.
 - **أوضاع قراءة:** عادي، ورقي (دافئ)، وليلي (معكوس) — تلوين للرسم فقط، والتحديد والبحث لا يتأثران.
+- **استئناف القراءة:** يعود العارض إلى آخر صفحة وصلت إليها في كل ملف.
+- **لقطة من الصفحة:** اسحب فوق جزء من الصفحة فيُنسخ صورةً إلى الحافظة.
+- **قراءة بصوت** بأصوات النظام — عربي أو إنجليزي حسب النص، دون إنترنت.
 - شريط مصغّرات جانبي بتحميل كسول (يفتح مستندات بمئات الصفحات دون تأخير).
 - فهرس المستند (Outline) والانتقال المباشر لأي قسم.
 - بحث نصي كامل داخل المستند مع مقتطفات ونتائج قابلة للنقر، وبحث عربي مطبَّع
@@ -127,6 +130,8 @@ Tesseract بالكامل داخل جهازك — العامل ونواة WebAsse
 | | | معالجة دفعية (ضغط/تحويل/علامة/حماية لعشرات الملفات) |
 
 ### محرر المستندات الشامل
+- **معادلات في الجداول:** SUM و AVERAGE و IF و SUMIF و COUNTIF وعشرات غيرها، مع مراجع ونطاقات
+  وكشف للدوران — تُحفظ في XLSX ويعيد Excel حسابها.
 
 محرر واحد يفتح **أكثر من ٤٠ امتداداً** ويختار الواجهة المناسبة لكل نوع:
 
@@ -302,8 +307,8 @@ npm run dist:mac       # حزمة macOS (تتطلب macOS)
 الملفات التنفيذية تُبنى تلقائياً على GitHub Actions لويندوز وماك:
 
 ```bash
-git tag v1.8.0
-git push origin v1.8.0
+git tag v1.9.0
+git push origin v1.9.0
 ```
 
 سير العمل في `.github/workflows/release.yml` يبني النسختين وينشرهما في Release واحد

@@ -3,6 +3,7 @@ import { Check, FolderOpen, Github, Moon, Sun, SunMoon } from 'lucide-react'
 import { useApp } from '../store/app'
 import { Button, Card, Field, Segmented, Switch } from '../components/ui'
 import type { AppSettings } from '@shared/types'
+import { SHORTCUTS } from '../lib/shortcuts'
 
 const ACCENTS: { id: AppSettings['accent']; color: string }[] = [
   { id: 'blue', color: '#0a84ff' },
@@ -37,16 +38,7 @@ export function SettingsView(): React.JSX.Element {
     void window.alcode.app.info().then(setInfo)
   }, [])
 
-  const shortcuts: [string, string][] = [
-    ['Ctrl/Cmd + O', t('sc.open')],
-    ['Ctrl/Cmd + S', t('sc.save')],
-    ['Ctrl/Cmd + K', t('sc.palette')],
-    ['Ctrl/Cmd + F', t('sc.search')],
-    ['Ctrl/Cmd + +', t('sc.zoomIn')],
-    ['Ctrl/Cmd + -', t('sc.zoomOut')],
-    ['Ctrl/Cmd + Z', t('action.undo')],
-    ['Ctrl/Cmd + Shift + Z', t('action.redo')]
-  ]
+  const shortcuts: [string, string][] = SHORTCUTS.map((item) => [item.keys, t(item.labelKey)])
 
   return (
     <div className="view">

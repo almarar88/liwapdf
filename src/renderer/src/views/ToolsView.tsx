@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
-import { FileText, FilePlus2, FolderOpen, Search, X, History } from 'lucide-react'
+import { FileText, FilePlus2, FolderOpen, Search, X, History, Star } from 'lucide-react'
 import { useApp } from '../store/app'
 import { Button, Modal, useSpotlight } from '../components/ui'
 import { useDocumentActions } from '../hooks/useDocumentActions'
@@ -80,6 +80,8 @@ export function ToolsView(): React.JSX.Element {
   const doc = useApp((state) => state.doc)
   const editorDoc = useApp((state) => state.editorDoc)
   const recentTools = useApp((state) => state.recentTools)
+  const pinnedTools = useApp((state) => state.pinnedTools)
+  const togglePin = useApp((state) => state.togglePin)
   const navigate = useApp((state) => state.navigate)
   const { openDialog, bridgeEditorToPdf } = useDocumentActions()
   const spotlight = useSpotlight()
@@ -189,6 +191,26 @@ export function ToolsView(): React.JSX.Element {
                   <span className="icon">{tool.icon}</span>
                   <h3>{t(tool.titleKey)}</h3>
                   <p>{t(tool.descriptionKey)}</p>
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    className={`pin${pinnedTools.includes(tool.id) ? ' on' : ''}`}
+                    title={pinnedTools.includes(tool.id) ? t('tools.unpin') : t('tools.pin')}
+                    aria-label={pinnedTools.includes(tool.id) ? t('tools.unpin') : t('tools.pin')}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      togglePin(tool.id)
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault()
+                        event.stopPropagation()
+                        togglePin(tool.id)
+                      }
+                    }}
+                  >
+                    <Star size={14} fill={pinnedTools.includes(tool.id) ? 'currentColor' : 'none'} />
+                  </span>
                 </motion.button>
               ))}
             </div>

@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import { useApp } from '../../store/app'
 import { Button } from '../../components/ui'
+import { recalculate } from '../../lib/documents/formulas'
 import {
   columnLabel,
   emptyCell,
@@ -150,14 +151,19 @@ export function SheetEditor({
     return { count: numbers.length, sum, average: sum / numbers.length }
   }, [anchor, cursor, rows])
 
+  // Every edit re-evaluates the sheet's formulas; rows without any are
+  // shared with the input, so the common edit still costs one row copy.
   const mutate = (next: SheetData): void => {
-    onChange(sheets.map((item, index) => (index === activeSheet ? next : item)))
+    const evaluated = recalculate(next)
+    onChange(sheets.map((item, index) => (index === activeSheet ? evaluated : item)))
   }
 
   /** Copy-on-write of the affected row only — the rest of the grid is shared. */
   const commitCell = (row: number, column: number, value: string): void => {
     const existing = rows[row]?.[column]
     if (existing && existing.text === value) return
+    // Leaving a formula cell without touching it must not dirty the document.
+    if (existing && existing.formula !== undefined && value === '=' + existing.formula) return
     const grid = [...rows]
     while (grid.length <= row) grid.push(Array.from({ length: columnCount }, emptyCell))
     const line = [...grid[row]]
@@ -464,7 +470,11 @@ export function SheetEditor({
                         title={cell.formula ? '=' + cell.formula : undefined}
                         aria-label={`${columnLabel(column)}${rowIndex + 1}`}
                         dir="auto"
-                        onFocus={() => setCursor({ row: rowIndex, column })}
+                        onFocus={() => {
+                          setCursor({ row: rowIndex, column })
+                          // A formula cell shows its result; editing it means editing the formula.
+                          if (cell.formula !== undefined) setDraft({ row: rowIndex, column, value: '=' + cell.formula })
+                        }}
                         onBlur={flushDraft}
                         onMouseDown={(event) => {
                           if (event.shiftKey) {

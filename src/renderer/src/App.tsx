@@ -1,9 +1,10 @@
-import { Suspense, lazy, useEffect, useMemo, useState } from 'react'
+import { Fragment, Suspense, lazy, useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, MotionConfig, motion } from 'framer-motion'
 import {
   FileText,
   FolderOpen,
   Home,
+  Keyboard,
   LayoutGrid,
   PenLine,
   Repeat2,
@@ -20,6 +21,7 @@ import { CommandPalette, type Command } from './components/CommandPalette'
 import { BusyVeil, Button, Field, Modal, TextInput, Toasts } from './components/ui'
 import { HomeView } from './views/HomeView'
 import { TOOLS } from './views/toolRegistry'
+import { SHORTCUTS } from './lib/shortcuts'
 
 // Only the home screen is needed to paint the first frame; the rest — and the
 // document libraries they pull in — load when the user actually goes there,
@@ -54,6 +56,7 @@ export default function App(): React.JSX.Element {
 
   const [platform, setPlatform] = useState('win32')
   const [dragging, setDragging] = useState(false)
+  const [shortcutsOpen, setShortcutsOpen] = useState(false)
 
   // Files can be dropped anywhere in the window, not only on the two zones
   // that draw a dashed border. The zones keep their own handlers: they call
@@ -175,6 +178,9 @@ export default function App(): React.JSX.Element {
       if (key === 'k') {
         event.preventDefault()
         setPaletteOpen(!useApp.getState().paletteOpen)
+      } else if (key === '/' || key === '?') {
+        event.preventDefault()
+        setShortcutsOpen((open) => !open)
       } else if (key === 'o') {
         event.preventDefault()
         void openDialog()
@@ -211,7 +217,8 @@ export default function App(): React.JSX.Element {
 
     const actions: Command[] = [
       { id: 'open', label: t('action.open'), hint: 'Ctrl O', icon: <FolderOpen size={15} />, run: () => void openDialog() },
-      { id: 'save', label: t('action.save'), hint: 'Ctrl S', icon: <Save size={15} />, run: () => void saveActive() }
+      { id: 'save', label: t('action.save'), hint: 'Ctrl S', icon: <Save size={15} />, run: () => void saveActive() },
+      { id: 'shortcuts', label: t('sc.help'), hint: 'Ctrl /', icon: <Keyboard size={15} />, run: () => setShortcutsOpen(true) }
     ]
 
     const tools: Command[] = TOOLS.map((tool) => ({
@@ -283,6 +290,16 @@ export default function App(): React.JSX.Element {
         ) : null}
       </AnimatePresence>
       <CommandPalette commands={commands} />
+      <Modal open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} title={t('settings.shortcuts')}>
+        <div className="shortcut-grid">
+          {SHORTCUTS.map((item) => (
+            <Fragment key={item.keys}>
+              <span>{t(item.labelKey)}</span>
+              <span className="kbd" dir="ltr">{item.keys}</span>
+            </Fragment>
+          ))}
+        </div>
+      </Modal>
       <PasswordDialog />
       <ConfirmDialog />
       <Toasts />

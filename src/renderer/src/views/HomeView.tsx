@@ -33,6 +33,7 @@ export function HomeView(): React.JSX.Element {
   const language = useApp((state) => state.settings.language)
   const navigate = useApp((state) => state.navigate)
   const openTool = useApp((state) => state.openTool)
+  const pinnedTools = useApp((state) => state.pinnedTools)
   const doc = useApp((state) => state.doc)
   const editorDoc = useApp((state) => state.editorDoc)
   const openEditorDocument = useApp((state) => state.openEditorDocument)
@@ -70,7 +71,7 @@ export function HomeView(): React.JSX.Element {
   const dateLine = `${weekday}، ${formatGregorian(now, language)} · ${formatHijri(now, language)}`
 
   const quick: { key: string; tone: Tone; icon: React.ReactNode; label: string; run: () => void }[] = [
-    ...QUICK_TOOLS.flatMap((id) => {
+    ...(pinnedTools.length > 0 ? pinnedTools : QUICK_TOOLS).flatMap((id) => {
       const tool = toolById(id)
       if (!tool) return []
       return [
@@ -209,6 +210,7 @@ export function HomeView(): React.JSX.Element {
         </div>
 
         <h2 className="section-title">{t('home.quick')}</h2>
+        {pinnedTools.length === 0 ? <p className="muted" style={{ margin: '-6px 0 12px', fontSize: 'var(--text-sm)' }}>{t('home.pinnedHint')}</p> : null}
         <div className="grid cols-4">
           {quick.map((item, index) => (
             <motion.button
