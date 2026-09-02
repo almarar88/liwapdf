@@ -1194,3 +1194,7 @@ textarea:focus-visible,
 .paragraph-row.active { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--surface)); }
 .paragraph-row .pr-icon { color: var(--fg-3); flex: none; display: grid; place-items: center; }
 .paragraph-row .pr-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-sm); }
+
+/* Canvases carry absolute glyph positions (pdf.js, snapshots, thumbnails);
+   they must never inherit the RTL direction of the interface around them. */
+canvas { direction: ltr; }

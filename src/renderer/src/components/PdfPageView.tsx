@@ -62,6 +62,12 @@ export function PdfPageView({
       const context = canvas.getContext('2d', { alpha: false })
       if (!context) return
 
+      // The app is laid out right-to-left and a canvas inherits that
+      // direction, which makes every glyph pdf.js paints start-aligned to the
+      // right of its own position and pile onto its neighbour. PDF glyph
+      // positions are absolute; the canvas must not add bidi of its own.
+      context.direction = 'ltr'
+      context.textAlign = 'left'
       const ratio = Math.min(window.devicePixelRatio || 1, 2)
       canvas.width = Math.floor(viewport.width * ratio)
       canvas.height = Math.floor(viewport.height * ratio)

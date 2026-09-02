@@ -87,6 +87,9 @@ export function Thumbnail({
       canvas.height = Math.floor(viewport.height)
       const context = canvas.getContext('2d', { alpha: false })
       if (!context) return
+      // Never inherit the app's RTL direction: see PdfPageView.
+      context.direction = 'ltr'
+      context.textAlign = 'left'
       context.fillStyle = '#ffffff'
       context.fillRect(0, 0, canvas.width, canvas.height)
       await page.render({ canvasContext: context, viewport }).promise

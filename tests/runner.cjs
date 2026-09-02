@@ -9,7 +9,9 @@ app.whenReady().then(async () => {
     show: false,
     width: 1200,
     height: 900,
-    webPreferences: { sandbox: false, contextIsolation: true, webSecurity: false }
+    // TEST_SANDBOX=1 runs the suites under the same OS sandbox as the app's
+    // own window, which is where font loading behaves differently.
+    webPreferences: { sandbox: process.env.TEST_SANDBOX === '1', contextIsolation: true, webSecurity: false }
   })
   win.webContents.on('console-message', (_e, level, message) => {
     if (level >= 2 && !/Security Warning|willReadFrequently/.test(String(message))) console.log('CONSOLE', String(message).slice(0, 400))

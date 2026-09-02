@@ -6,5 +6,6 @@ import compress from './suites/compress'
 import layout from './suites/layout'
 import documents from './suites/documents'
 import images from './suites/images'
+import renderProbe from './suites/render-probe'
 
-void runSuites([formulas, arabic, pdfText, compress, layout, documents, images])
+void runSuites([formulas, arabic, pdfText, compress, layout, documents, images, renderProbe])

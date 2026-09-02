@@ -23,6 +23,10 @@ export async function renderPage(
 
   canvas.width = Math.floor(viewport.width)
   canvas.height = Math.floor(viewport.height)
+  // A canvas attached under the app's RTL root would inherit that direction
+  // and right-align every glyph pdf.js paints; positions in a PDF are absolute.
+  context.direction = 'ltr'
+  context.textAlign = 'left'
   context.fillStyle = '#ffffff'
   context.fillRect(0, 0, canvas.width, canvas.height)
 
