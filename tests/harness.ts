@@ -12,7 +12,15 @@ declare global {
   interface Window {
     __results: Result[]
     __done: boolean
+    __artifacts: Record<string, string>
   }
+}
+
+/** Keeps a file the runner will write to out/tests/artifacts, for looking at by hand. */
+export function saveArtifact(name: string, bytes: Uint8Array): void {
+  let binary = ''
+  for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i])
+  window.__artifacts = { ...(window.__artifacts ?? {}), [name]: btoa(binary) }
 }
 
 /** Equality check with a readable diff line. */

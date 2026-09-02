@@ -33,7 +33,8 @@ import {
   BookCopy,
   QrCode,
   ScanSearch,
-  Replace
+  Replace,
+  TextCursorInput
 } from 'lucide-react'
 import type { TranslationKey } from '../i18n'
 
@@ -50,6 +51,7 @@ export type ToolId =
   | 'booklet'
   | 'qr'
   | 'replaceText'
+  | 'rewriteParagraph'
   | 'inspect'
   | 'compress'
   | 'compressAny'
@@ -120,6 +122,7 @@ export const TOOLS: ToolDescriptor[] = [
   { id: 'stamp', group: 'content', titleKey: 'tool.stamp', descriptionKey: 'tool.stamp.d', icon: <Stamp size={19} />, needsDocument: true, tone: 'rose' },
   { id: 'qr', group: 'content', titleKey: 'tool.qr', descriptionKey: 'tool.qr.d', icon: <QrCode size={19} />, needsDocument: true, tone: 'teal' },
   { id: 'replaceText', group: 'content', titleKey: 'tool.replaceText', descriptionKey: 'tool.replaceText.d', icon: <Replace size={19} />, needsDocument: true, tone: 'amber' },
+  { id: 'rewriteParagraph', group: 'content', titleKey: 'tool.rewriteParagraph', descriptionKey: 'tool.rewriteParagraph.d', icon: <TextCursorInput size={19} />, needsDocument: true, tone: 'amber' },
   { id: 'extractImages', group: 'content', titleKey: 'tool.extractImages', descriptionKey: 'tool.extractImages.d', icon: <Images size={19} />, needsDocument: true, tone: 'teal' },
   { id: 'forms', group: 'content', titleKey: 'tool.forms', descriptionKey: 'tool.forms.d', icon: <ClipboardList size={19} />, needsDocument: true, tone: 'amber' },
   { id: 'compare', group: 'content', titleKey: 'tool.compare', descriptionKey: 'tool.compare.d', icon: <GitCompare size={19} />, needsDocument: false, tone: 'purple' },

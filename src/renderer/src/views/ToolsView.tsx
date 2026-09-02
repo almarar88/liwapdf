@@ -6,6 +6,7 @@ import { Button, Modal, useSpotlight } from '../components/ui'
 import { useDocumentActions } from '../hooks/useDocumentActions'
 import { normalizeForSearch } from '../lib/text/encoding'
 import { TOOLS, TOOL_GROUPS, toolById, type ToolId } from './toolRegistry'
+import { RewriteParagraphPanel } from './tools/paragraphTools'
 import {
   MergePanel,
   SplitPanel,
@@ -75,6 +76,7 @@ const PANELS: Record<ToolId, (props: { onClose: () => void }) => React.JSX.Eleme
   qr: QrPanel,
   inspect: InspectPanel,
   replaceText: ReplaceTextPanel,
+  rewriteParagraph: RewriteParagraphPanel,
   ocr: OcrPanel,
   redact: RedactPanel,
   batch: BatchPanel

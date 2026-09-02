@@ -1,6 +1,6 @@
 import { PDFDocument, StandardFonts } from '@cantoo/pdf-lib'
 import type { Suite } from '../harness'
-import { eq as makeEq } from '../harness'
+import { eq as makeEq, saveArtifact } from '../harness'
 import { addHeaderFooter, addWatermark, expandDateTokens } from '../../src/renderer/src/lib/pdf/ops'
 import { replaceText } from '../../src/renderer/src/lib/pdf/replace'
 import { openForRender } from '../../src/renderer/src/lib/pdf/pdfjs'
@@ -39,6 +39,7 @@ const suite: Suite = {
       align: 'center',
       indices: [0, 1, 2]
     })
+    saveArtifact('headerfooter.pdf', stamped)
     const pages = await textOf(stamped)
     check('english header page 2', pages[1].includes('Page 2 of 3'), pages[1])
     check('gregorian date present', pages[1].includes(formatGregorian(today, 'en')))
@@ -69,6 +70,40 @@ const suite: Suite = {
     check('replacement present', after.includes('Hello Everyone from Alcode') && after.includes('Everyone peace') && after.includes('Everyone — dashed'), after)
     check('old text gone', !after.includes('World'), after)
     check('other line untouched', after.includes('Untouched line'), after)
+    // Rewrite a whole paragraph in place.
+    const { extractParagraphs, rewriteParagraph } = await import('../../src/renderer/src/lib/pdf/paragraphs')
+    const pdoc = await PDFDocument.create()
+    const pf = await pdoc.embedFont(StandardFonts.Helvetica)
+    const ppage = pdoc.addPage([595, 842])
+    ppage.drawText('Title line', { x: 60, y: 760, size: 20, font: pf })
+    ppage.drawText('First line of the body paragraph', { x: 60, y: 700, size: 12, font: pf, lineHeight: 15 })
+    ppage.drawText('second line of the body paragraph', { x: 60, y: 685, size: 12, font: pf })
+    ppage.drawText('third line ends here.', { x: 60, y: 670, size: 12, font: pf })
+    ppage.drawText('Footer note', { x: 60, y: 80, size: 10, font: pf })
+    const pbytes = await pdoc.save()
+    const paragraphs = await extractParagraphs(pbytes, 0)
+    eq('three paragraphs found', paragraphs.length, 3)
+    const body = paragraphs[1]
+    eq('body has three lines', body.lines.length, 3)
+    check('body text joined', body.text.startsWith('First line') && body.text.endsWith('ends here.'), body.text)
+    check('leading measured', Math.abs(body.leading - 15) < 0.5, String(body.leading))
+    const rewritten = await rewriteParagraph(pbytes, { paragraph: body, text: 'A brand new paragraph, rewritten in place and wrapped to the same width as before.' })
+    saveArtifact('rewrite.pdf', rewritten.bytes)
+    const ptext = (await textOf(rewritten.bytes)).join(' ')
+    check('old body gone', !ptext.includes('body paragraph'), ptext)
+    check('new body present', ptext.includes('brand new paragraph'), ptext)
+    check('title and footer untouched', ptext.includes('Title line') && ptext.includes('Footer note'), ptext)
+    eq('nothing merely covered', rewritten.covered, 0)
+    check('wrapped within block', rewritten.lines >= 2 && !rewritten.overflowed, `${rewritten.lines} lines, size ${rewritten.size}`)
+
+    // The same block rewritten in Arabic: right-aligned, shaped, wrapped.
+    const arabic = await rewriteParagraph(pbytes, { paragraph: body, text: 'هذه فقرة جديدة كُتبت من داخل التطبيق مكان النص القديم، وتلتفّ الأسطر تلقائيًا على عرض الفقرة الأصلية كما يفعل أي محرر مكتبي.' })
+    saveArtifact('rewrite-ar.pdf', arabic.bytes)
+    const atext = (await textOf(arabic.bytes)).join(' ')
+    check('arabic rewrite removed the old body', !atext.includes('body paragraph'), atext)
+    check('arabic rewrite wrapped to several lines', arabic.lines >= 2, String(arabic.lines))
+    eq('arabic rewrite struck originals', arabic.covered, 0)
+
     const none = await replaceText(result.bytes, { find: 'Nothing here', replace: 'x' })
     eq('no match leaves bytes', none.replaced, 0)
     check('no match returns same bytes', none.bytes === result.bytes)

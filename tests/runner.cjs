@@ -2,6 +2,7 @@
 // line per check. Exit code 1 when anything fails, so CI goes red.
 const { app, BrowserWindow } = require('electron')
 const path = require('node:path')
+const fs = require('node:fs')
 
 app.whenReady().then(async () => {
   const win = new BrowserWindow({
@@ -20,6 +21,10 @@ app.whenReady().then(async () => {
     if (await win.webContents.executeJavaScript('window.__done === true')) break
   }
   const results = JSON.parse(await win.webContents.executeJavaScript('JSON.stringify(window.__results ?? [])'))
+  const artifacts = JSON.parse(await win.webContents.executeJavaScript('JSON.stringify(window.__artifacts ?? {})'))
+  const artifactDir = path.join(process.cwd(), 'out/tests/artifacts')
+  fs.mkdirSync(artifactDir, { recursive: true })
+  for (const [name, base64] of Object.entries(artifacts)) fs.writeFileSync(path.join(artifactDir, name), Buffer.from(base64, 'base64'))
   let failed = 0
   for (const result of results) {
     if (result.ok) console.log(`PASS  ${result.suite} › ${result.name}`)

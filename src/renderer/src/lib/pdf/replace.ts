@@ -160,7 +160,7 @@ export async function replaceText(bytes: Uint8Array, options: ReplaceTextOptions
  * are the characters (standard and WinAnsi fonts) can match; anything else
  * is left alone rather than guessed at.
  */
-function scrubPage(document: PDFDocument, node: ReturnType<PDFDocument['getPage']>['node'], originals: string[], loose: boolean): number {
+export function scrubPage(document: PDFDocument, node: ReturnType<PDFDocument['getPage']>['node'], originals: string[], loose: boolean): number {
   const wanted = new Set(originals.map((text) => textKey(text, loose)).filter(Boolean))
   if (wanted.size === 0) return 0
   const entry = node.get(PDFName.of('Contents'))

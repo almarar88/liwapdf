@@ -1178,3 +1178,19 @@ textarea:focus-visible,
 .modal:focus, .modal:focus-visible { outline: none !important; }
 .thumb:focus-visible { outline-offset: 1px; }
 .slider:focus-visible { outline-offset: 4px; }
+
+/* Paragraph picker for in-place rewriting: one row per detected block. */
+.paragraph-list {
+  display: flex; flex-direction: column; gap: 6px; max-height: 260px; overflow: auto;
+  padding: 4px; border: 1px solid var(--hairline); border-radius: var(--r-md); background: var(--surface-2);
+}
+.paragraph-row {
+  display: flex; align-items: center; gap: 10px; width: 100%; text-align: start;
+  padding: 8px 10px; border: 1px solid transparent; border-radius: var(--r-sm);
+  background: var(--surface); color: var(--fg); font: inherit; cursor: pointer;
+  transition: border-color var(--dur), background var(--dur);
+}
+.paragraph-row:hover { border-color: var(--hairline); }
+.paragraph-row.active { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--surface)); }
+.paragraph-row .pr-icon { color: var(--fg-3); flex: none; display: grid; place-items: center; }
+.paragraph-row .pr-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-sm); }
