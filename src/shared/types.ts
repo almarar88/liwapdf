@@ -17,6 +17,8 @@ export interface AppSettings {
    * macOS is exempt: it has an offline system spellchecker.
    */
   spellcheck: boolean
+  /** Ask github.com for a newer release at startup; nothing else is sent. */
+  checkUpdates: boolean
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -26,7 +28,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   reduceMotion: false,
   defaultExportDir: null,
   rememberSession: true,
-  spellcheck: false
+  spellcheck: false,
+  checkUpdates: true
 }
 
 export interface RecentFile {
@@ -92,3 +95,11 @@ export interface PrinterOption {
   displayName: string
   isDefault: boolean
 }
+
+/** What the main-process updater tells the window. */
+export type UpdateEvent =
+  | { kind: 'available'; version: string; notes: string }
+  | { kind: 'none' }
+  | { kind: 'progress'; percent: number }
+  | { kind: 'ready'; version: string }
+  | { kind: 'error'; message: string }

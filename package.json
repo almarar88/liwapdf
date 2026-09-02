@@ -1,7 +1,7 @@
 {
   "name": "alcode-editor",
   "productName": "Alcode Editor",
-  "version": "1.11.0",
+  "version": "1.12.0",
   "description": "Alcode Editor — استوديو احترافي لتحرير وتحويل كل صيغ المستندات (PDF, Word, Excel, PowerPoint, EPUB…) لويندوز وماك",
   "author": {
     "name": "Alcode",
@@ -22,7 +22,10 @@
     "dist:mac": "npm run build && electron-builder --mac --publish never",
     "dist:linux": "npm run build && electron-builder --linux --publish never",
     "dist:all": "npm run build && electron-builder --win --mac --publish never",
-    "ocr:assets": "node scripts/copy-ocr-assets.mjs"
+    "ocr:assets": "node scripts/copy-ocr-assets.mjs",
+    "test:build": "vite build --config tests/vite.config.js",
+    "test:run": "electron --no-sandbox tests/runner.cjs",
+    "test": "npm run test:build && npm run test:run"
   },
   "devDependencies": {
     "@cantoo/pdf-lib": "^2.9.1",
@@ -62,6 +65,7 @@
     "zustand": "^5.0.3"
   },
   "dependencies": {
+    "electron-updater": "^6.8.9",
     "qrcode": "^1.5.4"
   }
 }

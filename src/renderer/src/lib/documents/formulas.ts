@@ -60,6 +60,14 @@ function tokenize(source: string): Token[] {
       i += match[0].length
       continue
     }
+    if (ch === "'") {
+      // A quoted sheet name: 'My Sheet'!A1
+      const close = text.indexOf("'", i + 1)
+      if (close === -1) throw ERR.value
+      tokens.push({ kind: 'name', value: text.slice(i + 1, close) })
+      i = close + 1
+      continue
+    }
     if (ch === '"') {
       let j = i + 1
       let out = ''
@@ -91,7 +99,7 @@ function tokenize(source: string): Token[] {
       i += 2
       continue
     }
-    if ('+-*/^&=<>(),:;%'.includes(ch)) {
+    if ('+-*/^&=<>(),:;%!'.includes(ch)) {
       tokens.push({ kind: 'op', value: ch === ';' ? ',' : ch })
       i += 1
       continue
@@ -106,8 +114,8 @@ function tokenize(source: string): Token[] {
 type Node =
   | { type: 'number'; value: number }
   | { type: 'string'; value: string }
-  | { type: 'ref'; row: number; column: number }
-  | { type: 'range'; from: { row: number; column: number }; to: { row: number; column: number } }
+  | { type: 'ref'; row: number; column: number; sheet?: string }
+  | { type: 'range'; from: { row: number; column: number }; to: { row: number; column: number }; sheet?: string }
   | { type: 'call'; name: string; args: Node[] }
   | { type: 'unary'; op: string; operand: Node }
   | { type: 'binary'; op: string; left: Node; right: Node }
@@ -209,6 +217,21 @@ class Parser {
       return inner
     }
     if (token.kind === 'name') {
+      // Sheet2!A1 or 'Sheet two'!A1:B3 — the name before the bang is a sheet.
+      if (this.takeOp('!') !== null) {
+        const next = this.peek()
+        this.index += 1
+        const ref = next && next.kind === 'name' ? parseReference(next.value) : null
+        if (!ref) throw ERR.ref
+        if (this.takeOp(':') !== null) {
+          const after = this.peek()
+          this.index += 1
+          const to = after && after.kind === 'name' ? parseReference(after.value) : null
+          if (!to) throw ERR.ref
+          return { type: 'range', from: ref, to, sheet: token.value }
+        }
+        return { type: 'ref', row: ref.row, column: ref.column, sheet: token.value }
+      }
       if (this.takeOp('(') !== null) {
         const args: Node[] = []
         if (this.takeOp(')') === null) {
@@ -241,24 +264,44 @@ class Parser {
 class Evaluator {
   private readonly cache = new Map<string, Value>()
   private readonly visiting = new Set<string>()
+  /** The sheet whose formulas are being evaluated right now. */
+  private current: number
 
-  constructor(private readonly rows: SheetCell[][]) {}
+  constructor(
+    private readonly workbook: SheetData[],
+    sheetIndex: number
+  ) {
+    this.current = sheetIndex
+  }
 
-  cell(row: number, column: number): Value {
-    const key = `${row}:${column}`
+  private sheetIndex(name: string | undefined): number {
+    if (name === undefined) return this.current
+    const wanted = name.trim().toLowerCase()
+    const index = this.workbook.findIndex((sheet) => sheet.name.trim().toLowerCase() === wanted)
+    return index
+  }
+
+  cell(row: number, column: number, sheet?: string): Value {
+    const index = this.sheetIndex(sheet)
+    if (index < 0) return ERR.ref
+    const key = `${index}:${row}:${column}`
     const cached = this.cache.get(key)
     if (cached !== undefined) return cached
-    const cell = this.rows[row]?.[column]
+    const cell = this.workbook[index]?.rows[row]?.[column]
     if (!cell) return ''
     if (cell.formula === undefined) return literal(cell)
     if (this.visiting.has(key)) return ERR.cycle
     this.visiting.add(key)
+    // A formula on another sheet reads its own neighbours as "here".
+    const previous = this.current
+    this.current = index
     let value: Value
     try {
       value = this.evaluate(new Parser(tokenize(cell.formula)).parse())
     } catch (error) {
       value = error instanceof FormulaError ? error : ERR.value
     }
+    this.current = previous
     this.visiting.delete(key)
     this.cache.set(key, value)
     return value
@@ -271,7 +314,7 @@ class Evaluator {
       case 'string':
         return node.value
       case 'ref':
-        return this.cell(node.row, node.column)
+        return this.cell(node.row, node.column, node.sheet)
       case 'range': {
         const top = Math.min(node.from.row, node.to.row)
         const bottom = Math.max(node.from.row, node.to.row)
@@ -282,7 +325,7 @@ class Evaluator {
         for (let r = top; r <= bottom; r += 1) {
           const line: Scalar[] = []
           for (let c = left; c <= right; c += 1) {
-            const value = this.cell(r, c)
+            const value = this.cell(r, c, node.sheet)
             if (value instanceof FormulaError) return value
             line.push(Array.isArray(value) ? '' : value)
           }
@@ -586,8 +629,9 @@ export function formatNumber(value: number): string {
  * cell's display text and typed value. Rows without formulas are shared with
  * the input, so the common edit costs one row copy.
  */
-export function recalculate(sheet: SheetData): SheetData {
-  const evaluator = new Evaluator(sheet.rows)
+export function recalculate(sheet: SheetData, workbook?: SheetData[]): SheetData {
+  const book = workbook && workbook.includes(sheet) ? workbook : [sheet]
+  const evaluator = new Evaluator(book, book.indexOf(sheet))
   let changed = false
   const rows = sheet.rows.map((row, r) => {
     let copy: SheetCell[] | null = null

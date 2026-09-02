@@ -155,8 +155,31 @@ export default function App(): React.JSX.Element {
       }
     })
     const offNavigate = window.alcode.on.menuNavigate((target) => navigate(target as Route))
+    // Update notices: one toast per step, each with the next step as its action.
+    const offUpdate = window.alcode.update.onEvent((event) => {
+      const state = useApp.getState()
+      if (event.kind === 'available') {
+        state.notify({
+          kind: 'info',
+          title: state.t('update.available', { version: event.version }),
+          message: state.t('update.availableBody'),
+          action: { label: state.t('update.download'), run: () => void window.alcode.update.download() }
+        })
+      } else if (event.kind === 'ready') {
+        state.notify({
+          kind: 'success',
+          title: state.t('update.ready', { version: event.version }),
+          message: state.t('update.readyBody'),
+          action: { label: state.t('update.install'), run: () => void window.alcode.update.install() }
+        })
+      } else if (event.kind === 'error' && state.settings.checkUpdates) {
+        // Quiet: an update check failing is not the user's problem to solve.
+        console.warn('update', event.message)
+      }
+    })
 
     return () => {
+      offUpdate()
       window.removeEventListener('keydown', onInput, true)
       window.removeEventListener('pointerdown', onInput, true)
       window.removeEventListener('focusin', onFocusIn)

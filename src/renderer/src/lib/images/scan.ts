@@ -15,6 +15,8 @@ export interface ScanOptions {
   keepColor?: boolean
   /** Snap near-white paper to pure white. */
   whiten?: boolean
+  /** Straighten tilted text lines first. */
+  deskew?: boolean
 }
 
 export function enhanceScan(canvas: HTMLCanvasElement, options: ScanOptions = {}): void {
@@ -74,6 +76,10 @@ export async function enhanceImageBytes(bytes: Uint8Array, options: ScanOptions 
     canvas.height = bitmap.height
     const context = canvas.getContext('2d', { alpha: false })!
     context.drawImage(bitmap, 0, 0)
+    if (options.deskew ?? true) {
+      const { deskew } = await import('./deskew')
+      deskew(canvas)
+    }
     enhanceScan(canvas, options)
     const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.9))
     if (!blob) throw new Error('encode-failed')

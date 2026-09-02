@@ -9,7 +9,8 @@ import type {
   RecentFile,
   SaveDialogOptions,
   SaveResult,
-  WindowState
+  WindowState,
+  UpdateEvent
 } from '../shared/types'
 
 const api = {
@@ -92,6 +93,16 @@ const api = {
       const listener = (_e: unknown, state: WindowState): void => handler(state)
       ipcRenderer.on('window:state', listener)
       return () => ipcRenderer.off('window:state', listener)
+    }
+  },
+  update: {
+    check: (): Promise<void> => ipcRenderer.invoke('update:check'),
+    download: (): Promise<void> => ipcRenderer.invoke('update:download'),
+    install: (): Promise<void> => ipcRenderer.invoke('update:install'),
+    onEvent: (handler: (event: UpdateEvent) => void): (() => void) => {
+      const listener = (_e: unknown, event: UpdateEvent): void => handler(event)
+      ipcRenderer.on('update:event', listener)
+      return () => ipcRenderer.off('update:event', listener)
     }
   },
   on: {

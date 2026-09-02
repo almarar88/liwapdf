@@ -52,6 +52,8 @@ export interface OcrOptions {
   signal?: AbortSignal
   /** Layout assumption. AUTO suits mixed pages; SINGLE_BLOCK a plain one. */
   pageSegmentation?: PageSegmentation
+  /** Straighten and clean the page image before recognising it. */
+  preprocess?: boolean
 }
 
 /**
@@ -159,6 +161,13 @@ export async function recognizeDocument(
       options.onProgress?.(index, pageNumbers.length, 'recognizing')
 
       const rendered = await renderPage(source, pageNumber, scale, canvas)
+      if (options.preprocess) {
+        // A scan that is tilted or grey recognises badly; straighten and
+        // clean it the way a scanner would, on the render only.
+        const [{ deskew }, { enhanceScan }] = await Promise.all([import('./images/deskew'), import('./images/scan')])
+        deskew(rendered.canvas)
+        enhanceScan(rendered.canvas)
+      }
       let outcome = await worker.recognize(rendered.canvas, {}, { text: true, blocks: true })
       let words = wordsOf(outcome.data)
 

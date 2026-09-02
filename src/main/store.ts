@@ -138,7 +138,9 @@ export function coerceSettings(raw: unknown): AppSettings {
         ? source.rememberSession
         : DEFAULT_SETTINGS.rememberSession,
     spellcheck:
-      typeof source.spellcheck === 'boolean' ? source.spellcheck : DEFAULT_SETTINGS.spellcheck
+      typeof source.spellcheck === 'boolean' ? source.spellcheck : DEFAULT_SETTINGS.spellcheck,
+    checkUpdates:
+      typeof source.checkUpdates === 'boolean' ? source.checkUpdates : DEFAULT_SETTINGS.checkUpdates
   }
 }
 

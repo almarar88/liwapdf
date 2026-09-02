@@ -4,6 +4,7 @@ import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { registerIpc, setPendingOpenFile } from './ipc'
 import { settings } from './store'
+import { checkForUpdates, setupUpdater } from './updater'
 
 const isMac = process.platform === 'darwin'
 const isDev = !app.isPackaged
@@ -253,11 +254,29 @@ app.commandLine.appendSwitch(
   'MediaRouter,OptimizationGuideModelDownloading,Translate,NetworkTimeServiceQuerying'
 )
 
+/**
+ * Hosts the updater talks to, and nothing else: GitHub's release manifest
+ * and its asset store. Allowed only while the update setting is on, so the
+ * "no network" promise holds the moment it is switched off.
+ */
+const UPDATE_HOSTS = ['github.com', 'api.github.com', 'objects.githubusercontent.com', 'release-assets.githubusercontent.com']
+
 function blockOutboundRequests(): void {
   const filter = { urls: ['*://*/*'] }
-  session.defaultSession.webRequest.onBeforeRequest(filter, (_details, callback) =>
+  session.defaultSession.webRequest.onBeforeRequest(filter, (details, callback) => {
+    if (settings().get().checkUpdates) {
+      try {
+        const host = new URL(details.url).hostname
+        if (UPDATE_HOSTS.some((allowed) => host === allowed || host.endsWith(`.${allowed}`))) {
+          callback({ cancel: false })
+          return
+        }
+      } catch {
+        // Not a URL we can judge; blocked below.
+      }
+    }
     callback({ cancel: true })
-  )
+  })
 }
 
 /**
@@ -368,6 +387,13 @@ if (!gotLock) {
 
       const startupFile = fileFromArgv(process.argv, process.cwd())
       if (startupFile) setPendingOpenFile(startupFile)
+
+      // The update check waits until the window has been up a while: startup
+      // is for opening the document the user launched with.
+      setupUpdater(() => mainWindow)
+      setTimeout(() => {
+        if (settings().get().checkUpdates) void checkForUpdates()
+      }, 12000)
 
       registerIpc(() => mainWindow, buildMenu, applySpellcheck, () => {
         closeConfirmed = true

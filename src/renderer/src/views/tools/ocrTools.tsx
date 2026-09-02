@@ -29,6 +29,7 @@ export function OcrPanel({ onClose }: ToolPanelProps): React.JSX.Element {
   const [language, setLanguage] = useState<OcrLanguage>('ara+eng')
   const [dpi, setDpi] = useState<(typeof DPI_OPTIONS)[number]>('300')
   const [range, setRange] = useState('')
+  const [preprocess, setPreprocess] = useState(true)
   const [searchable, setSearchable] = useState(true)
 
   // The recogniser holds its language models in memory — around 40 MB — which
@@ -65,6 +66,7 @@ export function OcrPanel({ onClose }: ToolPanelProps): React.JSX.Element {
       <RangeField value={range} onChange={setRange} />
 
       <Checkbox checked={searchable} onChange={setSearchable} label={t('ocr.makeSearchable')} />
+      <Checkbox checked={preprocess} onChange={setPreprocess} label={t('ocr.preprocess')} />
 
       <p className="hint">{t('ocr.arabicNote')}</p>
 
@@ -77,6 +79,7 @@ export function OcrPanel({ onClose }: ToolPanelProps): React.JSX.Element {
               async (report, signal) => {
               if (searchable) {
                   const result = await makeSearchable(doc.bytes, {
+                    preprocess,
                     language,
                     dpi: Number(dpi),
                     pages: pagesFor(),
@@ -95,6 +98,7 @@ export function OcrPanel({ onClose }: ToolPanelProps): React.JSX.Element {
                 }
 
                 const pages = await recognizeDocument(doc.bytes, {
+                  preprocess,
                   language,
                   dpi: Number(dpi),
                   pages: pagesFor(),

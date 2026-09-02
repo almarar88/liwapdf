@@ -26,6 +26,7 @@ export function SettingsView(): React.JSX.Element {
   const t = useApp((state) => state.t)
   const settings = useApp((state) => state.settings)
   const setSettings = useApp((state) => state.setSettings)
+  const notify = useApp((state) => state.notify)
   const [info, setInfo] = useState<{
     version: string
     platform: string
@@ -148,6 +149,32 @@ export function SettingsView(): React.JSX.Element {
             onChange={(checked) => void setSettings({ rememberSession: checked })}
             label={t('settings.rememberSession')}
           />
+
+          <Field hint={t('settings.checkUpdatesHint')}>
+            <div className="row" style={{ gap: 14 }}>
+              <Switch
+                checked={settings.checkUpdates}
+                onChange={(checked) => void setSettings({ checkUpdates: checked })}
+                label={t('settings.checkUpdates')}
+              />
+              <Button
+                size="sm"
+                disabled={!settings.checkUpdates}
+                onClick={() => {
+                  notify({ kind: 'info', title: t('update.checking') })
+                  // A manual check deserves an answer either way; the
+                  // automatic one at startup stays quiet when nothing is new.
+                  const off = window.alcode.update.onEvent((event) => {
+                    if (event.kind === 'none') notify({ kind: 'success', title: t('update.upToDate') })
+                    if (event.kind !== 'progress') off()
+                  })
+                  void window.alcode.update.check()
+                }}
+              >
+                {t('update.checkNow')}
+              </Button>
+            </div>
+          </Field>
         </div>
       </Card>
 

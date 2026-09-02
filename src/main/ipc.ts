@@ -1,3 +1,4 @@
+import { checkForUpdates, downloadUpdate, installUpdate } from './updater'
 import {
   app,
   BrowserWindow,
@@ -384,6 +385,10 @@ export function registerIpc(
   ipcMain.handle('clipboard:writeText', (_e, text: string): void => clipboard.writeText(text))
 
   /* ------------------------------------------------------------- settings */
+
+  ipcMain.handle('update:check', () => checkForUpdates())
+  ipcMain.handle('update:download', () => downloadUpdate())
+  ipcMain.handle('update:install', () => installUpdate())
 
   ipcMain.handle('settings:get', (): AppSettings => settings().get())
 

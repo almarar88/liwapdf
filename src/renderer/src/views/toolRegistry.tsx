@@ -32,7 +32,8 @@ import {
   PenTool,
   BookCopy,
   QrCode,
-  ScanSearch
+  ScanSearch,
+  Replace
 } from 'lucide-react'
 import type { TranslationKey } from '../i18n'
 
@@ -48,6 +49,7 @@ export type ToolId =
   | 'crop'
   | 'booklet'
   | 'qr'
+  | 'replaceText'
   | 'inspect'
   | 'compress'
   | 'compressAny'
@@ -117,6 +119,7 @@ export const TOOLS: ToolDescriptor[] = [
   { id: 'background', group: 'content', titleKey: 'tool.background', descriptionKey: 'tool.background.d', icon: <Paintbrush size={19} />, needsDocument: true, tone: 'purple' },
   { id: 'stamp', group: 'content', titleKey: 'tool.stamp', descriptionKey: 'tool.stamp.d', icon: <Stamp size={19} />, needsDocument: true, tone: 'rose' },
   { id: 'qr', group: 'content', titleKey: 'tool.qr', descriptionKey: 'tool.qr.d', icon: <QrCode size={19} />, needsDocument: true, tone: 'teal' },
+  { id: 'replaceText', group: 'content', titleKey: 'tool.replaceText', descriptionKey: 'tool.replaceText.d', icon: <Replace size={19} />, needsDocument: true, tone: 'amber' },
   { id: 'extractImages', group: 'content', titleKey: 'tool.extractImages', descriptionKey: 'tool.extractImages.d', icon: <Images size={19} />, needsDocument: true, tone: 'teal' },
   { id: 'forms', group: 'content', titleKey: 'tool.forms', descriptionKey: 'tool.forms.d', icon: <ClipboardList size={19} />, needsDocument: true, tone: 'amber' },
   { id: 'compare', group: 'content', titleKey: 'tool.compare', descriptionKey: 'tool.compare.d', icon: <GitCompare size={19} />, needsDocument: false, tone: 'purple' },

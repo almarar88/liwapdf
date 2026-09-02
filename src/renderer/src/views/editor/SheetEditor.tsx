@@ -154,8 +154,10 @@ export function SheetEditor({
   // Every edit re-evaluates the sheet's formulas; rows without any are
   // shared with the input, so the common edit still costs one row copy.
   const mutate = (next: SheetData): void => {
-    const evaluated = recalculate(next)
-    onChange(sheets.map((item, index) => (index === activeSheet ? evaluated : item)))
+    // The whole workbook, because a total on the summary sheet may read
+    // the sheet just edited.
+    const updated = sheets.map((item, index) => (index === activeSheet ? next : item))
+    onChange(updated.map((item) => recalculate(item, updated)))
   }
 
   /** Copy-on-write of the affected row only — the rest of the grid is shared. */

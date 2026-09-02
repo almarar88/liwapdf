@@ -977,3 +977,71 @@ export function AttachmentsPanel({ onClose }: ToolPanelProps): React.JSX.Element
     </div>
   )
 }
+
+/* ---------------------------------------------------------- replace text */
+
+export function ReplaceTextPanel({ onClose }: ToolPanelProps): React.JSX.Element {
+  const t = useApp((state) => state.t)
+  const applied = useApplied()
+  const doc = useApp((state) => state.doc)
+  const notify = useApp((state) => state.notify)
+  const run = useRunner()
+  const [find, setFind] = useState('')
+  const [replacement, setReplacement] = useState('')
+  const [loose, setLoose] = useState(true)
+  const [color, setColor] = useState('#000000')
+
+  if (!doc) return <p className="muted">{t('msg.noDocument')}</p>
+
+  return (
+    <div className="stack">
+      <p className="muted">{t('tool.replaceText.d')}</p>
+      <Field label={t('replace.find')}>
+        <TextInput value={find} onChange={setFind} />
+      </Field>
+      <Field label={t('replace.with')}>
+        <TextInput value={replacement} onChange={setReplacement} />
+      </Field>
+      <Checkbox checked={loose} onChange={setLoose} label={t('replace.loose')} />
+      <Field label={t('opt.color')}>
+        <ColorInput value={color} onChange={setColor} />
+      </Field>
+      <Button
+        variant="primary"
+        disabled={!find.trim()}
+        onClick={() =>
+          void run(t('msg.working'), async (report) => {
+            const { replaceText } = await import('../../lib/pdf/replace')
+            const result = await replaceText(doc.bytes, {
+              find,
+              replace: replacement,
+              loose,
+              color,
+              password: doc.password,
+              onProgress: report
+            })
+            if (result.replaced === 0) {
+              notify({ kind: 'info', title: t('replace.none'), message: result.skipped > 0 ? t('replace.skipped', { n: result.skipped }) : undefined })
+              return
+            }
+            await applied(result.bytes, 'tool.replaceText')
+            notify({
+              kind: 'success',
+              title: t('replace.done', { n: result.replaced }),
+              message:
+                [
+                  result.covered > 0 ? t('replace.covered', { n: result.covered }) : '',
+                  result.skipped > 0 ? t('replace.skipped', { n: result.skipped }) : ''
+                ]
+                  .filter(Boolean)
+                  .join(' · ') || undefined
+            })
+            onClose()
+          })
+        }
+      >
+        {t('action.apply')}
+      </Button>
+    </div>
+  )
+}
