@@ -41,6 +41,25 @@ import { formatGregorian, formatHijri } from '../../lib/pdf/typography'
 import { SignaturePad } from '../../components/SignaturePad'
 
 /** Dates are inserted as markup, so a stray angle bracket must not be one. */
+/**
+ * The element the caret is really in. A range that selects a paragraph's
+ * contents anchors on the paragraph, whose computed style is the document
+ * default rather than the run's own font.
+ */
+function deepestAt(selection: Selection | null): Element | null {
+  const node = selection?.anchorNode
+  if (!node) return null
+  if (node.nodeType !== Node.ELEMENT_NODE) return node.parentElement
+  const element = node as Element
+  const child = element.childNodes[selection?.anchorOffset ?? 0]
+  if (child) {
+    if (child.nodeType === Node.ELEMENT_NODE) return child as Element
+    if (child.parentElement && child.parentElement !== element) return child.parentElement
+  }
+  const first = element.firstElementChild
+  return first ?? element
+}
+
 function escapeHtml(value: string): string {
   return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
@@ -322,7 +341,8 @@ export function RichEditor({
   useEffect(() => {
     const update = (): void => {
       const editor = editorRef.current
-      const node = window.getSelection()?.anchorNode
+      const selection = window.getSelection()
+      const node = selection?.anchorNode
       if (!editor || !node || !editor.contains(node)) {
         setInTable(false)
         return
@@ -330,11 +350,15 @@ export function RichEditor({
       const element = node.nodeType === Node.ELEMENT_NODE ? (node as Element) : node.parentElement
       setInTable(Boolean(element?.closest('td, th')))
       // Show the caret's own font and size, the way a word processor does.
-      if (element && editorRef.current?.contains(element)) {
-        const style = window.getComputedStyle(element)
+      // A selection anchored on a paragraph reports the paragraph's defaults,
+      // so descend to the run the caret actually sits in.
+      const run = deepestAt(selection)
+      if (run && editorRef.current?.contains(run)) {
+        const style = window.getComputedStyle(run)
         const family = style.fontFamily.split(',')[0].replace(/["']/g, '').trim()
-        const size = Math.round(Number.parseFloat(style.fontSize) || 0)
-        setCurrent({ font: family, size: size > 0 ? String(size) : '' })
+        // Word talks in points; the browser answers in pixels.
+        const points = Math.round((Number.parseFloat(style.fontSize) || 0) * 0.75)
+        setCurrent({ font: family, size: points > 0 ? String(points) : '' })
       }
     }
     document.addEventListener('selectionchange', update)
@@ -367,7 +391,7 @@ export function RichEditor({
               editorRef.current?.querySelectorAll('font[size="7"]') ?? []
             )) {
               const span = document.createElement('span')
-              span.style.fontSize = `${value}px`
+              span.style.fontSize = `${value}pt`
               span.innerHTML = element.innerHTML
               element.replaceWith(span)
             }
