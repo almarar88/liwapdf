@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Alcode Editor — تحميل</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f6f6f7;
+    --card: #ffffff;
+    --fg: #16181d;
+    --fg-2: #5f6878;
+    --line: #e3e5e9;
+    --accent: #e8590c;
+    --accent-soft: #fff2e8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0e1014;
+      --card: #171a20;
+      --fg: #f2f3f5;
+      --fg-2: #9aa3b2;
+      --line: #262a33;
+      --accent-soft: #2a1a10;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 48px 20px 72px;
+    background: var(--bg);
+    color: var(--fg);
+    font: 16px/1.7 -apple-system, "Segoe UI", system-ui, "Noto Naskh Arabic", sans-serif;
+  }
+  main { max-width: 760px; margin: 0 auto; }
+  .mark {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 999px;
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: .02em;
+  }
+  h1 { font-size: 40px; margin: 18px 0 6px; letter-spacing: -.02em; }
+  .sub { color: var(--fg-2); margin: 0 0 8px; font-size: 18px; }
+  .ver { color: var(--fg-2); font-size: 14px; margin: 0 0 36px; }
+  h2 { font-size: 15px; text-transform: uppercase; letter-spacing: .08em; color: var(--fg-2); margin: 40px 0 14px; }
+  .row {
+    display: flex; align-items: center; gap: 16px;
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 14px; padding: 16px 18px; margin-bottom: 10px;
+    text-decoration: none; color: inherit;
+    transition: border-color .18s ease, transform .18s ease;
+  }
+  .row:hover { border-color: var(--accent); transform: translateY(-1px); }
+  .os { font-size: 26px; width: 34px; text-align: center; flex: none; }
+  .who { flex: 1; min-width: 0; }
+  .who b { display: block; font-size: 16px; font-weight: 650; }
+  .who span { display: block; color: var(--fg-2); font-size: 13px; }
+  .size { color: var(--fg-2); font-size: 13px; flex: none; }
+  .note {
+    background: var(--card); border: 1px solid var(--line);
+    border-inline-start: 3px solid var(--accent);
+    border-radius: 12px; padding: 16px 18px; margin-top: 28px;
+    color: var(--fg-2); font-size: 14.5px;
+  }
+  .note b { color: var(--fg); }
+  code {
+    background: var(--bg); border: 1px solid var(--line);
+    border-radius: 6px; padding: 1px 6px; font-size: 13px;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    direction: ltr; display: inline-block;
+  }
+  footer { margin-top: 46px; color: var(--fg-2); font-size: 13px; }
+  footer a { color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <span class="mark">Alcode</span>
+  <h1>Alcode Editor</h1>
+  <p class="sub">استوديو احترافي لتحرير وتحويل كل صيغ المستندات — PDF و Word و Excel و PowerPoint و EPUB.</p>
+  <p class="ver">الإصدار 1.14.1 — يعمل بالكامل دون إنترنت، ولا تغادر ملفاتك جهازك.</p>
+
+  <h2>ويندوز</h2>
+  <a class="row" href="./Alcode-Editor-Windows.zip" download>
+    <span class="os">🗜️</span>
+    <span class="who"><b>ملف مضغوط ZIP</b><span>ابدأ بهذا — المتصفحات تحجب ملفات exe غير الموقّعة، ونادرًا ما تحجب ZIP</span></span>
+    <span class="size">77 MB</span>
+  </a>
+  <a class="row" href="./Alcode-Editor-Setup.exe" download>
+    <span class="os">🪟</span>
+    <span class="who"><b>مثبّت ويندوز 10/11</b><span>64-bit — يضيف اختصارًا ويربط صيغ الملفات</span></span>
+    <span class="size">77 MB</span>
+  </a>
+  <a class="row" href="./Alcode-Editor-Portable.exe" download>
+    <span class="os">🪟</span>
+    <span class="who"><b>نسخة محمولة</b><span>بدون تثبيت — شغّلها مباشرة من أي مكان</span></span>
+    <span class="size">77 MB</span>
+  </a>
+
+  <h2>ماك</h2>
+  <a class="row" href="./Alcode-Editor-macOS-AppleSilicon.dmg" download>
+    <span class="os">🍎</span>
+    <span class="who"><b>macOS — Apple Silicon</b><span>M1 و M2 و M3 و M4</span></span>
+    <span class="size">85 MB</span>
+  </a>
+  <a class="row" href="./Alcode-Editor-macOS-Intel.dmg" download>
+    <span class="os">🍎</span>
+    <span class="who"><b>macOS — Intel</b><span>أجهزة ماك بمعالج إنتل</span></span>
+    <span class="size">88 MB</span>
+  </a>
+
+  <h2>إذا انقطع التحميل في المنتصف</h2>
+  <p style="color:var(--fg-2);font-size:14.5px;margin:0 0 14px">
+    نزّل الأجزاء الأربعة في مجلد واحد، ثم افتح المجلد واكتب <code>cmd</code> في شريط العنوان
+    واضغط Enter، والصق هذا الأمر:<br />
+    <code>copy /b AlcodeEditor.zip.part0+AlcodeEditor.zip.part1+AlcodeEditor.zip.part2+AlcodeEditor.zip.part3 Alcode.zip</code>
+  </p>
+  <a class="row" href="./AlcodeEditor.zip.part0" download><span class="os">1️⃣</span><span class="who"><b>الجزء الأول</b><span>AlcodeEditor.zip.part0</span></span><span class="size">20 MB</span></a>
+  <a class="row" href="./AlcodeEditor.zip.part1" download><span class="os">2️⃣</span><span class="who"><b>الجزء الثاني</b><span>AlcodeEditor.zip.part1</span></span><span class="size">20 MB</span></a>
+  <a class="row" href="./AlcodeEditor.zip.part2" download><span class="os">3️⃣</span><span class="who"><b>الجزء الثالث</b><span>AlcodeEditor.zip.part2</span></span><span class="size">20 MB</span></a>
+  <a class="row" href="./AlcodeEditor.zip.part3" download><span class="os">4️⃣</span><span class="who"><b>الجزء الرابع</b><span>AlcodeEditor.zip.part3</span></span><span class="size">17 MB</span></a>
+
+  <div class="note">
+    <b>النسخ غير موقّعة رقميًا</b>، فسيحذّرك النظام أول مرة:<br />
+    على <b>ويندوز</b> اضغط <code>More info</code> ثم <code>Run anyway</code>.<br />
+    على <b>ماك</b> افتح System&nbsp;Settings ← Privacy&nbsp;&amp;&nbsp;Security ثم <code>Open Anyway</code>.
+  </div>
+
+  <footer>
+    <a href="https://github.com/almarar88/liwapdf">المستودع على GitHub</a> ·
+    <a href="https://github.com/almarar88/liwapdf/releases/latest">كل الإصدارات</a><br />
+    من شركة <b>Alcode</b>
+  </footer>
+</main>
+</body>
+</html>
