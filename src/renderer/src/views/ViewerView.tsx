@@ -21,12 +21,16 @@ import {
   Camera,
   Volume2,
   VolumeX,
-  Presentation
+  Presentation,
+  TextCursorInput,
+  FileType2
 } from 'lucide-react'
 import { useApp } from '../store/app'
 import { useDocumentActions } from '../hooks/useDocumentActions'
 import { Button, Empty, Segmented, TextInput } from '../components/ui'
 import { PdfPageView } from '../components/PdfPageView'
+import { TextEditLayer } from '../components/TextEditLayer'
+import type { Paragraph } from '../lib/pdf/paragraphs'
 import { Thumbnail } from '../components/Thumbnail'
 import { PrintDialog } from './PrintDialog'
 import { readOutline, searchDocument, type OutlineNode, type SearchHit } from '../lib/pdf/render'
@@ -63,6 +67,10 @@ export function ViewerView(): React.JSX.Element {
   // filter, so the document itself is never touched; remembered per machine.
   const [reading, setReading] = useState<ReadingMode>(() => readReadingMode())
   const notify = useApp((state) => state.notify)
+  const applyPdfBytes = useApp((state) => state.applyPdfBytes)
+  const openEditorDocument = useApp((state) => state.openEditorDocument)
+  const navigate = useApp((state) => state.navigate)
+  const setBusy = useApp((state) => state.setBusy)
   const [snapshot, setSnapshot] = useState(false)
   const [rubber, setRubber] = useState<{ left: number; top: number; width: number; height: number } | null>(null)
   const dragStart = useRef<{ x: number; y: number } | null>(null)
@@ -86,6 +94,9 @@ export function ViewerView(): React.JSX.Element {
   const [printOpen, setPrintOpen] = useState(false)
 
   const scrollRef = useRef<HTMLDivElement>(null)
+  const [editText, setEditText] = useState(false)
+  const [paragraphs, setParagraphs] = useState<Map<number, Paragraph[]>>(new Map())
+  const [editBusy, setEditBusy] = useState(false)
   const [naturalSizes, setNaturalSizes] = useState<{ width: number; height: number }[]>([])
   const [scrollTop, setScrollTop] = useState(0)
   const [viewportHeight, setViewportHeight] = useState(0)
@@ -162,6 +173,83 @@ export function ViewerView(): React.JSX.Element {
     return () => observer.disconnect()
   }, [doc, fit, firstSize])
 
+  // Paragraphs for the pages on screen, so switching to edit mode does not
+  // parse the whole document. Cleared whenever the bytes change.
+  useEffect(() => {
+    setParagraphs(new Map())
+  }, [doc?.version])
+
+  const loadParagraphs = async (pageNumber: number): Promise<void> => {
+    if (!doc || paragraphs.has(pageNumber)) return
+    const { extractParagraphs } = await import('../lib/pdf/paragraphs')
+    const found = await extractParagraphs(doc.bytes, pageNumber - 1, doc.password).catch(() => [] as Paragraph[])
+    setParagraphs((current) => {
+      if (current.has(pageNumber)) return current
+      const next = new Map(current)
+      next.set(pageNumber, found)
+      return next
+    })
+  }
+
+  const applyParagraph = async (paragraph: Paragraph, text: string, color: string): Promise<void> => {
+    if (!doc) return
+    setEditBusy(true)
+    try {
+      const { rewriteParagraph } = await import('../lib/pdf/paragraphs')
+      const result = await rewriteParagraph(doc.bytes, { paragraph, text, color, password: doc.password })
+      await applyPdfBytes(result.bytes)
+      const notes = [
+        result.overflowed ? t('rewrite.overflow') : '',
+        result.size < paragraph.size ? t('rewrite.shrunk', { size: Math.round(result.size) }) : ''
+      ].filter(Boolean)
+      notify({
+        kind: 'success',
+        title: t('rewrite.done'),
+        message: notes.length > 0 ? notes.join(' · ') : undefined
+      })
+    } catch (error) {
+      notify({ kind: 'error', title: t('edit.failed'), message: String((error as Error)?.message ?? error) })
+    } finally {
+      setEditBusy(false)
+    }
+  }
+
+  /** Reads the document's text back into the rich editor. */
+  const openInEditor = async (): Promise<void> => {
+    if (!doc) return
+    setBusy({ label: t('edit.openInEditorHint'), progress: 0 })
+    try {
+      const { pdfToDocument } = await import('../lib/pdf/toDocument')
+      const result = await pdfToDocument(doc.bytes, doc.pageCount, {
+        password: doc.password,
+        onProgress: (done, total) => setBusy({ label: t('edit.openInEditorHint'), progress: total > 0 ? done / total : null })
+      })
+      if (result.blocks === 0) {
+        notify({ kind: 'info', title: t('edit.noText') })
+        return
+      }
+      openEditorDocument({
+        name: doc.name.replace(/\.pdf$/i, '') + '.docx',
+        path: null,
+        format: 'docx',
+        kind: 'rich',
+        html: result.html,
+        direction: result.direction,
+        warnings: [],
+        // The conversion is a new document, not the PDF's own bytes: saving
+        // in place over the original is refused.
+        originalBytes: new Uint8Array(0),
+        truncated: true
+      })
+      navigate('editor')
+      notify({ kind: 'success', title: t('edit.converted'), message: t('edit.convertedBody', { n: result.blocks }) })
+    } catch (error) {
+      notify({ kind: 'error', title: t('edit.failed'), message: String((error as Error)?.message ?? error) })
+    } finally {
+      setBusy(null)
+    }
+  }
+
   const layout = useMemo(() => {
     const gap = 22
     const offsets: number[] = []
@@ -218,6 +306,13 @@ export function ViewerView(): React.JSX.Element {
     }
     return pages.length > 0 ? pages : [1]
   }, [doc, mode, currentPage, layout, scrollTop, viewportHeight])
+
+  // In edit mode the pages on screen have their paragraphs recovered, lazily.
+  useEffect(() => {
+    if (!editText) return
+    for (const pageNumber of visiblePages) void loadParagraphs(pageNumber)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editText, visiblePages, doc?.version])
 
   // Which page the reader is looking at, derived from the same layout.
   useEffect(() => {
@@ -600,6 +695,31 @@ export function ViewerView(): React.JSX.Element {
         <Button
           size="sm"
           icon
+          variant={editText ? 'primary' : 'ghost'}
+          title={`${t('edit.textMode')} — ${t('edit.textModeHint')}`}
+          aria-label={t('edit.textMode')}
+          aria-pressed={editText}
+          onClick={() => {
+            setEditText((on) => !on)
+            if (!editText) void loadParagraphs(currentPage)
+          }}
+        >
+          <TextCursorInput size={15} />
+        </Button>
+
+        <Button
+          size="sm"
+          variant="ghost"
+          title={t('edit.openInEditorHint')}
+          onClick={() => void openInEditor()}
+        >
+          <FileType2 size={15} />
+          {t('edit.openInEditor')}
+        </Button>
+
+        <Button
+          size="sm"
+          icon
           variant={snapshot ? 'primary' : 'ghost'}
           title={`${t('viewer.snapshot')} — ${t('viewer.snapshotHint')}`}
           aria-label={t('viewer.snapshot')}
@@ -802,9 +922,20 @@ export function ViewerView(): React.JSX.Element {
                     scale={zoom}
                     rotation={rotation}
                     version={doc.version}
-                    selectable
+                    selectable={!editText}
                     highlight={hits && hits.length > 0 ? query : undefined}
                     activeMatch={activeOnPage(pageNumber)}
+                    overlay={
+                      editText ? (
+                        <TextEditLayer
+                          paragraphs={paragraphs.get(pageNumber) ?? []}
+                          pageHeight={naturalSizes[pageNumber - 1]?.height ?? 0}
+                          scale={zoom}
+                          busy={editBusy}
+                          onApply={applyParagraph}
+                        />
+                      ) : null
+                    }
                   />
                 </div>
               ))}
@@ -817,7 +948,7 @@ export function ViewerView(): React.JSX.Element {
                 scale={zoom}
                 rotation={rotation}
                 version={doc.version}
-                selectable
+                selectable={!editText}
                 highlight={hits && hits.length > 0 ? query : undefined}
                 activeMatch={activeOnPage(currentPage)}
               />

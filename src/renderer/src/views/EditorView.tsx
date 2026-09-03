@@ -58,6 +58,9 @@ export function EditorView(): React.JSX.Element {
   const setActiveSheet = useApp((state) => state.setActiveSheet)
   const setDirection = useApp((state) => state.setEditorDirection)
   const closeEditor = useApp((state) => state.closeEditor)
+  // The PDF the editor's text came from, so the two views are one place.
+  const pdf = useApp((state) => state.doc)
+  const navigate = useApp((state) => state.navigate)
   const confirmDiscard = useApp((state) => state.confirmDiscard)
   const notify = useApp((state) => state.notify)
   const { openDialog, exportEditorAs, newDocument } = useDocumentActions()
@@ -192,6 +195,12 @@ export function EditorView(): React.JSX.Element {
           <FileDown size={15} />
           {formatInfo(defaultTarget(doc.source.kind))?.label}
         </Button>
+        {pdf ? (
+          <Button size="sm" variant="ghost" title={t('edit.backToViewer')} onClick={() => navigate('viewer')}>
+            <FileText size={15} />
+            {t('edit.backToViewer')}
+          </Button>
+        ) : null}
         <Button
           size="sm"
           variant="ghost"

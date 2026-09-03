@@ -44,6 +44,9 @@ export interface Paragraph {
   rtl: boolean
   /** Free space under the block before the next text in its column, PDF points. */
   roomBelow: number
+  /** The page's own box, so callers can judge margins and flip the y axis. */
+  pageWidth: number
+  pageHeight: number
 }
 
 /** Groups the page's text runs into paragraphs, in reading order top to bottom. */
@@ -51,6 +54,9 @@ export async function extractParagraphs(bytes: Uint8Array, pageIndex: number, pa
   const source = await openForRender(bytes, password)
   try {
     const page = await source.getPage(pageIndex + 1)
+    const view = page.getViewport({ scale: 1 })
+    const pageWidth = view.width
+    const pageHeight = view.height
     const content = await page.getTextContent()
     interface Run {
       text: string
@@ -110,7 +116,9 @@ export async function extractParagraphs(bytes: Uint8Array, pageIndex: number, pa
         size,
         leading,
         rtl: isRtlText(text),
-        roomBelow: 0
+        roomBelow: 0,
+        pageWidth,
+        pageHeight
       })
       current = []
     }

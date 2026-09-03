@@ -202,12 +202,15 @@ function paragraphOf(
   options: DocxWriteOptions
 ): Paragraph {
   const tag = element?.tagName ?? 'P'
-  const alignment = alignmentOf(element, options)
+  // A paragraph carries its own direction when the reader or the editor
+  // marked it; the document default applies to the rest.
+  const rightToLeft = element?.dir === 'rtl' ? true : element?.dir === 'ltr' ? false : options.rightToLeft
+  const alignment = alignmentOf(element, { ...options, rightToLeft })
 
   return new Paragraph({
     children: children.length > 0 ? children : [new TextRun({ text: '' })],
     heading: HEADINGS[tag],
-    bidirectional: options.rightToLeft,
+    bidirectional: rightToLeft,
     alignment,
     bullet: context.list === 'bullet' ? { level: context.level ?? 0 } : undefined,
     numbering:
@@ -302,7 +305,9 @@ function mergeStyle(inherited: InlineStyle, element: HTMLElement): InlineStyle {
   if (inline.fontFamily) style.font = inline.fontFamily.split(',')[0].replace(/["']/g, '').trim()
   if (inline.fontSize) {
     const size = Number.parseFloat(inline.fontSize)
+    // Word sizes are points; the editor writes px, the OOXML reader pt.
     if (Number.isFinite(size) && inline.fontSize.endsWith('px')) style.size = Math.round(size * 0.75)
+    else if (Number.isFinite(size) && inline.fontSize.endsWith('pt')) style.size = Math.round(size)
   }
   return style
 }

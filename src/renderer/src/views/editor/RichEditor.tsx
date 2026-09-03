@@ -49,24 +49,62 @@ function escapeHtml(value: string): string {
 // find — Word's own Arabic defaults and the two classic naskh text faces.
 // Amiri is calligraphic and belongs at the end of that group, not as the only
 // Arabic option on offer.
-const FONTS = [
-  'Calibri',
-  'Arial',
-  'Times New Roman',
-  'Georgia',
-  'Tahoma',
-  'Verdana',
-  'Segoe UI',
-  'Consolas',
+/**
+ * Fonts a document in this region is actually set in, Arabic first. The
+ * picker shows the ones the machine has: offering a font Windows never
+ * installed produces a document that looks right here and wrong everywhere
+ * else, and hides the ones the user does have.
+ */
+const FONT_CANDIDATES = [
   'Sakkal Majalla',
   'Traditional Arabic',
   'Simplified Arabic',
   'Arabic Typesetting',
-  'Noto Naskh Arabic',
+  'Al Bayan',
   'Dubai',
   'Cairo',
-  'Amiri'
+  'Amiri',
+  'Noto Naskh Arabic',
+  'Noto Kufi Arabic',
+  'Scheherazade New',
+  'Lateef',
+  'Tahoma',
+  'Segoe UI',
+  'Calibri',
+  'Arial',
+  'Times New Roman',
+  'Georgia',
+  'Verdana',
+  'Cambria',
+  'Consolas',
+  'Courier New'
 ]
+
+/**
+ * document.fonts.check reports whether text would render in the named face
+ * rather than a fallback, which is the only reliable local test in a
+ * sandboxed renderer. The app's own bundled faces are always offered.
+ */
+const ALWAYS = new Set(['Amiri', 'Noto Naskh Arabic', 'Arial', 'Times New Roman', 'Tahoma'])
+
+function availableFonts(): string[] {
+  const out: string[] = []
+  for (const font of FONT_CANDIDATES) {
+    if (ALWAYS.has(font)) {
+      out.push(font)
+      continue
+    }
+    try {
+      if (document.fonts?.check(`12pt "${font}"`)) out.push(font)
+    } catch {
+      // A browser that will not answer gets the whole list; a missing font
+      // simply falls back, which is what it did before.
+      out.push(font)
+    }
+  }
+  return out
+}
+
 const SIZES = ['10', '11', '12', '14', '16', '18', '20', '24', '28', '32', '40', '48']
 
 /**
@@ -278,6 +316,8 @@ export function RichEditor({
       .join('')
     insertHtml(`<h2>${escapeHtml(t('word.tocTitle'))}</h2><ul>${items}</ul>`)
   }
+  const [fonts] = useState(() => availableFonts())
+  const [current, setCurrent] = useState<{ font: string; size: string }>({ font: '', size: '' })
   const [inTable, setInTable] = useState(false)
   useEffect(() => {
     const update = (): void => {
@@ -289,6 +329,13 @@ export function RichEditor({
       }
       const element = node.nodeType === Node.ELEMENT_NODE ? (node as Element) : node.parentElement
       setInTable(Boolean(element?.closest('td, th')))
+      // Show the caret's own font and size, the way a word processor does.
+      if (element && editorRef.current?.contains(element)) {
+        const style = window.getComputedStyle(element)
+        const family = style.fontFamily.split(',')[0].replace(/["']/g, '').trim()
+        const size = Math.round(Number.parseFloat(style.fontSize) || 0)
+        setCurrent({ font: family, size: size > 0 ? String(size) : '' })
+      }
     }
     document.addEventListener('selectionchange', update)
     return () => document.removeEventListener('selectionchange', update)
@@ -305,7 +352,10 @@ export function RichEditor({
         <Select
           value=""
           onChange={(value) => value && exec('fontName', value)}
-          options={[{ value: '', label: t('word.fontFamily') }, ...FONTS.map((font) => ({ value: font, label: font }))]}
+          options={[
+            { value: '', label: current.font || t('word.fontFamily') },
+            ...fonts.map((font) => ({ value: font, label: font }))
+          ]}
         />
         <Select
           value=""
@@ -323,7 +373,10 @@ export function RichEditor({
             }
             sync()
           }}
-          options={[{ value: '', label: t('word.fontSize') }, ...SIZES.map((size) => ({ value: size, label: size }))]}
+          options={[
+            { value: '', label: current.size || t('word.fontSize') },
+            ...SIZES.map((size) => ({ value: size, label: size }))
+          ]}
         />
 
         <span className="sep" />

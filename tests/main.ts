@@ -7,5 +7,7 @@ import layout from './suites/layout'
 import documents from './suites/documents'
 import images from './suites/images'
 import renderProbe from './suites/render-probe'
+import docx from './suites/docx'
+import pdfEdit from './suites/pdf-edit'
 
-void runSuites([formulas, arabic, pdfText, compress, layout, documents, images, renderProbe])
+void runSuites([formulas, arabic, pdfText, compress, layout, documents, images, renderProbe, docx, pdfEdit])

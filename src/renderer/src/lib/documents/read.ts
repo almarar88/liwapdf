@@ -115,9 +115,17 @@ async function readByFormat(
 
   switch (format) {
     case 'docx': {
-      const { html, warnings } = await docxToHtml(bytes)
-      const clean = sanitize(html)
-      return { ...base, html: clean, warnings, direction: directionOfHtml(clean) }
+      // The OOXML reader keeps fonts, sizes, colours and alignment as Word
+      // set them; mammoth is the fallback for a file it cannot make sense of.
+      try {
+        const { docxToRichHtml } = await import('../docx/ooxml')
+        const rich = await docxToRichHtml(bytes)
+        return { ...base, html: sanitize(rich.html), warnings: rich.warnings, direction: rich.direction }
+      } catch {
+        const { html, warnings } = await docxToHtml(bytes)
+        const clean = sanitize(html)
+        return { ...base, html: clean, warnings, direction: directionOfHtml(clean) }
+      }
     }
 
     case 'doc': {

@@ -21,10 +21,10 @@ format — PDF, Word, Excel, PowerPoint, EPUB and more. Fully offline.*
 
 | النظام / Platform | نوع الملف | رابط التحميل | رابط بديل |
 | --- | --- | --- | --- |
-| 🪟 **Windows 10/11 (64-bit)** | مثبّت `.exe` | [تحميل / Download](https://almarar88.github.io/liwapdf/Alcode-Editor-Setup.exe) | [Releases](../../releases/latest/download/Alcode-Editor-1.13.1-x64-Setup.exe) |
-| 🪟 **Windows (نسخة محمولة)** | `Portable.exe` بدون تثبيت | [تحميل / Download](https://almarar88.github.io/liwapdf/Alcode-Editor-Portable.exe) | [Releases](../../releases/latest/download/Alcode-Editor-1.13.1-Portable.exe) |
-| 🍎 **macOS — Apple Silicon (M1/M2/M3/M4)** | `.dmg` | [تحميل / Download](https://almarar88.github.io/liwapdf/Alcode-Editor-macOS-AppleSilicon.dmg) | [Releases](../../releases/latest/download/Alcode-Editor-1.13.1-arm64.dmg) |
-| 🍎 **macOS — Intel** | `.dmg` | [تحميل / Download](https://almarar88.github.io/liwapdf/Alcode-Editor-macOS-Intel.dmg) | [Releases](../../releases/latest/download/Alcode-Editor-1.13.1-x64.dmg) |
+| 🪟 **Windows 10/11 (64-bit)** | مثبّت `.exe` | [تحميل / Download](https://almarar88.github.io/liwapdf/Alcode-Editor-Setup.exe) | [Releases](../../releases/latest/download/Alcode-Editor-1.14.0-x64-Setup.exe) |
+| 🪟 **Windows (نسخة محمولة)** | `Portable.exe` بدون تثبيت | [تحميل / Download](https://almarar88.github.io/liwapdf/Alcode-Editor-Portable.exe) | [Releases](../../releases/latest/download/Alcode-Editor-1.14.0-Portable.exe) |
+| 🍎 **macOS — Apple Silicon (M1/M2/M3/M4)** | `.dmg` | [تحميل / Download](https://almarar88.github.io/liwapdf/Alcode-Editor-macOS-AppleSilicon.dmg) | [Releases](../../releases/latest/download/Alcode-Editor-1.14.0-arm64.dmg) |
+| 🍎 **macOS — Intel** | `.dmg` | [تحميل / Download](https://almarar88.github.io/liwapdf/Alcode-Editor-macOS-Intel.dmg) | [Releases](../../releases/latest/download/Alcode-Editor-1.14.0-x64.dmg) |
 
 > ملفات صفحة الإصدارات تُخدَّم من `objects.githubusercontent.com`، وهو محجوب على بعض الشبكات
 > رغم أن `github.com` نفسه يفتح — فيفشل التحميل بخطأ اتصال لا بخطأ «الملف غير موجود».
@@ -136,6 +136,16 @@ Tesseract بالكامل داخل جهازك — العامل ونواة WebAsse
 | | | إعادة كتابة فقرة في مكانها |
 | | | معالجة دفعية (ضغط/تحويل/علامة/حماية لعشرات الملفات) |
 
+### تحرير نص PDF بالنقر عليه
+- زر «تحرير النص في مكانه» في العارض يرسم إطارًا حول كل فقرة؛ انقر أيّها فتتحوّل إلى صندوق كتابة
+  في موضعها وبحجمها واتجاهها، مع شريط للحجم واللون. عند التطبيق يُحذف النص القديم من الملف ويُكتب
+  الجديد مكانه نصًا حقيقيًا قابلًا للبحث.
+
+### العارض والمحرر في مكان واحد
+- «فتح في المحرر» يحوّل نص PDF إلى مستند قابل للتحرير الكامل: الفقرات والعناوين من أحجام الخطوط،
+  والمحاذاة من موضع الكتلة، والاتجاه من لغة النص، مع فصل الصفحات. حرّره كما في وورد واحفظه Word
+  أو PDF، و«العودة إلى العارض» تعيدك للملف الأصلي دون فقدان ما كتبت.
+
 ### بحث واستبدال داخل نص PDF
 - اكتب الكلمة والبديل، فيُمحى السطر القديم ويُكتب الجديد في موضعه وبحجمه — نصًا حقيقيًا قابلًا
   للبحث، لا صورة. مطابقة مرنة تتجاهل التشكيل وحالة الأحرف، والنص القديم يُحذف من محتوى
@@ -147,6 +157,13 @@ Tesseract بالكامل داخل جهازك — العامل ونواة WebAsse
   والعرض والتباعد نفسها، مع التفاف الأسطر تلقائيًا ومحاذاة يمينية للعربية.
 - إن طال النص يُصغَّر الخط قليلًا أولًا ثم يمتد الصندوق في الفراغ الذي تحته فقط، وتُخبرك الأداة.
 - مُتحقَّق منه بمحرّك عرض مستقل (MuPDF) إضافة إلى فحوص الاستخراج الآلية.
+
+### قراءة Word بتنسيقها الكامل
+- قارئ ‎.docx يقرأ تنسيق Word نفسه: الخط (بما فيه الخط العربي `w:cs` مثل Sakkal Majalla
+  وTraditional Arabic)، والحجم بالنقاط، والغامق والمائل والتسطير، واللون والتظليل، والمحاذاة
+  واتجاه الفقرة والمسافات البادئة والتباعد، والعناوين والقوائم والجداول والصور — ويعود إلى Word
+  بالتنسيق نفسه. مُتحقَّق منه بذهاب وإياب آلي.
+- قائمة الخطوط تعرض الخطوط المثبَّتة على الجهاز فعلًا، وتُظهر خط وحجم موضع المؤشر.
 
 ### محرر المستندات الشامل
 - **دمج المراسلات:** حقول `{{الاسم}}` + جدول بيانات = مستند لكل صف، PDF أو Word، في مجلد واحد.
@@ -366,8 +383,8 @@ npm run dist:mac       # حزمة macOS (تتطلب macOS)
 الملفات التنفيذية تُبنى تلقائياً على GitHub Actions لويندوز وماك:
 
 ```bash
-git tag v1.13.1
-git push origin v1.13.1
+git tag v1.14.0
+git push origin v1.14.0
 ```
 
 سير العمل في `.github/workflows/release.yml` يبني النسختين وينشرهما في Release واحد
