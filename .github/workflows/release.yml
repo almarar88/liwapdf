@@ -72,6 +72,13 @@ jobs:
   android:
     name: Build Android
     runs-on: ubuntu-latest
+    env:
+      # The secrets context cannot be read from a step's `if`, so whether the
+      # build is signed is decided once, here, and tested as a plain value.
+      ANDROID_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
 
@@ -95,17 +102,15 @@ jobs:
         # Signed the moment the secret exists; until then the APK is unsigned
         # and installs through "unknown sources", which is what a direct
         # download needs anyway.
-        if: ${{ secrets.ANDROID_KEYSTORE != '' }}
-        run: echo "${{ secrets.ANDROID_KEYSTORE }}" | base64 -d > "$RUNNER_TEMP/upload.jks"
+        run: |
+          if [ -n "$ANDROID_KEYSTORE" ]; then
+            echo "$ANDROID_KEYSTORE" | base64 -d > "$RUNNER_TEMP/upload.jks"
+            echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/upload.jks" >> "$GITHUB_ENV"
+          fi
 
       - name: Assemble the APK
         working-directory: android
         run: ./gradlew --no-daemon assembleRelease
-        env:
-          ANDROID_KEYSTORE_PATH: ${{ secrets.ANDROID_KEYSTORE != '' && format('{0}/upload.jks', runner.temp) || '' }}
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
 
       - name: Name the APK after the release
         run: |
