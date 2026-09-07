@@ -1,5 +1,16 @@
 apply plugin: 'com.android.application'
 
+// The version comes from package.json, so one bump releases the desktop app
+// and the APK together. Resolved here rather than inside defaultConfig: in
+// that closure the property lookup finds the Android extension first and the
+// value comes back null. Play needs a monotonic integer, so the parts are
+// packed — 1.16.0 becomes 11600.
+def appVersionName = new groovy.json.JsonSlurper()
+    .parseText(new File(rootDir, '../package.json').text)
+    .version as String
+def appVersionParts = appVersionName.tokenize('.').collect { it.toInteger() }
+def appVersionCode = appVersionParts[0] * 10000 + appVersionParts[1] * 100 + appVersionParts[2]
+
 android {
     namespace = "app.alcode.editor"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -7,15 +18,8 @@ android {
         applicationId "app.alcode.editor"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        // The version comes from package.json, so one bump releases the
-        // desktop app and the APK together. Play needs a monotonic integer,
-        // so the parts are packed: 1.15.0 becomes 11500.
-        def packageJson = new groovy.json.JsonSlurper().parseText(
-            new File(rootProject.projectDir, '../package.json').text
-        )
-        def parts = (packageJson.version as String).tokenize('.')
-        versionCode (parts[0] as int) * 10000 + (parts[1] as int) * 100 + (parts[2] as int)
-        versionName packageJson.version
+        versionCode appVersionCode
+        versionName appVersionName
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
