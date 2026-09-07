@@ -1,4 +1,4 @@
-import DOMPurify from 'dompurify'
+import DOMPurify, { type Config } from 'dompurify'
 
 /**
  * The single gate every piece of document-derived HTML passes through.
@@ -8,13 +8,56 @@ import DOMPurify from 'dompurify'
  * which meant a .docx was the one format that could carry markup straight past
  * the app's trust boundary.
  */
+
+/**
+ * Attributes that carry a plain value rather than a reference.
+ *
+ * DOMPurify runs every attribute it does not already consider URI-safe
+ * through ALLOWED_URI_REGEXP. The app's regexp is deliberately narrow — it
+ * exists to stop a document reaching the network — and a narrow regexp
+ * rejects "rtl" as surely as it rejects "http://evil". So the tightening
+ * that was meant to guard `src` and `href` was quietly deleting `dir`,
+ * `colspan` and every other ordinary attribute: a Word file's paragraph
+ * directions and merged table cells disappeared on the way in. Listing them
+ * here exempts them from the URI test without loosening it for references.
+ */
+const PLAIN_ATTRIBUTES = [
+  'dir',
+  'lang',
+  'colspan',
+  'rowspan',
+  'span',
+  'start',
+  'reversed',
+  'align',
+  'valign',
+  'width',
+  'height',
+  'cellpadding',
+  'cellspacing',
+  'border',
+  'bgcolor',
+  'color',
+  'face',
+  'size',
+  'type',
+  'scope',
+  'headers',
+  'abbr'
+]
+
+const SHARED: Config = {
+  USE_PROFILES: { html: true },
+  FORBID_TAGS: ['script', 'style', 'iframe', 'object', 'embed', 'link', 'meta', 'base', 'form'],
+  FORBID_ATTR: ['srcset', 'formaction', 'background', 'ping'],
+  ADD_ATTR: PLAIN_ATTRIBUTES,
+  ADD_URI_SAFE_ATTR: PLAIN_ATTRIBUTES
+}
+
 export function sanitize(html: string): string {
   return DOMPurify.sanitize(html, {
-    USE_PROFILES: { html: true },
-    ALLOWED_URI_REGEXP: /^(?:data:image\/[a-z+.-]+;base64,|https?:|mailto:|#)/i,
-    FORBID_TAGS: ['script', 'style', 'iframe', 'object', 'embed', 'link', 'meta', 'base', 'form'],
-    FORBID_ATTR: ['srcset', 'formaction', 'background', 'ping'],
-    ADD_ATTR: ['dir', 'colspan', 'rowspan']
+    ...SHARED,
+    ALLOWED_URI_REGEXP: /^(?:data:image\/[a-z+.-]+;base64,|https?:|mailto:|#)/i
   })
 }
 
@@ -25,10 +68,7 @@ export function sanitize(html: string): string {
  */
 export function sanitizeForPrint(html: string): string {
   return DOMPurify.sanitize(html, {
-    USE_PROFILES: { html: true },
-    ALLOWED_URI_REGEXP: /^(?:data:image\/[a-z+.-]+;base64,|#)/i,
-    FORBID_TAGS: ['script', 'style', 'iframe', 'object', 'embed', 'link', 'meta', 'base', 'form'],
-    FORBID_ATTR: ['srcset', 'formaction', 'background', 'ping'],
-    ADD_ATTR: ['dir', 'colspan', 'rowspan']
+    ...SHARED,
+    ALLOWED_URI_REGEXP: /^(?:data:image\/[a-z+.-]+;base64,|#)/i
   })
 }

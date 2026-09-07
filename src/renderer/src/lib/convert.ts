@@ -11,6 +11,7 @@ import { openForRender } from './pdf/pdfjs'
 import { extractText, renderPageToBytes, scaleForDpi } from './pdf/render'
 import { imagesToPdf as buildPdfFromImages, type NamedBytes } from './pdf/ops'
 import { docxToHtml, docxToText } from './docx/read'
+import type { PageSetup } from './docx/ooxml'
 import { buildPlainTextHtml, buildPrintableHtml } from './docx/print'
 import { markdownToHtml } from './markdown'
 import { stripExtension, needsComplexShaping } from './format'
@@ -165,6 +166,8 @@ export async function imagesToPdf(
 export interface HtmlPdfSettings extends PdfPrintOptions {
   rightToLeft: boolean
   title?: string
+  /** The source document's own page, carried into the printed PDF. */
+  page?: PageSetup
 }
 
 export async function htmlToPdf(html: string, settings: HtmlPdfSettings): Promise<Uint8Array> {
@@ -173,24 +176,58 @@ export async function htmlToPdf(html: string, settings: HtmlPdfSettings): Promis
   // dropped as well as scripts: a generated PDF must not phone home.
   const page = buildPrintableHtml(sanitizeForPrint(html), {
     title: settings.title,
-    rightToLeft: settings.rightToLeft
+    rightToLeft: settings.rightToLeft,
+    // The page's own margins are applied by the printer, so the document
+    // body must not add its own on top.
+    page: settings.page
   })
   return window.alcode.print.html(page, {
     landscape: settings.landscape,
     pageSize: settings.pageSize,
     marginsMm: settings.marginsMm,
-    printBackground: settings.printBackground ?? true
+    printBackground: settings.printBackground ?? true,
+    pageBox: settings.page
+      ? {
+          width: settings.page.width,
+          height: settings.page.height,
+          margins: settings.page.margins
+        }
+      : undefined
   })
 }
 
+/**
+ * Word to PDF with the document's own layout.
+ *
+ * The full OOXML reader is used rather than the semantic one: the point of
+ * this conversion is that the PDF looks like the Word file, which means its
+ * fonts, sizes, colours, alignment, spacing, tables and — above all — its
+ * page and margins. The semantic reader remains the fallback for a file the
+ * strict reader cannot parse, where a readable PDF beats no PDF at all.
+ */
 export async function wordToPdf(
   bytes: Uint8Array,
   name: string,
-  settings: Omit<HtmlPdfSettings, 'rightToLeft' | 'title'>
+  settings: Omit<HtmlPdfSettings, 'rightToLeft' | 'title'> & {
+    /** False when the user picked a paper size explicitly. */
+    useDocumentPage?: boolean
+  }
 ): Promise<Uint8Array> {
-  const { html } = await docxToHtml(bytes)
-  const rightToLeft = needsComplexShaping(html.replace(/<[^>]+>/g, ' ').slice(0, 4000))
-  return htmlToPdf(html, { ...settings, rightToLeft, title: stripExtension(name) })
+  try {
+    const { docxToRichHtml } = await import('./docx/ooxml')
+    const rich = await docxToRichHtml(bytes)
+    const useDocumentPage = settings.useDocumentPage ?? true
+    return htmlToPdf(rich.html, {
+      ...settings,
+      rightToLeft: rich.direction === 'rtl',
+      title: stripExtension(name),
+      page: settings.page ?? (useDocumentPage ? rich.page : undefined)
+    })
+  } catch {
+    const { html } = await docxToHtml(bytes)
+    const rightToLeft = needsComplexShaping(html.replace(/<[^>]+>/g, ' ').slice(0, 4000))
+    return htmlToPdf(html, { ...settings, rightToLeft, title: stripExtension(name) })
+  }
 }
 
 export async function textFileToPdf(

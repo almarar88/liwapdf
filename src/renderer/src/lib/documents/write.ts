@@ -8,6 +8,7 @@ import { htmlToEpub } from './epub'
 import { sheetsToHtml, writeDelimited, writeWorkbook, type SheetData } from './sheets'
 import type { DocumentFormat } from './formats'
 import type { LoadedDocument } from './read'
+import type { PageSetup } from '../docx/ooxml'
 
 export interface ExportRequest {
   target: DocumentFormat
@@ -24,7 +25,13 @@ export interface ExportRequest {
    */
   encoding?: string
   eol?: 'lf' | 'crlf'
-  pdf?: { pageSize?: 'A4' | 'A3' | 'Letter' | 'Legal'; landscape?: boolean; marginsMm?: number }
+  pdf?: {
+    pageSize?: 'A4' | 'A3' | 'Letter' | 'Legal'
+    landscape?: boolean
+    marginsMm?: number
+    /** The source document's own page, in points; overrides pageSize/margins. */
+    page?: PageSetup
+  }
 }
 
 export interface ExportResult {
@@ -66,7 +73,8 @@ export async function exportDocument(request: ExportRequest): Promise<ExportResu
           title: base,
           pageSize: request.pdf?.pageSize ?? 'A4',
           landscape: request.pdf?.landscape,
-          marginsMm: request.pdf?.marginsMm ?? 18
+          marginsMm: request.pdf?.marginsMm ?? 18,
+          page: request.pdf?.page
         }),
         fileName: `${base}.pdf`
       }

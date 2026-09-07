@@ -1,5 +1,6 @@
 import JSZip from 'jszip'
 import { docxToHtml } from '../docx/read'
+import type { PageSetup } from '../docx/ooxml'
 import { markdownToHtml } from '../markdown'
 import { escapeHtml, stripExtension } from '../format'
 import { decodeText, detectDirection, normalizeArabicPresentation } from '../text/encoding'
@@ -45,6 +46,11 @@ export interface LoadedDocument {
    * partial copy.
    */
   truncated?: boolean
+  /**
+   * The page the source was laid out on (Word's own paper and margins), so
+   * exporting it to PDF reproduces that page rather than a default A4.
+   */
+  page?: PageSetup
   /** Non-fatal notes worth showing the user, e.g. "text only". */
   warnings: string[]
   originalBytes: Uint8Array
@@ -120,7 +126,13 @@ async function readByFormat(
       try {
         const { docxToRichHtml } = await import('../docx/ooxml')
         const rich = await docxToRichHtml(bytes)
-        return { ...base, html: sanitize(rich.html), warnings: rich.warnings, direction: rich.direction }
+        return {
+          ...base,
+          html: sanitize(rich.html),
+          warnings: rich.warnings,
+          direction: rich.direction,
+          page: rich.page
+        }
       } catch {
         const { html, warnings } = await docxToHtml(bytes)
         const clean = sanitize(html)

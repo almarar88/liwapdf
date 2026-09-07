@@ -346,6 +346,7 @@ interface ExportRequestShape {
   text?: string
   encoding?: string
   eol?: 'lf' | 'crlf'
+  pdf?: { page?: EditorDoc['source']['page'] }
 }
 
 function requestFor(doc: EditorDoc, target: DocumentFormat): ExportRequestShape {
@@ -360,7 +361,10 @@ function requestFor(doc: EditorDoc, target: DocumentFormat): ExportRequestShape 
     // file arrived with; exporting to another format is a new file, so it gets
     // the modern default.
     encoding: target === doc.source.format ? doc.source.encoding : undefined,
-    eol: target === doc.source.format ? doc.source.eol : undefined
+    eol: target === doc.source.format ? doc.source.eol : undefined,
+    // A document opened from Word keeps its paper and margins when it is
+    // saved as PDF, rather than landing on the exporter's default page.
+    pdf: doc.source.page ? { page: doc.source.page } : undefined
   }
 }
 

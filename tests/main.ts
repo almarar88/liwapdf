@@ -9,5 +9,6 @@ import images from './suites/images'
 import renderProbe from './suites/render-probe'
 import docx from './suites/docx'
 import pdfEdit from './suites/pdf-edit'
+import wordPdf from './suites/word-pdf'
 
-void runSuites([formulas, arabic, pdfText, compress, layout, documents, images, renderProbe, docx, pdfEdit])
+void runSuites([formulas, arabic, pdfText, compress, layout, documents, images, renderProbe, docx, pdfEdit, wordPdf])

@@ -136,7 +136,11 @@ function ConverterPanel({
   const [format, setFormat] = useState<'png' | 'jpg'>('png')
   const [dpi, setDpi] = useState(150)
   const [quality, setQuality] = useState(92)
-  const [pageSize, setPageSize] = useState<'A4' | 'A3' | 'Letter' | 'Legal' | 'auto'>('A4')
+  // Converting a Word file starts on the page Word itself declared: that is
+  // what "the PDF should look like the document" means.
+  const [pageSize, setPageSize] = useState<'A4' | 'A3' | 'Letter' | 'Legal' | 'auto'>(
+    id === 'wordToPdf' ? 'auto' : 'A4'
+  )
   const [landscape, setLandscape] = useState(false)
   const [margins, setMargins] = useState(18)
   const [fit, setFit] = useState<'contain' | 'cover' | 'actual'>('contain')
@@ -178,7 +182,7 @@ function ConverterPanel({
             { value: 'A3', label: 'A3' },
             { value: 'Letter', label: 'Letter' },
             { value: 'Legal', label: 'Legal' },
-            { value: 'auto', label: t('convert.fit.actual') }
+            { value: 'auto', label: id === 'wordToPdf' ? t('convert.asInDocument') : t('convert.fit.actual') }
           ]}
         />
       </Field>
@@ -406,7 +410,9 @@ function ConverterPanel({
                 const bytes = await wordToPdf(files[0].bytes, files[0].name, {
                   landscape,
                   pageSize: pageSize === 'auto' ? 'A4' : pageSize,
-                  marginsMm: margins
+                  marginsMm: margins,
+                  // "Auto" means the page Word itself declared, margins and all.
+                  useDocumentPage: pageSize === 'auto'
                 })
                 const outcome = await saveBytes(
                   bytes,

@@ -18,6 +18,23 @@ export interface OoxmlResult {
   html: string
   direction: 'rtl' | 'ltr'
   warnings: string[]
+  /** The page Word laid the document out on, so a PDF can use the same one. */
+  page: PageSetup
+}
+
+export interface PageSetup {
+  /** Page box in points. */
+  width: number
+  height: number
+  landscape: boolean
+  margins: { top: number; right: number; bottom: number; left: number }
+}
+
+const DEFAULT_PAGE: PageSetup = {
+  width: 595.3,
+  height: 841.9,
+  landscape: false,
+  margins: { top: 72, right: 72, bottom: 72, left: 72 }
 }
 
 const W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
@@ -118,12 +135,47 @@ export async function docxToRichHtml(bytes: Uint8Array): Promise<OoxmlResult> {
 
   const html = await reader.renderBlocks(Array.from(body.children))
   const sectPr = child(body, 'sectPr')
+  const page = readPageSetup(sectPr)
   // The section's own bidi flag is Word's answer; without it, whichever
   // script carries more of the document's text decides.
   const sectionBidi = sectPr ? child(sectPr, 'bidi') : null
   const flagged = sectionBidi ? flag(sectionBidi) : undefined
   const direction: 'rtl' | 'ltr' = flagged ?? reader.rtlChars > reader.ltrChars ? 'rtl' : 'ltr'
-  return { html: html || '<p></p>', direction, warnings }
+  return { html: html || '<p></p>', direction, warnings, page }
+}
+
+/**
+ * The page the document was written for. Word stores it in twentieths of a
+ * point; a PDF made from the document should use the same paper and the same
+ * margins, not whatever the exporter defaults to.
+ */
+function readPageSetup(sectPr: Element | null): PageSetup {
+  if (!sectPr) return DEFAULT_PAGE
+  const size = child(sectPr, 'pgSz')
+  const margin = child(sectPr, 'pgMar')
+  const attribute = (element: Element | null, name: string): number | undefined => {
+    if (!element) return undefined
+    const value = element.getAttributeNS(W, name) ?? element.getAttribute(`w:${name}`)
+    const number = value === null ? Number.NaN : Number(value)
+    return Number.isFinite(number) ? number / 20 : undefined
+  }
+  const width = attribute(size, 'w') ?? DEFAULT_PAGE.width
+  const height = attribute(size, 'h') ?? DEFAULT_PAGE.height
+  const orientation = size?.getAttributeNS(W, 'orient') ?? size?.getAttribute('w:orient')
+  // Word marks landscape and also swaps the stored width and height; trust
+  // whichever is larger rather than the flag alone.
+  const landscape = orientation === 'landscape' || width > height
+  return {
+    width,
+    height,
+    landscape,
+    margins: {
+      top: attribute(margin, 'top') ?? DEFAULT_PAGE.margins.top,
+      right: attribute(margin, 'right') ?? DEFAULT_PAGE.margins.right,
+      bottom: attribute(margin, 'bottom') ?? DEFAULT_PAGE.margins.bottom,
+      left: attribute(margin, 'left') ?? DEFAULT_PAGE.margins.left
+    }
+  }
 }
 
 class Reader {
@@ -404,27 +456,158 @@ class Reader {
   }
 
   private async renderTable(table: Element): Promise<string> {
+    const tblPr = child(table, 'tblPr')
+    // Word's own borders and widths, rather than a house style imposed on
+    // every table: a borderless layout table must stay borderless.
+    const outer = readBorders(tblPr ? child(tblPr, 'tblBorders') : null)
+    const inside = readInsideBorders(tblPr ? child(tblPr, 'tblBorders') : null)
+    const tableStyles: string[] = ['border-collapse:collapse']
+    const width = tblPr ? child(tblPr, 'tblW') : null
+    const widthValue = measure(width, 'w')
+    const widthType = width?.getAttributeNS(W, 'type') ?? width?.getAttribute('w:type')
+    const proportional = widthType === 'pct' || widthType === 'auto' || widthType === undefined
+    if (widthType === 'pct' && widthValue !== undefined) {
+      // Word writes fiftieths of a percent, newer files a plain percentage.
+      tableStyles.push(`width:${widthValue > 100 ? widthValue / 50 : widthValue}%`)
+    } else if (widthType === 'dxa' && widthValue !== undefined) {
+      tableStyles.push(`width:${twipsToPt(widthValue)}pt`)
+    }
+    const jc = tblPr ? val(child(tblPr, 'jc')) : null
+    if (jc === 'center') tableStyles.push('margin-inline:auto')
+    else if (jc === 'right' || jc === 'end') tableStyles.push('margin-inline-start:auto')
+
+    // Column widths from the grid. In a table sized as a percentage the grid
+    // holds relative shares, so they become percentages too — turning them
+    // into absolute points there would collapse the table to a few millimetres.
+    const grid = child(table, 'tblGrid')
+    const gridWidths: number[] = []
+    if (grid) {
+      for (const column of Array.from(grid.children)) {
+        if (column.namespaceURI !== W || column.localName !== 'gridCol') continue
+        gridWidths.push(measure(column, 'w') ?? 0)
+      }
+    }
+    const gridTotal = gridWidths.reduce((sum, value) => sum + value, 0)
+    const columns = gridWidths.map((value) => {
+      if (value <= 0 || gridTotal <= 0) return '<col>'
+      const size = proportional
+        ? `${Math.round((value / gridTotal) * 10000) / 100}%`
+        : `${twipsToPt(value)}pt`
+      return `<col style="width:${size}">`
+    })
+
+    const bodyRows = Array.from(table.children).filter(
+      (row) => row.namespaceURI === W && row.localName === 'tr'
+    )
     const rows: string[] = []
-    for (const row of Array.from(table.children)) {
-      if (row.namespaceURI !== W || row.localName !== 'tr') continue
+    for (const [rowIndex, row] of bodyRows.entries()) {
+      const trPr = child(row, 'trPr')
+      const header = Boolean(trPr && child(trPr, 'tblHeader'))
+      const height = trPr ? child(trPr, 'trHeight') : null
+      const heightValue = measure(height, 'val')
+      const rowCells = Array.from(row.children).filter(
+        (cell) => cell.namespaceURI === W && cell.localName === 'tc'
+      )
       const cells: string[] = []
-      for (const cell of Array.from(row.children)) {
-        if (cell.namespaceURI !== W || cell.localName !== 'tc') continue
+      let column = 0
+      for (const [cellIndex, cell] of rowCells.entries()) {
         const tcPr = child(cell, 'tcPr')
-        const span = tcPr ? Number(val(child(tcPr, 'gridSpan')) ?? 1) : 1
+        const span = tcPr ? Number(val(child(tcPr, 'gridSpan')) ?? 1) || 1 : 1
+        const first = cellIndex === 0
+        const last = cellIndex === rowCells.length - 1
+        column += span
         const merge = tcPr ? child(tcPr, 'vMerge') : null
         if (merge && !(merge.getAttributeNS(W, 'val') ?? merge.getAttribute('w:val'))) continue
+        const styles: string[] = []
         const shade = tcPr ? child(tcPr, 'shd') : null
         const fill = shade?.getAttributeNS(W, 'fill') ?? shade?.getAttribute('w:fill')
-        const styles: string[] = []
         if (fill && fill !== 'auto') styles.push(`background:#${fill}`)
+        // An edge of the table takes the table's own border; an edge between
+        // two cells takes the inside rule.
+        const edges: Record<string, string | undefined> = {
+          top: rowIndex === 0 ? outer.top : inside.horizontal,
+          bottom: rowIndex === bodyRows.length - 1 ? outer.bottom : inside.horizontal,
+          left: first ? outer.left : inside.vertical,
+          right: last ? outer.right : inside.vertical
+        }
+        const cellBorders = readBorders(tcPr ? child(tcPr, 'tcBorders') : null)
+        for (const [side, value] of Object.entries({ ...edges, ...cellBorders })) {
+          if (value) styles.push(`border-${side}:${value}`)
+        }
+        const align = tcPr ? val(child(tcPr, 'vAlign')) : null
+        styles.push(`vertical-align:${align === 'center' ? 'middle' : align === 'bottom' ? 'bottom' : 'top'}`)
+        const cellWidth = tcPr ? child(tcPr, 'tcW') : null
+        const cellWidthValue = measure(cellWidth, 'w')
+        const cellWidthType = cellWidth?.getAttributeNS(W, 'type') ?? cellWidth?.getAttribute('w:type')
+        if (!proportional && cellWidthType === 'dxa' && cellWidthValue !== undefined) {
+          styles.push(`width:${twipsToPt(cellWidthValue)}pt`)
+        }
         const inner = await this.renderBlocks(Array.from(cell.children))
-        cells.push(`<td${span > 1 ? ` colspan="${span}"` : ''}${styles.length ? ` style="${styles.join(';')}"` : ''}>${inner || '<p></p>'}</td>`)
+        const tag = header ? 'th' : 'td'
+        cells.push(
+          `<${tag}${span > 1 ? ` colspan="${span}"` : ''} style="${styles.join(';')}">${inner || '<p></p>'}</${tag}>`
+        )
       }
-      rows.push(`<tr>${cells.join('')}</tr>`)
+      const rowStyle = heightValue !== undefined ? ` style="height:${twipsToPt(heightValue)}pt"` : ''
+      rows.push(`<tr${rowStyle}>${cells.join('')}</tr>`)
     }
-    return `<table><tbody>${rows.join('')}</tbody></table>`
+    const colgroup = columns.length > 0 ? `<colgroup>${columns.join('')}</colgroup>` : ''
+    return `<table style="${tableStyles.join(';')}">${colgroup}<tbody>${rows.join('')}</tbody></table>`
   }
+}
+
+/** A numeric OOXML attribute, tolerating the "100%" form newer files use. */
+function measure(element: Element | null | undefined, name: string): number | undefined {
+  if (!element) return undefined
+  const raw = element.getAttributeNS(W, name) ?? element.getAttribute(`w:${name}`)
+  if (raw === null) return undefined
+  const value = Number.parseFloat(raw)
+  return Number.isFinite(value) ? value : undefined
+}
+
+/** The rules Word draws between cells rather than around the table. */
+function readInsideBorders(borders: Element | null): { horizontal?: string; vertical?: string } {
+  if (!borders) return {}
+  const read = (name: string): string | undefined => {
+    const border = child(borders, name)
+    if (!border) return undefined
+    return cssBorder(border)
+  }
+  return { horizontal: read('insideH'), vertical: read('insideV') }
+}
+
+/**
+ * Word border definitions as CSS, per side. "nil" and "none" mean the author
+ * asked for no line, which is different from not saying anything at all.
+ */
+function readBorders(borders: Element | null): Record<string, string> {
+  if (!borders) return {}
+  const out: Record<string, string> = {}
+  const sides: [string, string][] = [
+    ['top', 'top'],
+    ['bottom', 'bottom'],
+    ['left', 'left'],
+    ['start', 'left'],
+    ['right', 'right'],
+    ['end', 'right']
+  ]
+  for (const [name, side] of sides) {
+    const border = child(borders, name)
+    if (!border) continue
+    out[side] = cssBorder(border)
+  }
+  return out
+}
+
+function cssBorder(border: Element): string {
+  const style = val(border) ?? 'single'
+  if (style === 'nil' || style === 'none') return 'none'
+  // w:sz is in eighths of a point, and Word draws a hairline for tiny values.
+  const points = Math.max(0.5, (measure(border, 'sz') ?? 4) / 8)
+  const colorAttribute = border.getAttributeNS(W, 'color') ?? border.getAttribute('w:color')
+  const color = colorAttribute && colorAttribute !== 'auto' ? `#${colorAttribute}` : '#000000'
+  const line = style === 'dashed' || style === 'dotted' || style === 'double' ? style : 'solid'
+  return `${Math.round(points * 100) / 100}pt ${line} ${color}`
 }
 
 /* ------------------------------------------------------------ properties */

@@ -71,6 +71,16 @@ export interface PdfPrintOptions {
   marginsMm?: number
   printBackground?: boolean
   headerFooter?: boolean
+  /**
+   * An exact page, in points, taken from the source document. When present it
+   * wins over pageSize and marginsMm: a Word file that says Letter with
+   * 2.5 cm margins must come out as that page, not the exporter's default.
+   */
+  pageBox?: {
+    width: number
+    height: number
+    margins: { top: number; right: number; bottom: number; left: number }
+  }
 }
 
 export interface WindowState {

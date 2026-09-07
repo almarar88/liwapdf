@@ -152,20 +152,32 @@ async function htmlToPdf(html: string, options: PdfPrintOptions = {}): Promise<U
     // give the compositor a fixed, short grace period instead.
     await new Promise((done) => setTimeout(done, 120))
 
-    const size = PAGE_SIZES[options.pageSize ?? 'A4'] ?? PAGE_SIZES.A4
+    // A page the source document declared beats any default: Chromium is
+    // asked for that exact paper and those exact margins, in inches.
+    const box = options.pageBox
+    const size = box
+      ? { width: box.width / 72, height: box.height / 72 }
+      : PAGE_SIZES[options.pageSize ?? 'A4'] ?? PAGE_SIZES.A4
     const marginInches = (options.marginsMm ?? 18) / 25.4
+    const margins = box
+      ? {
+          top: box.margins.top / 72,
+          bottom: box.margins.bottom / 72,
+          left: box.margins.left / 72,
+          right: box.margins.right / 72
+        }
+      : { top: marginInches, bottom: marginInches, left: marginInches, right: marginInches }
     const data = await withTimeout(
       window_.webContents.printToPDF({
-        landscape: options.landscape ?? false,
+        // The page box already describes the orientation Word asked for.
+        landscape: box ? false : options.landscape ?? false,
         printBackground: options.printBackground ?? true,
         displayHeaderFooter: options.headerFooter ?? false,
         pageSize: { width: size.width, height: size.height },
-        margins: {
-          top: marginInches,
-          bottom: marginInches,
-          left: marginInches,
-          right: marginInches
-        }
+        margins,
+        // The page the document declared is written into its own CSS; asking
+        // Chromium to prefer it is what makes those margins survive.
+        preferCSSPageSize: Boolean(box)
       }),
       60_000,
       'render'
