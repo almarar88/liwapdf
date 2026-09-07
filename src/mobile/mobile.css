@@ -1,0 +1,375 @@
+/**
+ * The phone and tablet layout.
+ *
+ * The desktop app is a two-column shell: a title bar with window controls
+ * over a fixed sidebar beside the work area. A phone has none of those
+ * affordances — no window to drag, no room for a 248px rail, and a thumb
+ * rather than a pointer — so this sheet re-lays the same components rather
+ * than shipping a second app: the sidebar becomes a bottom tab bar within
+ * thumb reach, tool dialogs become sheets that rise from the bottom edge,
+ * toolbars scroll sideways instead of wrapping, and every target grows to a
+ * size a finger can actually hit. A tablet keeps the rail, because there the
+ * hand holds the device at the edges and the extra width is real.
+ *
+ * All of it hangs off `html[data-mobile]`, so the desktop build is untouched.
+ */
+
+html[data-mobile] {
+  /* Room for the notch, the gesture bar and the tab bar. */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --tabbar-height: 62px;
+  --touch: 44px;
+  height: 100%;
+  overscroll-behavior: none;
+}
+
+html[data-mobile] body {
+  height: 100%;
+  /* A document app is not a web page: no rubber-banding, no text selection
+     except where text is the point, no tap highlight rectangles. */
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+html[data-mobile] input,
+html[data-mobile] textarea,
+html[data-mobile] [contenteditable='true'],
+html[data-mobile] .text-layer,
+html[data-mobile] .rich-page {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* iOS and Android both zoom a field whose text is under 16px. */
+html[data-mobile] input,
+html[data-mobile] textarea,
+html[data-mobile] select {
+  font-size: max(16px, var(--text-sm));
+}
+
+/* ------------------------------------------------------------- phone shell */
+
+@media (max-width: 767px) {
+  html[data-mobile] .app {
+    grid-template-rows: 1fr;
+    padding-top: var(--safe-top);
+  }
+
+  /* No window to drag, no controls to press. */
+  html[data-mobile] .titlebar {
+    display: none;
+  }
+
+  html[data-mobile] .app-body,
+  html[data-mobile] .app-body.collapsed {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr auto;
+  }
+
+  /* The sidebar becomes the bottom tab bar. */
+  html[data-mobile] .sidebar {
+    grid-row: 2;
+    flex-direction: row;
+    align-items: stretch;
+    gap: 0;
+    padding: 6px 4px calc(6px + var(--safe-bottom));
+    border-inline-end: none;
+    border-top: 1px solid var(--hairline);
+    overflow-x: auto;
+    scrollbar-width: none;
+    background: var(--surface-solid);
+  }
+  html[data-mobile] .sidebar::-webkit-scrollbar { display: none; }
+
+  /* Everything that is not a destination belongs elsewhere on a phone. */
+  html[data-mobile] .sidebar .group-label,
+  html[data-mobile] .sidebar .side-pill,
+  html[data-mobile] .sidebar .sidebar-footer {
+    display: none;
+  }
+
+  html[data-mobile] .sidebar .nav-item {
+    flex: 1 0 68px;
+    flex-direction: column;
+    justify-content: center;
+    gap: 3px;
+    min-height: var(--tabbar-height);
+    padding: 6px 2px;
+    border-radius: var(--r-md);
+    font-size: 11px;
+    line-height: 1.15;
+    text-align: center;
+    white-space: nowrap;
+  }
+  html[data-mobile] .sidebar .nav-item .badge,
+  html[data-mobile] .sidebar .nav-item .count { display: none; }
+  html[data-mobile] .sidebar .nav-glow { border-radius: var(--r-md); }
+
+  /* The work area scrolls; the tab bar does not move. */
+  html[data-mobile] .view {
+    padding: 14px 14px 18px;
+  }
+  /* The heading and its search field are stacked: side by side on a phone
+     the field is squeezed to half a word. */
+  html[data-mobile] .page-head {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  html[data-mobile] .page-head .spacer { display: none; }
+  html[data-mobile] .page-head h1 { font-size: 22px; }
+  html[data-mobile] .page-head p { font-size: var(--text-sm); }
+
+  /* One column of cards, laid out as rows: a phone-width card with the icon
+     stacked above the text leaves a hole in the middle and fits three tools
+     on a screen. Side by side, the same card is a list item — six to a
+     screen, each still a comfortable target. */
+  html[data-mobile] .grid.cols-3,
+  html[data-mobile] .grid.cols-2 {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+  html[data-mobile] .tool {
+    display: grid;
+    grid-template-columns: 38px 1fr;
+    grid-template-rows: auto auto;
+    align-items: center;
+    gap: 4px 12px;
+    min-height: 68px;
+    padding: 12px 14px;
+  }
+  html[data-mobile] .tool .icon { grid-row: 1 / span 2; align-self: center; }
+  html[data-mobile] .tool h3 { align-self: end; margin: 0; }
+  html[data-mobile] .tool p {
+    align-self: start;
+    margin: 0;
+    font-size: var(--text-xs);
+    /* Two lines of description is a summary; five is a paragraph nobody
+       reads on a phone. */
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  html[data-mobile] .tool .pin { inset-block-start: 8px; }
+
+  /* The search field is the whole row on a phone, not a 400px column. */
+  html[data-mobile] .tool-search { max-width: none; width: 100%; }
+  html[data-mobile] .tool-search .input { height: var(--touch); }
+  html[data-mobile] .tool-search .lead { top: 50%; transform: translateY(-50%); }
+  html[data-mobile] .tool-search .clear { top: 50%; transform: translateY(-50%); }
+
+  /* The workspace strip reads as one sentence, not a scattered row. */
+  html[data-mobile] .workspace-bar { gap: 8px; padding: 10px 12px; }
+  html[data-mobile] .workspace-bar .btn { margin-inline-start: auto; }
+
+  /* Dialogs become sheets: full width, anchored to the bottom, draggable
+     by the handle, and never taller than the screen. */
+  html[data-mobile] .scrim { place-items: end center; padding: 0; }
+  html[data-mobile] .modal {
+    width: 100%;
+    max-width: none;
+    max-height: 92vh;
+    margin: 0;
+    border-radius: var(--r-xl) var(--r-xl) 0 0;
+    padding-bottom: calc(12px + var(--safe-bottom));
+    animation: sheet-rise var(--dur) cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  html[data-mobile] .modal::before {
+    content: '';
+    display: block;
+    width: 38px;
+    height: 4px;
+    margin: 8px auto 4px;
+    border-radius: var(--r-full);
+    background: var(--hairline);
+  }
+  html[data-mobile] .modal-body { max-height: min(70vh, 560px); padding: 16px; }
+
+  /* Toolbars scroll rather than wrap: a wrapped toolbar eats the page. */
+  html[data-mobile] .toolbar {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    padding-inline: 8px;
+  }
+  html[data-mobile] .toolbar::-webkit-scrollbar { display: none; }
+  html[data-mobile] .toolbar > * { flex: none; }
+
+  /* The viewer's thumbnail rail is a drawer, not a column. */
+  /* The page rail and any side panel are drawers over the page, not columns
+     stealing width the document needs. */
+  html[data-mobile] .workspace,
+  html[data-mobile] .workspace.with-panel,
+  html[data-mobile] .workspace.no-rail.with-panel {
+    position: relative;
+    grid-template-columns: 1fr;
+  }
+  html[data-mobile] .workspace > .rail,
+  html[data-mobile] .workspace > .panel {
+    position: absolute;
+    inset-block: 0;
+    inset-inline-end: 0;
+    z-index: 6;
+    width: min(76vw, 300px);
+    box-shadow: -12px 0 32px rgb(0 0 0 / 22%);
+    background: var(--surface-solid);
+  }
+
+  html[data-mobile] .editor-body.with-nav { grid-template-columns: 1fr; }
+  html[data-mobile] .editor-body .editor-nav { display: none; }
+  html[data-mobile] .rich-page { padding: 18px 14px; }
+}
+
+/* ------------------------------------------------------------ tablet shell */
+
+@media (min-width: 768px) {
+  html[data-mobile] .app { grid-template-rows: 1fr; padding-top: var(--safe-top); }
+  html[data-mobile] .titlebar { display: none; }
+  /* A rail, not a full sidebar: the hand holds the edges. */
+  html[data-mobile] .app-body,
+  html[data-mobile] .app-body.collapsed {
+    grid-template-columns: 92px 1fr;
+  }
+  html[data-mobile] .sidebar {
+    padding: 10px 8px calc(10px + var(--safe-bottom));
+    gap: 2px;
+  }
+  html[data-mobile] .sidebar .nav-item {
+    flex-direction: column;
+    gap: 4px;
+    min-height: 62px;
+    font-size: 11px;
+    text-align: center;
+    padding: 8px 4px;
+  }
+  /* A 92px rail has room for destinations and nothing else: the promise
+     pill and the collapse control wrap to one letter per line there. */
+  html[data-mobile] .sidebar .group-label,
+  html[data-mobile] .sidebar .side-pill,
+  html[data-mobile] .sidebar .sidebar-footer .btn,
+  html[data-mobile] .sidebar .nav-item .badge,
+  html[data-mobile] .sidebar .nav-item .count { display: none; }
+  html[data-mobile] .sidebar .sidebar-footer { padding-top: 4px; }
+  html[data-mobile] .grid.cols-3 { grid-template-columns: repeat(2, 1fr); }
+  html[data-mobile] .modal { max-width: min(560px, 92vw); }
+}
+
+@media (min-width: 1024px) {
+  html[data-mobile] .grid.cols-3 { grid-template-columns: repeat(3, 1fr); }
+}
+
+/* ------------------------------------------------------------ touch sizing */
+
+html[data-mobile] .btn,
+html[data-mobile] .nav-item,
+html[data-mobile] .list-row,
+html[data-mobile] .chip,
+html[data-mobile] .swatch,
+html[data-mobile] select,
+html[data-mobile] .switch {
+  min-height: var(--touch);
+}
+html[data-mobile] .btn.icon,
+html[data-mobile] .btn.sm.icon {
+  min-width: var(--touch);
+  min-height: var(--touch);
+}
+html[data-mobile] .swatch { min-width: var(--touch); }
+
+/* Hover states are noise on a touch screen: they stick after a tap. */
+@media (hover: none) {
+  html[data-mobile] .tool:hover,
+  html[data-mobile] .card:hover { transform: none; }
+}
+
+/* The document canvas may be pinched; the rest of the app may not. */
+html[data-mobile] .canvas-area {
+  touch-action: pan-x pan-y pinch-zoom;
+  -webkit-overflow-scrolling: touch;
+}
+
+@keyframes sheet-rise {
+  from { transform: translateY(14px); opacity: 0.6; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+/* A phone keyboard covers the bottom half of the screen; a focused field
+   inside a sheet must stay above it. */
+html[data-mobile] .modal:focus-within { padding-bottom: calc(12px + var(--safe-bottom)); }
+
+/* ------------------------------------------------------------- scanning */
+
+/* The camera sits above the tab bar, at the corner a thumb reaches first. */
+html[data-mobile] .scan-fab {
+  position: fixed;
+  z-index: 40;
+  inset-inline-end: 16px;
+  inset-block-end: calc(var(--tabbar-height) + var(--safe-bottom) + 18px);
+  width: 56px;
+  height: 56px;
+  border: none;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: linear-gradient(140deg, var(--accent), var(--accent-strong));
+  box-shadow: 0 10px 26px color-mix(in srgb, var(--accent) 45%, transparent);
+  transition: transform var(--dur-fast);
+}
+html[data-mobile] .scan-fab:active { transform: scale(0.94); }
+
+@media (min-width: 768px) {
+  /* On a tablet the tab bar is a side rail, so the button clears the edge. */
+  html[data-mobile] .scan-fab { inset-block-end: calc(var(--safe-bottom) + 24px); }
+}
+
+/* Captured pages, in the order they will be bound. */
+html[data-mobile] .scan-strip {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding: 4px 2px 8px;
+  scrollbar-width: none;
+}
+html[data-mobile] .scan-strip::-webkit-scrollbar { display: none; }
+html[data-mobile] .scan-page {
+  position: relative;
+  flex: none;
+  width: 92px;
+  height: 124px;
+  border-radius: var(--r-md);
+  overflow: hidden;
+  border: 1px solid var(--hairline);
+  background: var(--surface-2);
+}
+html[data-mobile] .scan-page img { width: 100%; height: 100%; object-fit: cover; }
+html[data-mobile] .scan-number {
+  position: absolute;
+  inset-block-start: 4px;
+  inset-inline-start: 4px;
+  min-width: 20px;
+  padding: 1px 6px;
+  border-radius: var(--r-full);
+  background: color-mix(in srgb, var(--fg) 70%, transparent);
+  color: #fff;
+  font-size: 11px;
+  text-align: center;
+}
+html[data-mobile] .scan-drop {
+  position: absolute;
+  inset-block-start: 4px;
+  inset-inline-end: 4px;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: color-mix(in srgb, var(--red) 88%, transparent);
+}

@@ -66,13 +66,70 @@ jobs:
             release/*.yml
           if-no-files-found: error
 
+  # The Android build is a different toolchain, not another matrix entry: the
+  # same renderer is compiled for the web, wrapped by Capacitor and assembled
+  # by Gradle. GitHub's Linux runner already carries the Android SDK.
+  android:
+    name: Build Android
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build the web layer and sync it into the Android project
+        run: npm run mobile:sync
+
+      - name: Decode the upload key
+        # Signed the moment the secret exists; until then the APK is unsigned
+        # and installs through "unknown sources", which is what a direct
+        # download needs anyway.
+        if: ${{ secrets.ANDROID_KEYSTORE != '' }}
+        run: echo "${{ secrets.ANDROID_KEYSTORE }}" | base64 -d > "$RUNNER_TEMP/upload.jks"
+
+      - name: Assemble the APK
+        working-directory: android
+        run: ./gradlew --no-daemon assembleRelease
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ secrets.ANDROID_KEYSTORE != '' && format('{0}/upload.jks', runner.temp) || '' }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+
+      - name: Name the APK after the release
+        run: |
+          set -euo pipefail
+          VERSION=$(node -p "require('./package.json').version")
+          mkdir -p release
+          APK=$(find android/app/build/outputs/apk/release -name '*.apk' | head -1)
+          test -n "$APK"
+          cp "$APK" "release/Alcode-Editor-${VERSION}.apk"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: alcode-editor-Android
+          path: release/*.apk
+          if-no-files-found: error
+
   # The download page (github.io) mirrors the installers under names that do
   # not change between releases, so the README links never go stale. It is a
   # branch-served Pages site; the branch is rewritten as one commit each time,
   # otherwise every release would add another 400 MB to the repository.
   pages:
     name: Publish download page
-    needs: build
+    needs: [build, android]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -90,11 +147,12 @@ jobs:
           VERSION="${{ inputs.tag || github.ref_name }}"
           VERSION="${VERSION#v}"
           cd site
-          rm -f Alcode-Editor-*.exe Alcode-Editor-*.dmg Alcode-Editor-Windows.zip AlcodeEditor.zip.part*
+          rm -f Alcode-Editor-*.exe Alcode-Editor-*.dmg Alcode-Editor-*.apk Alcode-Editor-Windows.zip AlcodeEditor.zip.part*
           cp "$(find ../dist -name '*-x64-Setup.exe' | head -n1)" Alcode-Editor-Setup.exe
           cp "$(find ../dist -name '*-Portable.exe' | head -n1)" Alcode-Editor-Portable.exe
           cp "$(find ../dist -name '*-arm64.dmg' | head -n1)" Alcode-Editor-macOS-AppleSilicon.dmg
           cp "$(find ../dist -name '*-x64.dmg' | head -n1)" Alcode-Editor-macOS-Intel.dmg
+          cp "$(find ../dist -name '*.apk' | head -n1)" Alcode-Editor-Android.apk
           # Browsers that refuse an unsigned .exe usually accept a .zip of it,
           # and the same zip is split into 20 MB parts for connections that
           # drop mid-download.
@@ -119,7 +177,7 @@ jobs:
 
   release:
     name: Publish release
-    needs: build
+    needs: [build, android]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -129,7 +187,7 @@ jobs:
       - name: Flatten artifacts
         run: |
           mkdir -p upload
-          find dist -type f \( -name '*.exe' -o -name '*.dmg' -o -name '*.zip' -o -name '*.blockmap' -o -name '*.yml' \) \
+          find dist -type f \( -name '*.exe' -o -name '*.dmg' -o -name '*.zip' -o -name '*.apk' -o -name '*.blockmap' -o -name '*.yml' \) \
             -exec cp {} upload/ \;
           rm -f upload/builder-debug.yml
           ls -la upload
@@ -150,40 +208,41 @@ jobs:
 
             | النظام | الملف |
             | --- | --- |
-            | Windows 10/11 (مثبّت) | `Alcode-Editor-1.15.0-x64-Setup.exe` |
-            | Windows (محمول) | `Alcode-Editor-1.15.0-Portable.exe` |
-            | macOS Apple Silicon | `Alcode-Editor-1.15.0-arm64.dmg` |
-            | macOS Intel | `Alcode-Editor-1.15.0-x64.dmg` |
+            | Windows 10/11 (مثبّت) | `Alcode-Editor-1.16.0-x64-Setup.exe` |
+            | Windows (محمول) | `Alcode-Editor-1.16.0-Portable.exe` |
+            | macOS Apple Silicon | `Alcode-Editor-1.16.0-arm64.dmg` |
+            | macOS Intel | `Alcode-Editor-1.16.0-x64.dmg` |
 
-            ### الجديد في هذا الإصدار — تحويل Word إلى PDF بلا تغيير في الشكل
+            ### الجديد في هذا الإصدار — نسخة أندرويد (APK)
 
-            **الملف يخرج كما هو في وورد**
+            **نفس التطبيق على الهاتف والتابلت**
 
-            - كان التحويل يفرض قياس A4 وهوامش ١٨ مم وحجم خط وتباعد أسطر خاصة
-              به، فيخرج الخطاب بشكل آخر. صار يقرأ إعدادات الصفحة من الملف نفسه:
-              الورق (Letter أو A4 أو غيرهما)، والاتجاه، والهوامش الأربعة، ويطبع
-              عليها بالضبط.
-            - ورقة الأنماط لم تعد تنافس المستند: أحجام الخطوط والعناوين وتباعد
-              الأسطر تأتي من وورد، ولم تعد الجداول تُفرض بعرض كامل وحدود رمادية.
-            - حدود الجداول صارت حدود وورد نفسها: إطار خارجي بلونه وسماكته،
-              وخطوط داخلية بين الخلايا، وحدود ملغاة تبقى ملغاة، مع تظليل
-              الخلايا وعرض الأعمدة النسبي وصفوف العناوين.
-            - الخطوط: إن لم يكن الخط المذكور مثبَّتًا يُستبدل بأقرب خط عربي
-              مناسب بدل خط لاتيني افتراضي.
+            - ملف `Alcode-Editor-Android.apk` للتثبيت المباشر. كل الأدوات
+              والمحرّرات والمحوّلات هي نفسها — البرنامج واحد، والغلاف فقط
+              اختلف — ويعمل دون إنترنت كما على الحاسب.
+            - تصميم للهاتف: الشريط الجانبي صار شريط تبويبات أسفل الشاشة في
+              متناول الإبهام، والنوافذ تصعد من الحافة السفلية كأوراق قابلة
+              للسحب، وأشرطة الأدوات تنزلق أفقيًا، وكل زر لا يقل عن ٤٤ نقطة،
+              مع احترام منطقة النوتش وشريط الإيماءات.
+            - تصميم للتابلت: شريط جانبي مضغوط وثلاثة أعمدة من الأدوات.
 
-            **إصلاح مهم في قراءة المستندات**
+            **مميزات لا توجد إلا في الهاتف**
 
-            - قاعدة أمان الروابط كانت تحذف — دون قصد — كل خاصية ليست رابطًا:
-              اتجاه الفقرة `dir` ودمج خلايا الجداول `colspan` و`rowspan`
-              ومحاذاة الخلايا وغيرها. صارت هذه الخصائص مستثناة صراحةً، بينما
-              تبقى الروابط الخارجية ممنوعة كما كانت.
+            - **مسح ضوئي بالكاميرا:** صوّر الورقة فتُقوَّم وتُبيَّض تلقائيًا
+              بالمحرّك نفسه، وتُجمع الصفحات في ملف PDF واحد — دون رفع أي صورة.
+            - **فتح من أي تطبيق:** التطبيق يظهر ضمن خيارات فتح ملفات PDF و
+              Word و Excel والصور، ويستقبل الملفات المشاركة إليه.
+            - **حفظ ومشاركة:** الملفات الناتجة تُحفظ في مجلد التنزيلات وتُعرض
+              قائمة المشاركة لإرسالها إلى أي تطبيق.
+            - زر الرجوع يغلق ما هو مفتوح قبل أن يغادر التطبيق، ولمسة خفيفة
+              عند اكتمال العمليات.
 
-            **مُتحقَّق منه**
+            **تحويل Word إلى PDF على الهاتف**
 
-            - 178 فحصًا آليًا، منها تحويل خطاب عربي حقيقي إلى PDF والتأكد من
-              قياس الصفحة والهوامش وحدود الجدول في الملف الناتج.
+            - يستخدم محرّك الطباعة الأصلي في أندرويد، فيخرج الملف بقياس
+              الصفحة وهوامشها وخطوطها كما في وورد — كما في نسخة الحاسب.
 
-            **ملاحظات الإصدارات السابقة:** https://github.com/almarar88/liwapdf/releases/tag/v1.14.1
+            **ملاحظات الإصدارات السابقة:** https://github.com/almarar88/liwapdf/releases/tag/v1.15.0
 
             > النسخ غير موقّعة رقمياً. على ويندوز اختر **More info → Run anyway**،
             > وعلى macOS افتح التطبيق بزر الفأرة الأيمن ثم **Open**.

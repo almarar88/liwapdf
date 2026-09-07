@@ -21,10 +21,11 @@ format — PDF, Word, Excel, PowerPoint, EPUB and more. Fully offline.*
 
 | النظام / Platform | نوع الملف | رابط التحميل | رابط بديل |
 | --- | --- | --- | --- |
-| 🪟 **Windows 10/11 (64-bit)** | مثبّت `.exe` | [تحميل / Download](https://almarar88.github.io/liwapdf/Alcode-Editor-Setup.exe) | [Releases](../../releases/latest/download/Alcode-Editor-1.15.0-x64-Setup.exe) |
-| 🪟 **Windows (نسخة محمولة)** | `Portable.exe` بدون تثبيت | [تحميل / Download](https://almarar88.github.io/liwapdf/Alcode-Editor-Portable.exe) | [Releases](../../releases/latest/download/Alcode-Editor-1.15.0-Portable.exe) |
-| 🍎 **macOS — Apple Silicon (M1/M2/M3/M4)** | `.dmg` | [تحميل / Download](https://almarar88.github.io/liwapdf/Alcode-Editor-macOS-AppleSilicon.dmg) | [Releases](../../releases/latest/download/Alcode-Editor-1.15.0-arm64.dmg) |
-| 🍎 **macOS — Intel** | `.dmg` | [تحميل / Download](https://almarar88.github.io/liwapdf/Alcode-Editor-macOS-Intel.dmg) | [Releases](../../releases/latest/download/Alcode-Editor-1.15.0-x64.dmg) |
+| 🪟 **Windows 10/11 (64-bit)** | مثبّت `.exe` | [تحميل / Download](https://almarar88.github.io/liwapdf/Alcode-Editor-Setup.exe) | [Releases](../../releases/latest/download/Alcode-Editor-1.16.0-x64-Setup.exe) |
+| 🪟 **Windows (نسخة محمولة)** | `Portable.exe` بدون تثبيت | [تحميل / Download](https://almarar88.github.io/liwapdf/Alcode-Editor-Portable.exe) | [Releases](../../releases/latest/download/Alcode-Editor-1.16.0-Portable.exe) |
+| 🍎 **macOS — Apple Silicon (M1/M2/M3/M4)** | `.dmg` | [تحميل / Download](https://almarar88.github.io/liwapdf/Alcode-Editor-macOS-AppleSilicon.dmg) | [Releases](../../releases/latest/download/Alcode-Editor-1.16.0-arm64.dmg) |
+| 🍎 **macOS — Intel** | `.dmg` | [تحميل / Download](https://almarar88.github.io/liwapdf/Alcode-Editor-macOS-Intel.dmg) | [Releases](../../releases/latest/download/Alcode-Editor-1.16.0-x64.dmg) |
+| 🤖 **Android (هاتف وتابلت)** | `.apk` | [تحميل / Download](https://almarar88.github.io/liwapdf/Alcode-Editor-Android.apk) | [Releases](../../releases/latest/download/Alcode-Editor-1.16.0.apk) |
 
 > ملفات صفحة الإصدارات تُخدَّم من `objects.githubusercontent.com`، وهو محجوب على بعض الشبكات
 > رغم أن `github.com` نفسه يفتح — فيفشل التحميل بخطأ اتصال لا بخطأ «الملف غير موجود».
@@ -157,6 +158,21 @@ Tesseract بالكامل داخل جهازك — العامل ونواة WebAsse
   والعرض والتباعد نفسها، مع التفاف الأسطر تلقائيًا ومحاذاة يمينية للعربية.
 - إن طال النص يُصغَّر الخط قليلًا أولًا ثم يمتد الصندوق في الفراغ الذي تحته فقط، وتُخبرك الأداة.
 - مُتحقَّق منه بمحرّك عرض مستقل (MuPDF) إضافة إلى فحوص الاستخراج الآلية.
+
+### نسخة أندرويد (هاتف وتابلت)
+- نفس التطبيق ونفس الأدوات في ملف APK يعمل دون إنترنت. الشريط الجانبي يصير شريط تبويبات أسفل
+  الشاشة، والنوافذ تصعد من الحافة السفلية، وكل زر بحجم يناسب الإصبع، مع احترام النوتش وشريط
+  الإيماءات؛ وعلى التابلت شريط جانبي مضغوط وثلاثة أعمدة.
+- **مسح ضوئي بالكاميرا:** صوّر الورقة فتُقوَّم وتُبيَّض بالمحرّك نفسه وتُجمع الصفحات في PDF واحد.
+- **فتح من أي تطبيق ومشاركة إليه:** يظهر ضمن خيارات فتح PDF و Word و Excel والصور، والملفات
+  الناتجة تُحفظ في مجلد التنزيلات مع قائمة المشاركة.
+- تحويل Word إلى PDF يستخدم محرّك الطباعة الأصلي في أندرويد، فيحافظ على قياس الصفحة والهوامش والخطوط.
+
+```bash
+npm run mobile:build   # بناء طبقة الويب للهاتف
+npm run mobile:sync    # نسخها إلى مشروع أندرويد
+npm run mobile:apk     # توليد APK (يتطلب Android SDK)
+```
 
 ### تحويل Word إلى PDF دون تغيير الشكل
 - القياس والاتجاه والهوامش تُقرأ من الملف نفسه ويُطبع عليها بالضبط، بدل فرض A4 وهوامش ثابتة.
@@ -390,8 +406,8 @@ npm run dist:mac       # حزمة macOS (تتطلب macOS)
 الملفات التنفيذية تُبنى تلقائياً على GitHub Actions لويندوز وماك:
 
 ```bash
-git tag v1.15.0
-git push origin v1.15.0
+git tag v1.16.0
+git push origin v1.16.0
 ```
 
 سير العمل في `.github/workflows/release.yml` يبني النسختين وينشرهما في Release واحد

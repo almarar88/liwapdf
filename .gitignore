@@ -12,3 +12,14 @@ tsconfig.*.tsbuildinfo
 
 # Staged at build time by scripts/copy-ocr-assets.mjs (~12 MB of models).
 src/renderer/public/tesseract/
+
+# Capacitor copies the built web layer and the OCR models into the Android
+# project on every sync; both are build output, not source.
+android/app/src/main/assets/public/
+android/app/src/main/assets/capacitor.config.json
+android/app/src/main/assets/capacitor.plugins.json
+android/.gradle/
+android/build/
+android/app/build/
+android/capacitor-cordova-android-plugins/
+android/local.properties

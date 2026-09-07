@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Alcode Editor</title>
+    <!-- viewport-fit=cover lets the app paint under the notch and the gesture
+         bar; the layout keeps clear of them through safe-area insets. -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="color-scheme" content="light dark" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self' https://localhost capacitor://localhost; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: content: https://localhost; font-src 'self' data:; connect-src 'self' blob: data: content: https://localhost capacitor://localhost; worker-src 'self' blob:; media-src 'self' blob: data: content:"
+    />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./main.tsx"></script>
+  </body>
+</html>

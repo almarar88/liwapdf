@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Alcode Editor</string>
+    <string name="title_activity_main">Alcode Editor</string>
+    <string name="package_name">app.alcode.editor</string>
+    <string name="custom_url_scheme">app.alcode.editor</string>
+</resources>
