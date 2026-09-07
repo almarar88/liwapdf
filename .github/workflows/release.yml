@@ -98,27 +98,55 @@ jobs:
       - name: Build the web layer and sync it into the Android project
         run: npm run mobile:sync
 
-      - name: Decode the upload key
-        # Signed the moment the secret exists; until then the APK is unsigned
-        # and installs through "unknown sources", which is what a direct
-        # download needs anyway.
+      - name: Prepare the signing key
+        # Android refuses to install an unsigned APK — unlike Windows, there is
+        # no "install anyway" for a package with no signature at all. So the
+        # release is always signed: with the upload key when the repository
+        # carries one, and otherwise with a key generated for this build.
+        #
+        # A generated key differs from release to release, which means an
+        # update cannot install over the previous version until the app is
+        # removed. Adding ANDROID_KEYSTORE (and its three companions) fixes
+        # the signature in place and makes updates seamless.
         run: |
+          set -euo pipefail
           if [ -n "$ANDROID_KEYSTORE" ]; then
             echo "$ANDROID_KEYSTORE" | base64 -d > "$RUNNER_TEMP/upload.jks"
-            echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/upload.jks" >> "$GITHUB_ENV"
+            echo "Signing with the repository's upload key."
+          else
+            keytool -genkeypair -v \
+              -keystore "$RUNNER_TEMP/upload.jks" -alias alcode \
+              -keyalg RSA -keysize 4096 -validity 10000 \
+              -storepass alcode-build -keypass alcode-build \
+              -dname "CN=Alcode Editor, O=Alcode, C=SA"
+            echo "ANDROID_KEYSTORE_PASSWORD=alcode-build" >> "$GITHUB_ENV"
+            echo "ANDROID_KEY_ALIAS=alcode" >> "$GITHUB_ENV"
+            echo "ANDROID_KEY_PASSWORD=alcode-build" >> "$GITHUB_ENV"
+            echo "::warning::No ANDROID_KEYSTORE secret: signing with a key generated for this build, so updating over an earlier install needs an uninstall first."
           fi
+          echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/upload.jks" >> "$GITHUB_ENV"
 
       - name: Assemble the APK
         working-directory: android
         run: ./gradlew --no-daemon assembleRelease
 
-      - name: Name the APK after the release
+      - name: Name the APK after the release, and refuse an unsigned one
         run: |
           set -euo pipefail
           VERSION=$(node -p "require('./package.json').version")
           mkdir -p release
           APK=$(find android/app/build/outputs/apk/release -name '*.apk' | head -1)
           test -n "$APK"
+          case "$APK" in
+            *unsigned*)
+              echo "The build produced $APK — an unsigned APK cannot be installed."
+              exit 1
+              ;;
+          esac
+          # Prove it rather than trust the filename: an unsigned package must
+          # never reach the download page again.
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -1)
+          "$APKSIGNER" verify --print-certs "$APK"
           cp "$APK" "release/Alcode-Editor-${VERSION}.apk"
 
       - name: Upload artifacts
@@ -213,41 +241,30 @@ jobs:
 
             | النظام | الملف |
             | --- | --- |
-            | Windows 10/11 (مثبّت) | `Alcode-Editor-1.16.0-x64-Setup.exe` |
-            | Windows (محمول) | `Alcode-Editor-1.16.0-Portable.exe` |
-            | macOS Apple Silicon | `Alcode-Editor-1.16.0-arm64.dmg` |
-            | macOS Intel | `Alcode-Editor-1.16.0-x64.dmg` |
+            | Windows 10/11 (مثبّت) | `Alcode-Editor-1.16.1-x64-Setup.exe` |
+            | Windows (محمول) | `Alcode-Editor-1.16.1-Portable.exe` |
+            | macOS Apple Silicon | `Alcode-Editor-1.16.1-arm64.dmg` |
+            | macOS Intel | `Alcode-Editor-1.16.1-x64.dmg` |
 
-            ### الجديد في هذا الإصدار — نسخة أندرويد (APK)
+            ### الجديد في هذا الإصدار — إصلاح تثبيت نسخة أندرويد
 
-            **نفس التطبيق على الهاتف والتابلت**
+            **ملف APK كان يرفض التثبيت**
 
-            - ملف `Alcode-Editor-Android.apk` للتثبيت المباشر. كل الأدوات
-              والمحرّرات والمحوّلات هي نفسها — البرنامج واحد، والغلاف فقط
-              اختلف — ويعمل دون إنترنت كما على الحاسب.
-            - تصميم للهاتف: الشريط الجانبي صار شريط تبويبات أسفل الشاشة في
-              متناول الإبهام، والنوافذ تصعد من الحافة السفلية كأوراق قابلة
-              للسحب، وأشرطة الأدوات تنزلق أفقيًا، وكل زر لا يقل عن ٤٤ نقطة،
-              مع احترام منطقة النوتش وشريط الإيماءات.
-            - تصميم للتابلت: شريط جانبي مضغوط وثلاثة أعمدة من الأدوات.
+            - خرج ملف الإصدار السابق **بلا توقيع رقمي**، وأندرويد — بخلاف
+              ويندوز — لا يثبّت أي تطبيق غير موقّع مهما سمحت بالمصادر غير
+              المعروفة. صار سير البناء يوقّع الملف دائمًا، ويتحقق من التوقيع
+              بأداة `apksigner` قبل النشر، ويُفشل الإصدار إن خرج غير موقّع.
 
-            **مميزات لا توجد إلا في الهاتف**
+            **من الإصدار 1.16.0 — نسخة أندرويد**
 
-            - **مسح ضوئي بالكاميرا:** صوّر الورقة فتُقوَّم وتُبيَّض تلقائيًا
-              بالمحرّك نفسه، وتُجمع الصفحات في ملف PDF واحد — دون رفع أي صورة.
-            - **فتح من أي تطبيق:** التطبيق يظهر ضمن خيارات فتح ملفات PDF و
-              Word و Excel والصور، ويستقبل الملفات المشاركة إليه.
-            - **حفظ ومشاركة:** الملفات الناتجة تُحفظ في مجلد التنزيلات وتُعرض
-              قائمة المشاركة لإرسالها إلى أي تطبيق.
-            - زر الرجوع يغلق ما هو مفتوح قبل أن يغادر التطبيق، ولمسة خفيفة
-              عند اكتمال العمليات.
+            - نفس التطبيق وكل أدواته على الهاتف والتابلت، يعمل دون إنترنت.
+            - شريط تبويبات أسفل الشاشة، ونوافذ ترتفع من الحافة السفلية، وأزرار
+              بحجم الإصبع، مع احترام النوتش وشريط الإيماءات؛ وللتابلت شريط
+              جانبي مضغوط وثلاثة أعمدة.
+            - مسح ضوئي بالكاميرا يقوّم الورقة ويبيّضها ويجمع الصفحات في PDF.
+            - فتح الملفات من أي تطبيق، وحفظها في مجلد التنزيلات مع المشاركة.
 
-            **تحويل Word إلى PDF على الهاتف**
-
-            - يستخدم محرّك الطباعة الأصلي في أندرويد، فيخرج الملف بقياس
-              الصفحة وهوامشها وخطوطها كما في وورد — كما في نسخة الحاسب.
-
-            **ملاحظات الإصدارات السابقة:** https://github.com/almarar88/liwapdf/releases/tag/v1.15.0
+            **ملاحظات الإصدارات السابقة:** https://github.com/almarar88/liwapdf/releases/tag/v1.16.0
 
             > النسخ غير موقّعة رقمياً. على ويندوز اختر **More info → Run anyway**،
             > وعلى macOS افتح التطبيق بزر الفأرة الأيمن ثم **Open**.
