@@ -23,11 +23,15 @@ import {
   VolumeX,
   Presentation,
   TextCursorInput,
-  FileType2
+  FileType2,
+  MoreHorizontal,
+  PanelRightClose,
+  LayoutGrid
 } from 'lucide-react'
 import { useApp } from '../store/app'
 import { useDocumentActions } from '../hooks/useDocumentActions'
-import { Button, Empty, Segmented, TextInput } from '../components/ui'
+import { usePhone } from '../hooks/usePhone'
+import { Button, Empty, Field, Modal, Segmented, TextInput } from '../components/ui'
 import { PdfPageView } from '../components/PdfPageView'
 import { TextEditLayer } from '../components/TextEditLayer'
 import type { Paragraph } from '../lib/pdf/paragraphs'
@@ -58,6 +62,7 @@ export function ViewerView(): React.JSX.Element {
   const setCurrentPage = useApp((state) => state.setCurrentPage)
   const rightToLeft = useApp((state) => state.settings.language === 'ar')
   const { openDialog } = useDocumentActions()
+  const phone = usePhone()
 
   const [zoom, setZoom] = useState(1.1)
   const [fit, setFit] = useState<FitMode>('width')
@@ -85,6 +90,11 @@ export function ViewerView(): React.JSX.Element {
     }
   }, [reading])
   const [railTab, setRailTab] = useState<'thumbs' | 'outline'>('thumbs')
+  // On a phone the rail is a drawer over a 412px-wide screen, so it starts
+  // closed: opening the document has to show the document. On a desktop it is
+  // a column beside the page and has always been there.
+  const [railOpen, setRailOpen] = useState(false)
+  const [sheetOpen, setSheetOpen] = useState(false)
   const [outline, setOutline] = useState<OutlineNode[]>([])
   const [searchOpen, setSearchOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -158,8 +168,12 @@ export function ViewerView(): React.JSX.Element {
     const compute = (): void => {
       const container = scrollRef.current
       if (!container) return
-      const available = container.clientWidth - 64
-      const availableHeight = container.clientHeight - 64
+      // A desktop can afford a wide margin around the page. A phone cannot:
+      // 64px of padding on a 412px screen is a sixth of the document's width,
+      // and it is the difference between readable text and a thumbnail.
+      const gutter = phone ? 12 : 64
+      const available = container.clientWidth - gutter
+      const availableHeight = container.clientHeight - gutter
       const next =
         fit === 'width'
           ? available / firstSize.width
@@ -171,7 +185,67 @@ export function ViewerView(): React.JSX.Element {
     const observer = new ResizeObserver(compute)
     if (scrollRef.current) observer.observe(scrollRef.current)
     return () => observer.disconnect()
-  }, [doc, fit, firstSize])
+  }, [doc, fit, firstSize, phone])
+
+  // Pinch and double-tap, which is how anyone reads a document on a phone.
+  // The gesture drives the same zoom the buttons do, so the page is re-rendered
+  // at the new scale and stays sharp instead of being a stretched bitmap.
+  const zoomRef = useRef(zoom)
+  zoomRef.current = zoom
+  useEffect(() => {
+    const area = scrollRef.current
+    if (!phone || !area) return undefined
+
+    const spread = (touches: TouchList): number =>
+      Math.hypot(
+        touches[0].clientX - touches[1].clientX,
+        touches[0].clientY - touches[1].clientY
+      )
+
+    let pinchFrom = 0
+    let zoomFrom = 1
+    let lastTap = 0
+
+    const onStart = (event: TouchEvent): void => {
+      if (event.touches.length !== 2) return
+      pinchFrom = spread(event.touches)
+      zoomFrom = zoomRef.current
+    }
+
+    const onMove = (event: TouchEvent): void => {
+      if (event.touches.length !== 2 || pinchFrom === 0) return
+      event.preventDefault()
+      setFit('custom')
+      setZoom(clamp((zoomFrom * spread(event.touches)) / pinchFrom, 0.15, 6))
+    }
+
+    const onEnd = (event: TouchEvent): void => {
+      if (event.touches.length < 2) pinchFrom = 0
+      if (event.touches.length > 0 || event.changedTouches.length !== 1) return
+      const now = event.timeStamp
+      // A second tap within a third of a second, on the same spot, means
+      // "make this bigger" — and again means "put it back".
+      if (now - lastTap < 320) {
+        lastTap = 0
+        if (zoomRef.current > 1.35) setFit('width')
+        else {
+          setFit('custom')
+          setZoom(2)
+        }
+      } else {
+        lastTap = now
+      }
+    }
+
+    area.addEventListener('touchstart', onStart, { passive: true })
+    area.addEventListener('touchmove', onMove, { passive: false })
+    area.addEventListener('touchend', onEnd, { passive: true })
+    return () => {
+      area.removeEventListener('touchstart', onStart)
+      area.removeEventListener('touchmove', onMove)
+      area.removeEventListener('touchend', onEnd)
+    }
+  }, [phone, doc])
 
   // Paragraphs for the pages on screen, so switching to edit mode does not
   // parse the whole document. Cleared whenever the bytes change.
@@ -572,6 +646,79 @@ export function ViewerView(): React.JSX.Element {
 
   return (
     <div className="view flush" style={{ display: 'flex', flexDirection: 'column' }}>
+      {/* A phone gets six controls it can actually hit; the other fifteen live
+          one tap away in a sheet. The desktop toolbar below is unchanged. */}
+      {phone ? (
+        <div className="toolbar phone-bar">
+          <Button
+            size="sm"
+            icon
+            variant="ghost"
+            title={t('viewer.previousPage')}
+            aria-label={t('viewer.previousPage')}
+            onClick={() => goToPage(currentPage - 1)}
+          >
+            {rightToLeft ? <ChevronRight size={19} /> : <ChevronLeft size={19} />}
+          </Button>
+
+          <button
+            className="page-pill"
+            title={t('viewer.thumbnails')}
+            onClick={() => setRailOpen(true)}
+          >
+            <LayoutGrid size={14} />
+            <span dir="ltr">
+              {currentPage} / {doc.pageCount}
+            </span>
+          </button>
+
+          <Button
+            size="sm"
+            icon
+            variant="ghost"
+            title={t('viewer.nextPage')}
+            aria-label={t('viewer.nextPage')}
+            onClick={() => goToPage(currentPage + 1)}
+          >
+            {rightToLeft ? <ChevronLeft size={19} /> : <ChevronRight size={19} />}
+          </Button>
+
+          <span className="spacer" />
+
+          <Button
+            size="sm"
+            icon
+            variant="ghost"
+            title={t('viewer.fitWidth')}
+            aria-label={t('viewer.fitWidth')}
+            aria-pressed={fit === 'width'}
+            onClick={() => setFit(fit === 'width' ? 'page' : 'width')}
+          >
+            <Maximize2 size={17} />
+          </Button>
+          <Button
+            size="sm"
+            icon
+            variant="ghost"
+            title={t('viewer.search')}
+            aria-label={t('viewer.search')}
+            aria-pressed={searchOpen}
+            onClick={() => setSearchOpen((open) => !open)}
+          >
+            <Search size={17} />
+          </Button>
+          <Button
+            size="sm"
+            icon
+            variant="ghost"
+            title={t('phone.viewOptions')}
+            aria-label={t('phone.viewOptions')}
+            onClick={() => setSheetOpen(true)}
+          >
+            <MoreHorizontal size={19} />
+          </Button>
+        </div>
+      ) : (
       <div className="toolbar">
         {/* "Previous" points toward the start of the reading direction, which
             is the right edge in Arabic and the left edge in English. */}
@@ -774,6 +921,7 @@ export function ViewerView(): React.JSX.Element {
           <Printer size={15} />
         </Button>
       </div>
+      )}
 
       {searchOpen ? (
         <div className="toolbar" style={{ borderTop: 'none' }}>
@@ -866,16 +1014,34 @@ export function ViewerView(): React.JSX.Element {
         </div>
       ) : null}
 
-      <div className="workspace">
+      <div className={`workspace${phone && !railOpen ? ' no-rail' : ''}`}>
+        {phone && railOpen ? (
+          <div className="rail-scrim" data-mobile-dismiss onClick={() => setRailOpen(false)} />
+        ) : null}
+        {phone && !railOpen ? null : (
         <aside className="rail">
-          <Segmented
-            value={railTab}
-            onChange={setRailTab}
-            options={[
-              { value: 'thumbs', label: '', icon: <FileText size={14} /> },
-              { value: 'outline', label: '', icon: <ListTree size={14} /> }
-            ]}
-          />
+          <div className="rail-head">
+            <Segmented
+              value={railTab}
+              onChange={setRailTab}
+              options={[
+                { value: 'thumbs', label: '', icon: <FileText size={14} /> },
+                { value: 'outline', label: '', icon: <ListTree size={14} /> }
+              ]}
+            />
+            {phone ? (
+              <Button
+                size="sm"
+                icon
+                variant="ghost"
+                title={t('action.close')}
+                aria-label={t('action.close')}
+                onClick={() => setRailOpen(false)}
+              >
+                <PanelRightClose size={16} />
+              </Button>
+            ) : null}
+          </div>
           {railTab === 'thumbs'
             ? Array.from({ length: doc.pageCount }, (_, index) => (
                 <Thumbnail
@@ -884,7 +1050,10 @@ export function ViewerView(): React.JSX.Element {
                   pageNumber={index + 1}
                   version={doc.version}
                   active={currentPage === index + 1}
-                  onClick={() => goToPage(index + 1)}
+                  onClick={() => {
+                    goToPage(index + 1)
+                    if (phone) setRailOpen(false)
+                  }}
                 />
               ))
             : outline.length === 0
@@ -893,12 +1062,16 @@ export function ViewerView(): React.JSX.Element {
                   <button
                     key={index}
                     className="nav-item"
-                    onClick={() => node.pageNumber && goToPage(node.pageNumber)}
+                    onClick={() => {
+                      if (node.pageNumber) goToPage(node.pageNumber)
+                      if (phone) setRailOpen(false)
+                    }}
                   >
                     <span className="truncate">{node.title}</span>
                   </button>
                 ))}
         </aside>
+        )}
 
         <div
           className={`canvas-area reading-${reading}${snapshot ? ' snapping' : ''}`}
@@ -956,6 +1129,163 @@ export function ViewerView(): React.JSX.Element {
           )}
         </div>
       </div>
+
+      {phone ? (
+        <Modal open={sheetOpen} onClose={() => setSheetOpen(false)} title={t('phone.viewOptions')}>
+          <div className="stack">
+            <Field label={t('viewer.zoom')}>
+              <div className="zoom-row">
+                <Button
+                  icon
+                  title={t('viewer.zoomOut')}
+                  aria-label={t('viewer.zoomOut')}
+                  onClick={() => {
+                    setFit('custom')
+                    setZoom((value) => clamp(value - 0.2, 0.15, 6))
+                  }}
+                >
+                  <Minus size={17} />
+                </Button>
+                <span className="mono" dir="ltr">
+                  {Math.round(zoom * 100)}%
+                </span>
+                <Button
+                  icon
+                  title={t('viewer.zoomIn')}
+                  aria-label={t('viewer.zoomIn')}
+                  onClick={() => {
+                    setFit('custom')
+                    setZoom((value) => clamp(value + 0.2, 0.15, 6))
+                  }}
+                >
+                  <Plus size={17} />
+                </Button>
+              </div>
+            </Field>
+
+            <Field label={t('viewer.fit')}>
+              <Segmented
+                value={fit}
+                onChange={setFit}
+                options={[
+                  { value: 'width', label: t('viewer.fitWidth') },
+                  { value: 'page', label: t('viewer.fitPage') },
+                  { value: 'custom', label: t('viewer.actualSize') }
+                ]}
+              />
+            </Field>
+
+            <Field label={t('viewer.reading')}>
+              <Segmented
+                value={reading}
+                onChange={setReading}
+                options={[
+                  { value: 'normal', label: t('viewer.reading.normal') },
+                  { value: 'sepia', label: t('viewer.reading.sepia') },
+                  { value: 'night', label: t('viewer.reading.night') }
+                ]}
+              />
+            </Field>
+
+            <Field label={t('viewer.pageMode')}>
+              <Segmented
+                value={mode}
+                onChange={setMode}
+                options={[
+                  { value: 'continuous', label: t('viewer.continuous') },
+                  { value: 'single', label: t('viewer.single') }
+                ]}
+              />
+            </Field>
+
+            <div className="sheet-grid">
+              {(
+                [
+                  {
+                    key: 'pages',
+                    icon: <LayoutGrid size={16} />,
+                    label: t('viewer.thumbnails'),
+                    run: () => setRailOpen(true)
+                  },
+                  {
+                    key: 'rotate',
+                    icon: <RotateCw size={16} />,
+                    label: t('viewer.rotateView'),
+                    run: () => setRotation((value) => (value + 90) % 360),
+                    keepOpen: true
+                  },
+                  {
+                    key: 'edit',
+                    icon: <TextCursorInput size={16} />,
+                    label: t('edit.textMode'),
+                    active: editText,
+                    run: () => {
+                      setEditText((on) => !on)
+                      if (!editText) void loadParagraphs(currentPage)
+                    }
+                  },
+                  {
+                    key: 'editor',
+                    icon: <FileType2 size={16} />,
+                    label: t('edit.openInEditor'),
+                    run: () => void openInEditor()
+                  },
+                  {
+                    key: 'speak',
+                    icon: speech ? <VolumeX size={16} /> : <Volume2 size={16} />,
+                    label: speech ? t('viewer.stopReading') : t('viewer.readAloud'),
+                    active: Boolean(speech),
+                    run: () => void toggleReadAloud()
+                  },
+                  {
+                    key: 'present',
+                    icon: <Presentation size={16} />,
+                    label: t('viewer.present'),
+                    run: () => void togglePresentation()
+                  },
+                  {
+                    key: 'snapshot',
+                    icon: <Camera size={16} />,
+                    label: t('viewer.snapshot'),
+                    active: snapshot,
+                    run: () => {
+                      setSnapshot((value) => !value)
+                      setRubber(null)
+                      dragStart.current = null
+                    }
+                  },
+                  {
+                    key: 'print',
+                    icon: <Printer size={16} />,
+                    label: t('action.print'),
+                    run: () => setPrintOpen(true)
+                  }
+                ] as {
+                  key: string
+                  icon: React.JSX.Element
+                  label: string
+                  active?: boolean
+                  keepOpen?: boolean
+                  run: () => void
+                }[]
+              ).map((entry) => (
+                <Button
+                  key={entry.key}
+                  block
+                  variant={entry.active ? 'primary' : undefined}
+                  onClick={() => {
+                    entry.run()
+                    if (!entry.keepOpen) setSheetOpen(false)
+                  }}
+                >
+                  {entry.icon}
+                  <span className="truncate">{entry.label}</span>
+                </Button>
+              ))}
+            </div>
+          </div>
+        </Modal>
+      ) : null}
 
       <PrintDialog open={printOpen} onClose={() => setPrintOpen(false)} />
     </div>

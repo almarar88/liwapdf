@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react'
 import { Camera } from 'lucide-react'
 import App from '../renderer/src/App'
 import { useApp } from '../renderer/src/store/app'
+import { usePhone } from '../renderer/src/hooks/usePhone'
 import { ScanSheet } from './ScanSheet'
+import { PhoneNav } from './PhoneNav'
 import { takePendingMobileFile } from './bridge'
 import { tapFeedback } from './shell'
 
@@ -19,6 +21,7 @@ export function MobileApp(): React.JSX.Element {
   const openPdfBytes = useApp((state) => state.openPdfBytes)
   const notify = useApp((state) => state.notify)
   const [scanning, setScanning] = useState(false)
+  const phone = usePhone()
 
   // A document opened from a file manager, mail or a share sheet.
   useEffect(() => {
@@ -42,17 +45,23 @@ export function MobileApp(): React.JSX.Element {
   return (
     <>
       <App />
-      <button
-        className="scan-fab"
-        title={t('scan.title')}
-        aria-label={t('scan.title')}
-        onClick={() => {
-          tapFeedback('medium')
-          setScanning(true)
-        }}
-      >
-        <Camera size={22} />
-      </button>
+      {/* A phone navigates from its own bottom bar, which carries the camera.
+          A tablet keeps the side rail, so scanning gets a floating button. */}
+      {phone ? (
+        <PhoneNav onScan={() => setScanning(true)} />
+      ) : (
+        <button
+          className="scan-fab"
+          title={t('scan.title')}
+          aria-label={t('scan.title')}
+          onClick={() => {
+            tapFeedback('medium')
+            setScanning(true)
+          }}
+        >
+          <Camera size={22} />
+        </button>
+      )}
       <ScanSheet open={scanning} onClose={() => setScanning(false)} />
     </>
   )

@@ -289,6 +289,9 @@ export const SPRING = { type: 'spring', stiffness: 420, damping: 34, mass: 0.7 }
 
 /* ------------------------------------------------------------------ modal */
 
+/** How many dialogs are open, so the shell flag is cleared by the last one. */
+let openDialogs = 0
+
 export function Modal({
   open,
   onClose,
@@ -319,6 +322,12 @@ export function Modal({
   useEffect(() => {
     if (!open) return undefined
     returnFocusTo.current = document.activeElement as HTMLElement | null
+    // The shell needs to know a dialog is up: `.app` isolates its own stacking
+    // context, so anything the platform fixes outside it — the phone's tab bar
+    // — would otherwise sit on top of the scrim. Counted, because a dialog can
+    // open another one.
+    openDialogs += 1
+    document.documentElement.dataset.modal = 'true'
 
     const focusables = (): HTMLElement[] =>
       Array.from(
@@ -363,6 +372,8 @@ export function Modal({
     return () => {
       window.clearTimeout(timer)
       window.removeEventListener('keydown', onKey)
+      openDialogs = Math.max(0, openDialogs - 1)
+      if (openDialogs === 0) delete document.documentElement.dataset.modal
       returnFocusTo.current?.focus?.()
     }
   }, [open, onClose])

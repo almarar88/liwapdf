@@ -66,50 +66,19 @@ html[data-mobile] select {
   html[data-mobile] .app-body,
   html[data-mobile] .app-body.collapsed {
     grid-template-columns: 1fr;
-    grid-template-rows: 1fr auto;
+    grid-template-rows: 1fr;
+    /* The bar is fixed to the bottom edge; the work area ends above it. */
+    padding-bottom: calc(var(--tabbar-height) + var(--safe-bottom));
   }
 
-  /* The sidebar becomes the bottom tab bar. */
-  html[data-mobile] .sidebar {
-    grid-row: 2;
-    flex-direction: row;
-    align-items: stretch;
-    gap: 0;
-    padding: 6px 4px calc(6px + var(--safe-bottom));
-    border-inline-end: none;
-    border-top: 1px solid var(--hairline);
-    overflow-x: auto;
-    scrollbar-width: none;
-    background: var(--surface-solid);
-  }
-  html[data-mobile] .sidebar::-webkit-scrollbar { display: none; }
+  /* The desktop sidebar does not fold onto a phone: seven long labels in a
+     sideways-scrolling strip is a list, not a menu. PhoneNav replaces it. */
+  html[data-mobile] .sidebar { display: none; }
 
-  /* Everything that is not a destination belongs elsewhere on a phone. */
-  html[data-mobile] .sidebar .group-label,
-  html[data-mobile] .sidebar .side-pill,
-  html[data-mobile] .sidebar .sidebar-footer {
-    display: none;
-  }
-
-  html[data-mobile] .sidebar .nav-item {
-    flex: 1 0 68px;
-    flex-direction: column;
-    justify-content: center;
-    gap: 3px;
-    min-height: var(--tabbar-height);
-    padding: 6px 2px;
-    border-radius: var(--r-md);
-    font-size: 11px;
-    line-height: 1.15;
-    text-align: center;
-    white-space: nowrap;
-  }
-  html[data-mobile] .sidebar .nav-item .badge,
-  html[data-mobile] .sidebar .nav-item .count { display: none; }
-  html[data-mobile] .sidebar .nav-glow { border-radius: var(--r-md); }
-
-  /* The work area scrolls; the tab bar does not move. */
-  html[data-mobile] .view {
+  /* The work area scrolls; the tab bar does not move. A flush view — the
+     viewer, the editor — draws to the edges on purpose: its own toolbar is
+     the margin, and 14px on each side is 7% of the readable page. */
+  html[data-mobile] .view:not(.flush) {
     padding: 14px 14px 18px;
   }
   /* The heading and its search field are stacked: side by side on a phone
@@ -200,9 +169,11 @@ html[data-mobile] select {
   html[data-mobile] .toolbar::-webkit-scrollbar { display: none; }
   html[data-mobile] .toolbar > * { flex: none; }
 
-  /* The viewer's thumbnail rail is a drawer, not a column. */
   /* The page rail and any side panel are drawers over the page, not columns
-     stealing width the document needs. */
+     stealing width the document needs. The viewer opens with the rail closed
+     — a 300px drawer over a 412px screen hides the document it was opened to
+     show — and the drawer arrives with a scrim, so a tap anywhere puts it
+     away again. */
   html[data-mobile] .workspace,
   html[data-mobile] .workspace.with-panel,
   html[data-mobile] .workspace.no-rail.with-panel {
@@ -218,7 +189,65 @@ html[data-mobile] select {
     width: min(76vw, 300px);
     box-shadow: -12px 0 32px rgb(0 0 0 / 22%);
     background: var(--surface-solid);
+    animation: drawer-in var(--dur) cubic-bezier(0.22, 1, 0.36, 1);
   }
+  html[data-mobile] .rail-scrim {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    background: rgb(0 0 0 / 34%);
+    animation: fade-in var(--dur-fast) ease-out;
+  }
+
+  /* The document gets the glass. A desktop's 26px frame is a sixth of a
+     phone's width, and it comes straight out of the readable page. */
+  html[data-mobile] .canvas-area { padding: 8px 6px 20px; }
+  html[data-mobile] .page-stack { gap: 12px; }
+
+  /* The viewer's own bar: six controls at thumb size, none of them scrolled
+     off the edge. Everything else is in the options sheet. */
+  html[data-mobile] .toolbar.phone-bar {
+    gap: 2px;
+    padding: 4px 6px;
+    overflow: visible;
+  }
+  html[data-mobile] .page-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 36px;
+    padding: 0 12px;
+    border: 1px solid var(--hairline);
+    border-radius: var(--r-full);
+    background: var(--surface-sunken);
+    color: var(--fg-2);
+    font: inherit;
+    font-variant-numeric: tabular-nums;
+    font-size: var(--text-sm);
+  }
+  html[data-mobile] .page-pill:active { background: var(--surface-2); }
+  /* A toggle that is on reads as tinted, not as a solid block: a filled
+     button in a bar of outlines looks like the primary action, which it is
+     not. */
+  html[data-mobile] .phone-bar .btn[aria-pressed='true'] {
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    color: var(--accent);
+  }
+
+  /* Options sheet: a value per row, then the actions two to a line. */
+  html[data-mobile] .zoom-row {
+    display: grid;
+    grid-template-columns: var(--touch) 1fr var(--touch);
+    align-items: center;
+    gap: 10px;
+    text-align: center;
+  }
+  html[data-mobile] .sheet-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  html[data-mobile] .sheet-grid .btn { justify-content: flex-start; }
 
   html[data-mobile] .editor-body.with-nav { grid-template-columns: 1fr; }
   html[data-mobile] .editor-body .editor-nav { display: none; }
@@ -301,6 +330,162 @@ html[data-mobile] .canvas-area {
 /* A phone keyboard covers the bottom half of the screen; a focused field
    inside a sheet must stay above it. */
 html[data-mobile] .modal:focus-within { padding-bottom: calc(12px + var(--safe-bottom)); }
+
+@keyframes drawer-in {
+  from { transform: translateX(var(--drawer-from, 12%)); opacity: 0.4; }
+  to { transform: translateX(0); opacity: 1; }
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* --------------------------------------------------------- phone navigation */
+
+/**
+ * Five fixed slots, one word each, the camera raised in the middle.
+ *
+ * Nothing scrolls and nothing is hidden past an edge: on a phone a navigation
+ * bar is a map of the app, and a map you have to drag is not one. The two
+ * destinations most opened sit under the thumb, the two next to them are one
+ * tap, and the remaining four wait in a labelled sheet behind "more".
+ */
+@media (max-width: 767px) {
+  html[data-mobile] .phone-nav {
+    position: fixed;
+    z-index: 30;
+    inset-inline: 0;
+    inset-block-end: 0;
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 2px;
+    padding: 5px 6px calc(4px + var(--safe-bottom));
+    border-top: 1px solid var(--hairline);
+    background: color-mix(in srgb, var(--surface-solid) 90%, transparent);
+    backdrop-filter: var(--blur);
+    -webkit-backdrop-filter: var(--blur);
+  }
+  /* A sheet owns the screen while it is open: the bar is fixed outside the
+     app's stacking context, so it cannot be layered under the scrim — it
+     steps aside instead. */
+  html[data-mobile][data-modal] .phone-nav { display: none; }
+
+  html[data-mobile] .phone-tab,
+  html[data-mobile] .phone-scan {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    min-width: 0;
+    min-height: 52px;
+    padding: 0 2px;
+    border: none;
+    border-radius: var(--r-md);
+    background: none;
+    color: var(--fg-3);
+    font: inherit;
+    font-size: 10.5px;
+    line-height: 1.15;
+    font-weight: 550;
+    transition: color var(--dur-fast) var(--ease-out);
+  }
+  /* The label only: the pill and the icon are spans too, and clipping them to
+     one ellipsised line collapses them to nothing. */
+  html[data-mobile] .phone-tab > span:last-child,
+  html[data-mobile] .phone-scan > span:last-child {
+    position: relative;
+    z-index: 1;
+    max-width: 100%;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  html[data-mobile] .phone-tab.active { color: var(--accent); }
+  html[data-mobile] .phone-tab:active { transform: scale(0.96); }
+
+  /* The moving pill behind the active tab, carried between slots by the same
+     shared-layout animation the desktop sidebar uses. */
+  html[data-mobile] .phone-tab-glow {
+    position: absolute;
+    inset: 2px 0;
+    z-index: 0;
+    border-radius: var(--r-md);
+    background: color-mix(in srgb, var(--accent) 15%, transparent);
+  }
+
+  html[data-mobile] .phone-tab-icon { position: relative; z-index: 1; display: block; }
+  /* A document is open: the tab that leads to it says so without a number
+     nobody reads at 10px. */
+  html[data-mobile] .phone-tab-dot {
+    position: absolute;
+    inset-block-start: -1px;
+    inset-inline-end: -3px;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 0 2px var(--surface-solid);
+  }
+
+  /* Scanning is the one thing only a phone can do, so it is the one control
+     that stands up off the bar. */
+  html[data-mobile] .phone-scan { color: var(--accent); }
+  html[data-mobile] .phone-scan-badge {
+    display: grid;
+    place-items: center;
+    width: 42px;
+    height: 42px;
+    margin-top: -14px;
+    border-radius: 50%;
+    color: #fff;
+    background: linear-gradient(140deg, var(--accent), var(--accent-strong));
+    box-shadow: 0 8px 18px color-mix(in srgb, var(--accent) 42%, transparent);
+    transition: transform var(--dur-fast) var(--ease-out);
+  }
+  html[data-mobile] .phone-scan:active .phone-scan-badge { transform: scale(0.92); }
+
+  /* The rest of the map, as rows that say what they are. */
+  html[data-mobile] .more-list { display: flex; flex-direction: column; gap: 6px; }
+  html[data-mobile] .more-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    min-height: 54px;
+    padding: 8px 12px;
+    border: 1px solid var(--hairline-soft);
+    border-radius: var(--r-md);
+    background: var(--surface-solid);
+    color: var(--fg);
+    font: inherit;
+    font-size: var(--text-base);
+    font-weight: 550;
+    text-align: start;
+  }
+  html[data-mobile] .more-row:active { background: var(--surface-2); }
+  html[data-mobile] .more-row.active {
+    border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+    background: color-mix(in srgb, var(--accent) 8%, var(--surface-solid));
+    color: var(--accent);
+  }
+  html[data-mobile] .more-icon {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    border-radius: var(--r-md);
+    background: var(--surface-sunken);
+    color: var(--fg-2);
+  }
+  html[data-mobile] .more-row.active .more-icon { color: var(--accent); }
+  html[data-mobile] .more-icon.accent {
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    color: var(--accent);
+  }
+}
 
 /* ------------------------------------------------------------- scanning */
 

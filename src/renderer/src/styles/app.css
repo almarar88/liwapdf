@@ -462,6 +462,10 @@ html[dir='rtl'] .switch.on .knob { transform: translateX(-17px); }
   backdrop-filter: var(--blur); -webkit-backdrop-filter: var(--blur);
   overflow-y: auto; padding: 12px 10px; display: flex; flex-direction: column; gap: 10px;
 }
+/* The rail's own header: the thumbnails/outline switch, plus whatever the
+   platform needs beside it — on a phone, the control that closes the drawer. */
+.rail-head { display: flex; align-items: center; gap: 6px; }
+.rail-head > *:first-child { flex: 1; min-width: 0; }
 
 .thumb {
   position: relative; display: block; width: 100%; padding: 0;

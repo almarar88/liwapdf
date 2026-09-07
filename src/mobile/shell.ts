@@ -1,6 +1,7 @@
 import { App as CapacitorApp } from '@capacitor/app'
 import { Haptics, ImpactStyle } from '@capacitor/haptics'
 import { StatusBar, Style } from '@capacitor/status-bar'
+import { useApp } from '../renderer/src/store/app'
 
 /**
  * The part of a phone app that has no desktop equivalent: the hardware back
@@ -22,8 +23,11 @@ export function startMobileShell(): void {
   // Back should retreat through the app, not out of it: a sheet, then a
   // dialog, then the viewer, and only from the home screen does it exit.
   void CapacitorApp.addListener('backButton', ({ canGoBack }) => {
+    // `.modal .btn.close` is the dialog's own close control — the shared Modal
+    // renders exactly one, and pressing it runs the same onClose the scrim
+    // does, so a sheet unwinds its state instead of being torn off screen.
     const closer = document.querySelector<HTMLElement>(
-      '[data-mobile-dismiss], .modal .modal-close, .modal [aria-label="إغلاق"], .sheet-close'
+      '[data-mobile-dismiss], .modal .btn.close'
     )
     if (closer) {
       closer.click()
@@ -32,6 +36,13 @@ export function startMobileShell(): void {
     const back = document.querySelector<HTMLElement>('[data-mobile-back]')
     if (back) {
       back.click()
+      return
+    }
+    // Anywhere but the home screen, back means "up one level" — leaving the
+    // app from the middle of a document is not what the gesture promises.
+    const app = useApp.getState()
+    if (app.route !== 'home') {
+      app.navigate('home')
       return
     }
     if (canGoBack) {
