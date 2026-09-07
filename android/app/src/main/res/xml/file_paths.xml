@@ -1,5 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
-    <external-path name="my_images" path="." />
-    <cache-path name="my_cache_images" path="." />
+    <!-- Shared storage, which is where a saved document goes on Android 9
+         and earlier; newer versions get a MediaStore URI instead. -->
+    <external-path name="external" path="." />
+    <!-- The camera plugin's captures and the print adapter's scratch file. -->
+    <cache-path name="cache" path="." />
+    <external-files-path name="external_files" path="." />
+    <files-path name="files" path="." />
 </paths>

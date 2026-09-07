@@ -1,12 +1,15 @@
 package app.alcode.editor;
 
-import android.os.Build;
+import android.content.Context;
 import android.os.Bundle;
 import android.os.CancellationSignal;
 import android.os.ParcelFileDescriptor;
+import android.print.AlcodeLayoutCallback;
+import android.print.AlcodeWriteCallback;
 import android.print.PageRange;
 import android.print.PrintAttributes;
 import android.print.PrintDocumentAdapter;
+import android.print.PrintDocumentInfo;
 import android.print.PrintManager;
 import android.util.Base64;
 import android.webkit.WebResourceRequest;
@@ -20,6 +23,7 @@ import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
@@ -46,6 +50,11 @@ public class AlcodePrintPlugin extends Plugin {
 
     private static final int POINTS_PER_INCH = 72;
 
+    /** What to do once the page has loaded and its fonts have settled. */
+    private interface Ready {
+        void onReady(WebView webView);
+    }
+
     @PluginMethod
     public void toPdf(PluginCall call) {
         final String html = call.getString("html", "");
@@ -56,9 +65,7 @@ public class AlcodePrintPlugin extends Plugin {
         getActivity()
             .runOnUiThread(() -> {
                 try {
-                    WebView webView = buildWebView(html, () -> writePdf(call, name, width, height));
-                    // Held by the closure until the adapter finishes.
-                    webViews.add(webView);
+                    load(html, webView -> writePdf(call, webView, name, width, height));
                 } catch (Exception error) {
                     call.reject("print-failed", error);
                 }
@@ -73,36 +80,35 @@ public class AlcodePrintPlugin extends Plugin {
         getActivity()
             .runOnUiThread(() -> {
                 try {
-                    WebView webView = buildWebView(
+                    load(
                         html,
-                        () -> {
-                            PrintManager manager = (PrintManager) getContext().getSystemService(android.content.Context.PRINT_SERVICE);
-                            PrintDocumentAdapter adapter = printAdapters.remove(0);
-                            manager.print(name, adapter, new PrintAttributes.Builder().build());
+                        webView -> {
+                            PrintManager manager = (PrintManager) getContext().getSystemService(Context.PRINT_SERVICE);
+                            if (manager == null) {
+                                call.reject("print-failed", "no print service");
+                                return;
+                            }
+                            manager.print(name, webView.createPrintDocumentAdapter(name), new PrintAttributes.Builder().build());
                             JSObject result = new JSObject();
                             result.put("printed", true);
                             call.resolve(result);
                         }
                     );
-                    webViews.add(webView);
                 } catch (Exception error) {
                     call.reject("print-failed", error);
                 }
             });
     }
 
-    private final java.util.List<WebView> webViews = new java.util.ArrayList<>();
-    private final java.util.List<PrintDocumentAdapter> printAdapters = new java.util.ArrayList<>();
-
     /**
-     * A WebView that loads the page and nothing else.
+     * Loads the page into a WebView that can reach nothing.
      *
      * The document is already sanitised before it gets here, but a printed
      * document must not be able to reach the network under any circumstances,
      * so every request the page makes is refused outright — the same promise
      * the desktop app makes with its offscreen window.
      */
-    private WebView buildWebView(String html, Runnable onReady) {
+    private void load(String html, Ready ready) {
         WebView webView = new WebView(getContext());
         webView.getSettings().setJavaScriptEnabled(false);
         webView.getSettings().setAllowFileAccess(false);
@@ -113,44 +119,35 @@ public class AlcodePrintPlugin extends Plugin {
                 public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
                     String url = request.getUrl() == null ? "" : request.getUrl().toString();
                     if (url.startsWith("data:") || url.startsWith("about:")) return null;
-                    return new WebResourceResponse("text/plain", "utf-8", new java.io.ByteArrayInputStream(new byte[0]));
+                    return new WebResourceResponse("text/plain", "utf-8", new ByteArrayInputStream(new byte[0]));
                 }
 
                 @Override
                 public void onPageFinished(WebView view, String url) {
                     // Fonts settle a frame or two after the load event.
-                    view.postDelayed(onReady, 250);
+                    view.postDelayed(() -> ready.onReady(view), 250);
                 }
             }
         );
         webView.loadDataWithBaseURL(null, html, "text/html", "UTF-8", null);
-        return webView;
     }
 
-    private void writePdf(PluginCall call, String name, Double widthPoints, Double heightPoints) {
+    private void writePdf(PluginCall call, WebView webView, String name, Double widthPoints, Double heightPoints) {
+        File output = null;
         try {
-            WebView webView = webViews.remove(0);
-            PrintAttributes.MediaSize media = mediaSize(widthPoints, heightPoints);
             PrintAttributes attributes = new PrintAttributes.Builder()
-                .setMediaSize(media)
+                .setMediaSize(mediaSize(widthPoints, heightPoints))
                 .setResolution(new PrintAttributes.Resolution("pdf", "pdf", 600, 600))
                 // The document's own margins live in its CSS; asking for more
                 // here would inset the page twice.
                 .setMinMargins(PrintAttributes.Margins.NO_MARGINS)
                 .build();
 
-            PrintDocumentAdapter adapter = webView.createPrintDocumentAdapter(name);
-            File output = new File(getContext().getCacheDir(), "alcode-print.pdf");
-            if (output.exists() && !output.delete()) {
-                call.reject("print-failed", "cache file in use");
-                return;
-            }
-            if (!output.createNewFile()) {
-                call.reject("print-failed", "cannot create cache file");
-                return;
-            }
-            ParcelFileDescriptor descriptor = ParcelFileDescriptor.open(
-                output,
+            final PrintDocumentAdapter adapter = webView.createPrintDocumentAdapter(name);
+            output = File.createTempFile("alcode-print", ".pdf", getContext().getCacheDir());
+            final File file = output;
+            final ParcelFileDescriptor descriptor = ParcelFileDescriptor.open(
+                file,
                 ParcelFileDescriptor.MODE_READ_WRITE
             );
 
@@ -158,31 +155,38 @@ public class AlcodePrintPlugin extends Plugin {
                 null,
                 attributes,
                 new CancellationSignal(),
-                new PrintDocumentAdapter.LayoutResultCallback() {
+                new AlcodeLayoutCallback() {
                     @Override
-                    public void onLayoutFinished(android.print.PrintDocumentInfo info, boolean changed) {
+                    public void onLayoutFinished(PrintDocumentInfo info, boolean changed) {
                         adapter.onWrite(
                             new PageRange[] { PageRange.ALL_PAGES },
                             descriptor,
                             new CancellationSignal(),
-                            new PrintDocumentAdapter.WriteResultCallback() {
+                            new AlcodeWriteCallback() {
                                 @Override
                                 public void onWriteFinished(PageRange[] pages) {
                                     try {
                                         descriptor.close();
                                         JSObject result = new JSObject();
-                                        result.put("base64", readBase64(output));
+                                        result.put("base64", readBase64(file));
                                         call.resolve(result);
                                     } catch (Exception error) {
                                         call.reject("print-failed", error);
                                     } finally {
-                                        output.delete();
+                                        file.delete();
                                     }
                                 }
 
                                 @Override
                                 public void onWriteFailed(CharSequence reason) {
+                                    file.delete();
                                     call.reject("print-failed", String.valueOf(reason));
+                                }
+
+                                @Override
+                                public void onWriteCancelled() {
+                                    file.delete();
+                                    call.reject("print-failed", "cancelled");
                                 }
                             }
                         );
@@ -190,12 +194,20 @@ public class AlcodePrintPlugin extends Plugin {
 
                     @Override
                     public void onLayoutFailed(CharSequence reason) {
+                        file.delete();
                         call.reject("print-failed", String.valueOf(reason));
+                    }
+
+                    @Override
+                    public void onLayoutCancelled() {
+                        file.delete();
+                        call.reject("print-failed", "cancelled");
                     }
                 },
                 new Bundle()
             );
         } catch (Exception error) {
+            if (output != null) output.delete();
             call.reject("print-failed", error);
         }
     }
