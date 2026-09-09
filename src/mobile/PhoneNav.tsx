@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import {
+  Home,
   Layers,
   UserRound,
   Plus,
@@ -36,7 +37,6 @@ export function PhoneNav({
   const t = useApp((state) => state.t)
   const route = useApp((state) => state.route)
   const navigate = useApp((state) => state.navigate)
-  const openTool = useApp((state) => state.openTool)
   const { openDialog, newDocument } = useDocumentActions()
   const [adding, setAdding] = useState(false)
 
@@ -92,7 +92,10 @@ export function PhoneNav({
       icon: <LayoutGrid size={19} />,
       title: t('nav.organize'),
       detail: t('phone.add.organize.d'),
-      run: go(() => openTool('deletePages', true))
+      // The organize screen, not the delete-pages tool: the card promises
+      // reordering and rotating too, and the screen has its own empty state
+      // for when nothing is open — the tool just refuses and goes nowhere.
+      run: go(() => navigate('organize'))
     }
   ]
 
@@ -100,6 +103,22 @@ export function PhoneNav({
     <>
       <div className="phone-bar">
         <nav className="phone-pill">
+          {/* Home is a button of its own and always has been the missing one:
+              from the toolbox, the editor or the viewer there was nothing on
+              screen that went back, and a profile icon that doubles as "back"
+              is not something anybody guesses. */}
+          <button
+            className={`pill-btn${route === 'home' ? ' active' : ''}`}
+            aria-label={t('nav.home')}
+            title={t('nav.home')}
+            aria-current={route === 'home' ? 'page' : undefined}
+            onClick={() => {
+              tapFeedback()
+              navigate('home')
+            }}
+          >
+            <Home size={20} />
+          </button>
           <button
             className="pill-btn"
             aria-label={t('phone.files')}
@@ -115,9 +134,10 @@ export function PhoneNav({
             className={`pill-btn${route === 'settings' ? ' active' : ''}`}
             aria-label={t('nav.settings')}
             title={t('nav.settings')}
+            aria-current={route === 'settings' ? 'page' : undefined}
             onClick={() => {
               tapFeedback()
-              navigate(route === 'settings' ? 'home' : 'settings')
+              navigate('settings')
             }}
           >
             <UserRound size={20} />

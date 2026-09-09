@@ -1,20 +1,21 @@
 import { useState } from 'react'
-import { Files, CreditCard, BookUser, Sigma, Hash, Ruler } from 'lucide-react'
+import { Files, CreditCard, BookUser, Sigma, Hash, Ruler, QrCode } from 'lucide-react'
 import { useApp } from '../renderer/src/store/app'
 import { Modal } from '../renderer/src/components/ui'
 import { SheetCards, type SheetEntry } from './SheetCard'
 import { ScanSheet } from './ScanSheet'
-import { CardSheet, MathSheet, CountSheet, MeasureSheet } from './ScanFlows'
+import { CardSheet, MathSheet, CountSheet, MeasureSheet, toCanvas } from './ScanFlows'
+import { CodeSheet } from './CodeSheet'
 
-type Mode = 'documents' | 'id' | 'passport' | 'math' | 'count' | 'measure' | null
+type Mode = 'documents' | 'id' | 'passport' | 'math' | 'count' | 'measure' | 'code' | null
 
 /**
  * What the camera is being pointed at.
  *
  * A scanner app that only scans documents wastes the other nine tenths of
  * what a camera and a processor can do with a picture of the physical world.
- * These six are the ones a person with a phone in an office, a warehouse or a
- * kitchen table full of homework actually needs, and all six run on the
+ * These seven are the ones a person with a phone in an office, a warehouse or
+ * a kitchen table full of homework actually needs, and all seven run on the
  * device.
  */
 export function ScanModes({ open, onClose }: { open: boolean; onClose: () => void }): React.JSX.Element {
@@ -74,6 +75,14 @@ export function ScanModes({ open, onClose }: { open: boolean; onClose: () => voi
       title: t('phone.scan.measure'),
       detail: t('phone.scan.measure.d'),
       run: pick('measure')
+    },
+    {
+      key: 'code',
+      tone: 'blue',
+      icon: <QrCode size={19} />,
+      title: t('phone.scan.code'),
+      detail: t('phone.scan.code.d'),
+      run: pick('code')
     }
   ]
 
@@ -90,6 +99,7 @@ export function ScanModes({ open, onClose }: { open: boolean; onClose: () => voi
       <MathSheet open={mode === 'math'} onClose={close} />
       <CountSheet open={mode === 'count'} onClose={close} />
       <MeasureSheet open={mode === 'measure'} onClose={close} />
+      <CodeSheet open={mode === 'code'} onClose={close} toCanvas={toCanvas} />
     </>
   )
 }

@@ -16,11 +16,13 @@ import {
   Share2,
   Repeat,
   FolderOpen,
-  Languages
+  Languages,
+  Check
 } from 'lucide-react'
 import { useApp } from '../renderer/src/store/app'
 import { useDocumentActions } from '../renderer/src/hooks/useDocumentActions'
 import type { RecentFile } from '@shared/types'
+import { toolById } from '../renderer/src/views/toolRegistry'
 import { tapFeedback } from './shell'
 
 /**
@@ -46,6 +48,8 @@ export function PhoneHome({ onSheet }: { onSheet: (sheet: Sheet) => void }): Rea
   const unread = useApp((state) => state.unreadNotices)
   const language = useApp((state) => state.settings.language)
   const setSettings = useApp((state) => state.setSettings)
+  const recentTools = useApp((state) => state.recentTools)
+  const openTool = useApp((state) => state.openTool)
   const [query, setQuery] = useState('')
   const { openDialog, openPaths } = useDocumentActions()
 
@@ -146,6 +150,31 @@ export function PhoneHome({ onSheet }: { onSheet: (sheet: Sheet) => void }): Rea
         ))}
       </div>
 
+      {/* What you were doing last. The store already remembered it for the
+          desktop's chip row; on a phone, going back to the tool you used an
+          hour ago is most of what a second visit is. */}
+      {recentTools.length > 0 ? (
+        <div className="ph-tools">
+          {recentTools.slice(0, 6).flatMap((id) => {
+            const tool = toolById(id)
+            if (!tool) return []
+            return [
+              <button
+                key={id}
+                className={`ph-tool tone-${tool.tone}`}
+                onClick={() => {
+                  tapFeedback()
+                  openTool(tool.id, tool.needsDocument)
+                }}
+              >
+                {tool.icon}
+                <span>{t(tool.titleKey)}</span>
+              </button>
+            ]
+          })}
+        </div>
+      ) : null}
+
       <div className="ph-search">
         <Search size={17} />
         <input
@@ -194,39 +223,52 @@ export function PhoneHome({ onSheet }: { onSheet: (sheet: Sheet) => void }): Rea
 export function FileChip({
   file,
   onOpen,
-  showSize = false
+  showSize = false,
+  picked
 }: {
   file: RecentFile
   onOpen: () => void
   showSize?: boolean
+  /** Undefined outside selection mode; true or false inside it. */
+  picked?: boolean
 }): React.JSX.Element {
   const t = useApp((state) => state.t)
   const openEntry = useApp((state) => state.openEntry)
   const notify = useApp((state) => state.notify)
 
   return (
-    <div className={`ph-file kind-${file.kind}`}>
+    <div className={`ph-file kind-${file.kind}${picked ? ' picked' : ''}`}>
       <div className="ph-file-top">
-        <button
-          className="ph-file-act"
-          aria-label={t('nav.convert')}
-          title={t('nav.convert')}
-          onClick={() => openEntry('convert', converterFor(file))}
-        >
-          <Repeat size={13} />
-        </button>
-        <button
-          className="ph-file-act"
-          aria-label={t('action.share')}
-          title={t('action.share')}
-          onClick={() => {
-            void window.alcode.shell.reveal(file.path).catch(() => {
-              notify({ kind: 'error', title: t('msg.error') })
-            })
-          }}
-        >
-          <Share2 size={13} />
-        </button>
+        {picked === undefined ? (
+          <>
+            <button
+              className="ph-file-act"
+              aria-label={t('nav.convert')}
+              title={t('nav.convert')}
+              onClick={() => openEntry('convert', converterFor(file))}
+            >
+              <Repeat size={13} />
+            </button>
+            <button
+              className="ph-file-act"
+              aria-label={t('action.share')}
+              title={t('action.share')}
+              onClick={() => {
+                void window.alcode.shell.reveal(file.path).catch(() => {
+                  notify({ kind: 'error', title: t('msg.error') })
+                })
+              }}
+            >
+              <Share2 size={13} />
+            </button>
+          </>
+        ) : (
+          // In selection mode the two shortcuts would be two ways to lose the
+          // selection, so the tick takes their place.
+          <span className={`ph-file-tick${picked ? ' on' : ''}`}>
+            {picked ? <Check size={13} /> : null}
+          </span>
+        )}
         <span className="ph-file-glyph">{glyph(file.kind)}</span>
       </div>
       <button className="ph-file-name" onClick={onOpen}>

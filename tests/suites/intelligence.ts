@@ -12,6 +12,8 @@ import {
 } from '../../src/renderer/src/lib/text/intelligence'
 import { solve, evaluate, normalizeProblem, findProblems, MathError } from '../../src/renderer/src/lib/text/mathsolve'
 import { countObjects } from '../../src/renderer/src/lib/images/count'
+import { readCode, classify, wifiName } from '../../src/renderer/src/lib/images/scancode'
+import { qrMatrix } from '../../src/renderer/src/lib/qr'
 
 /** A contract-shaped Arabic text whose subject is unmistakable. */
 const CONTRACT = [
@@ -179,7 +181,65 @@ const suite: Suite = {
       ic.fill()
     }
     eq('counts pale objects on a dark ground', countObjects(inverted).total, 5)
+
+    /* ------------------------------------------------------------- codes */
+
+    // Round trip: the app's own encoder draws it, the reader reads it back.
+    const url = 'https://alcode.app/invoice/12345'
+    eq('reads a clean code', readCode(drawCode(url, 8, 0))?.text, url)
+    // A code photographed from a distance is a small patch of a big frame.
+    eq('reads a small code in a large frame', readCode(drawCode(url, 3, 260))?.text, url)
+    // White on black is what packaging prints.
+    eq('reads an inverted code', readCode(drawCode(url, 8, 0, true))?.text, url)
+    eq('a picture with no code reads as none', readCode(blank()), null)
+
+    const box = readCode(drawCode(url, 8, 40))
+    check('reports four corners inside the picture', box?.corners.length === 4 &&
+      box.corners.every((c) => c.x >= 0 && c.y >= 0 && c.x <= 600 && c.y <= 600), JSON.stringify(box?.corners))
+
+    eq('classifies a link', classify('https://example.com'), 'url')
+    eq('classifies a phone', classify('tel:+966501234567'), 'phone')
+    eq('classifies an email', classify('name@example.com'), 'email')
+    eq('classifies wifi', classify('WIFI:T:WPA;S:Alcode;P:secret;;'), 'wifi')
+    eq('classifies a contact', classify('BEGIN:VCARD\nFN:Ahmed'), 'contact')
+    eq('classifies plain text', classify('عقد الإيجار'), 'text')
+    eq('reads the wifi name', wifiName('WIFI:T:WPA;S:Alcode Guest;P:secret;;'), 'Alcode Guest')
+    eq('unescapes a wifi name', wifiName('WIFI:S:Cafe\\;Bar;;'), 'Cafe;Bar')
   }
+}
+
+/** Draws a code the app's own encoder produced, at a given module size. */
+function drawCode(text: string, module: number, margin: number, invert = false): HTMLCanvasElement {
+  const { size: modules, modules: bits } = qrMatrix(text)
+  const canvas = document.createElement('canvas')
+  canvas.width = 600
+  canvas.height = 600
+  const context = canvas.getContext('2d')!
+  context.fillStyle = invert ? '#111' : '#fff'
+  context.fillRect(0, 0, 600, 600)
+  const size = modules * module
+  const left = margin > 0 ? margin : Math.round((600 - size) / 2)
+  const top = margin > 0 ? margin : Math.round((600 - size) / 2)
+  context.fillStyle = invert ? '#fff' : '#111'
+  for (let y = 0; y < modules; y += 1) {
+    for (let x = 0; x < modules; x += 1) {
+      if (bits[y * modules + x]) context.fillRect(left + x * module, top + y * module, module, module)
+    }
+  }
+  return canvas
+}
+
+function blank(): HTMLCanvasElement {
+  const canvas = document.createElement('canvas')
+  canvas.width = 400
+  canvas.height = 400
+  const context = canvas.getContext('2d')!
+  context.fillStyle = '#dcdcdc'
+  context.fillRect(0, 0, 400, 400)
+  context.fillStyle = '#333'
+  context.font = '28px sans-serif'
+  context.fillText('no code here', 40, 200)
+  return canvas
 }
 
 function refuses(run: () => unknown): boolean {

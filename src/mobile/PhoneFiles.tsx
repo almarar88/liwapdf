@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Search, X, FolderOpen, Trash2 } from 'lucide-react'
+import { Search, X, FolderOpen, Trash2, CheckSquare, Combine, Share2, Check } from 'lucide-react'
 import { useApp } from '../renderer/src/store/app'
 import { useDocumentActions } from '../renderer/src/hooks/useDocumentActions'
 import { Button } from '../renderer/src/components/ui'
 import type { RecentFile } from '@shared/types'
 import { FileChip } from './PhoneHome'
 import { tapFeedback } from './shell'
+import { canMerge } from './mergeAny'
 
 /**
  * Everything you have opened, when you opened it.
@@ -21,14 +22,71 @@ export function PhoneFiles({ open, onClose }: { open: boolean; onClose: () => vo
   const recents = useApp((state) => state.recents)
   const clearRecents = useApp((state) => state.clearRecents)
   const { openDialog, openPaths } = useDocumentActions()
+  const notify = useApp((state) => state.notify)
+  const setBusy = useApp((state) => state.setBusy)
+  const reportError = useApp((state) => state.reportError)
+  const openPdfBytes = useApp((state) => state.openPdfBytes)
   const [query, setQuery] = useState('')
+  const [picking, setPicking] = useState(false)
+  const [picked, setPicked] = useState<string[]>([])
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    if (!open) setQuery('')
+    if (open) return
+    setQuery('')
+    setPicking(false)
+    setPicked([])
   }, [open])
 
+  const toggle = (path: string): void => {
+    tapFeedback()
+    setPicked((current) =>
+      current.includes(path) ? current.filter((entry) => entry !== path) : [...current, path]
+    )
+  }
+
+  /**
+   * Several files into one PDF, in the order they were picked.
+   *
+   * The commonest thing anyone does with a phone full of scans, and until now
+   * it meant opening the merge tool and choosing the same files a second time
+   * from a system picker that does not know what the app has already seen.
+   */
+  const mergePicked = async (): Promise<void> => {
+    if (picked.length < 2) return
+    setBusy({ label: t('tool.merge'), progress: null })
+    try {
+      const [{ mergeDocuments }, { convertToPdf }] = await Promise.all([
+        import('../renderer/src/lib/pdf/ops'),
+        import('./mergeAny')
+      ])
+      const parts = []
+      for (const path of picked) {
+        const file = recents.find((entry) => entry.path === path)
+        if (!file) continue
+        const read = await window.alcode.fs.read(path)
+        parts.push({ name: file.name, bytes: await convertToPdf(file.name, read.data) })
+      }
+      if (parts.length < 2) throw new Error('merge-needs-two')
+      const bytes = await mergeDocuments(parts)
+      await openPdfBytes(`merged-${new Date().toISOString().slice(0, 10)}.pdf`, bytes, null)
+      notify({ kind: 'success', title: t('files.merged', { n: parts.length }) })
+      setPicking(false)
+      setPicked([])
+      onClose()
+    } catch (error) {
+      reportError(error)
+    } finally {
+      setBusy(null)
+    }
+  }
+
   const groups = useMemo(() => bucket(recents, query), [recents, query])
+  // Merge is offered only when every pick can become a page here; a Word file
+  // needs the print pipeline, and half a merge is worse than no button.
+  const mergeable =
+    picked.length >= 2 &&
+    picked.every((path) => canMerge(recents.find((entry) => entry.path === path)?.name ?? ''))
 
   if (!open) return null
 
@@ -48,6 +106,21 @@ export function PhoneFiles({ open, onClose }: { open: boolean; onClose: () => vo
             aria-label={t('phone.searchFiles')}
           />
         </div>
+        {recents.length > 1 ? (
+          <button
+            className={`ph-round dark${picking ? ' on' : ''}`}
+            aria-label={t('files.select')}
+            title={t('files.select')}
+            aria-pressed={picking}
+            onClick={() => {
+              tapFeedback()
+              setPicking((on) => !on)
+              setPicked([])
+            }}
+          >
+            <CheckSquare size={19} />
+          </button>
+        ) : null}
       </header>
 
       <div className="pf-body">
@@ -76,7 +149,12 @@ export function PhoneFiles({ open, onClose }: { open: boolean; onClose: () => vo
                     key={file.path}
                     file={file}
                     showSize
+                    picked={picking ? picked.includes(file.path) : undefined}
                     onOpen={() => {
+                      if (picking) {
+                        toggle(file.path)
+                        return
+                      }
                       onClose()
                       void openPaths([file.path])
                     }}
@@ -87,13 +165,38 @@ export function PhoneFiles({ open, onClose }: { open: boolean; onClose: () => vo
           ))
         )}
 
-        {recents.length > 0 ? (
+        {recents.length > 0 && !picking ? (
           <Button block variant="ghost" onClick={() => void clearRecents()}>
             <Trash2 size={15} />
             {t('home.clearRecent')}
           </Button>
         ) : null}
       </div>
+
+      {/* The action bar only exists while something is picked, so the screen
+          is a list of files the rest of the time. */}
+      {picking && picked.length > 0 ? (
+        <div className="pf-actions">
+          <span>
+            <Check size={15} />
+            {t('files.picked', { n: picked.length })}
+          </span>
+          <Button
+            size="sm"
+            onClick={() => {
+              const file = recents.find((entry) => entry.path === picked[0])
+              if (file) void window.alcode.shell.reveal(file.path)
+            }}
+          >
+            <Share2 size={15} />
+            {t('action.share')}
+          </Button>
+          <Button size="sm" variant="primary" disabled={!mergeable} onClick={() => void mergePicked()}>
+            <Combine size={15} />
+            {t('tool.merge')}
+          </Button>
+        </div>
+      ) : null}
     </div>
   )
 }

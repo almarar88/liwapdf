@@ -471,6 +471,9 @@ html[data-mobile][data-theme='dark'] {
 
   html[data-mobile] .ph-round {
     position: relative;
+    /* In the files header this sits beside a flexible search field, and
+       without this it is the thing that gives way and gets clipped. */
+    flex: none;
     display: grid;
     place-items: center;
     width: 42px;
@@ -643,6 +646,39 @@ html[data-mobile][data-theme='dark'] {
     background: linear-gradient(140deg, var(--ph-ai), #f08a3c);
   }
   html[data-mobile] .ph-voice:active { transform: scale(0.93); }
+
+  /* The tools used last, as chips rather than cards: they are a shortcut
+     back to work in progress, not a destination worth a card's weight. */
+  html[data-mobile] .ph-tools {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    margin-inline: -14px;
+    padding-inline: 14px;
+    mask-image: linear-gradient(to right, transparent, #000 26px, #000 calc(100% - 26px), transparent);
+    -webkit-mask-image: linear-gradient(to right, transparent, #000 26px, #000 calc(100% - 26px), transparent);
+  }
+  html[data-mobile] .ph-tools::-webkit-scrollbar { display: none; }
+  html[data-mobile] .ph-tool {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    height: 40px;
+    padding-inline: 14px;
+    border: 1px solid var(--hairline-soft);
+    border-radius: var(--r-full);
+    background: var(--surface-solid);
+    color: var(--fg);
+    font: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    white-space: nowrap;
+    box-shadow: var(--shadow-xs);
+  }
+  html[data-mobile] .ph-tool:active { background: var(--surface-sunken); }
+  html[data-mobile] .ph-tool svg { color: var(--tone, var(--accent)); }
 
   /* Recently opened, as a row that scrolls under the thumb. */
   html[data-mobile] .ph-strip {
@@ -845,6 +881,9 @@ html[data-mobile][data-theme='dark'] {
   }
   html[data-mobile] .pf-search {
     flex: 1;
+    /* A flex item defaults to min-width:auto, so this field refused to shrink
+       below its content and pushed the select button off the screen edge. */
+    min-width: 0;
     display: flex;
     align-items: center;
     gap: 9px;
@@ -883,6 +922,56 @@ html[data-mobile][data-theme='dark'] {
     gap: 10px;
   }
   html[data-mobile] .pf-grid .ph-file { width: auto; }
+  /* Selection mode: the picked card is outlined rather than dimmed, so the
+     row still reads as files and not as a form. */
+  html[data-mobile] .ph-file.picked {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent), var(--shadow-xs);
+  }
+  html[data-mobile] .ph-file-tick {
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    border: 1.5px solid var(--hairline);
+    border-radius: 50%;
+    color: #fff;
+  }
+  html[data-mobile] .ph-file-tick.on {
+    border-color: var(--accent);
+    background: var(--accent);
+  }
+  html[data-mobile] .ph-round.on {
+    background: var(--accent);
+    color: #fff;
+  }
+
+  /* The action bar exists only while something is picked. */
+  html[data-mobile] .pf-actions {
+    position: absolute;
+    inset-inline: 12px;
+    inset-block-end: calc(12px + var(--safe-bottom));
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    border: 1px solid var(--ph-bar-line);
+    border-radius: var(--r-full);
+    background: var(--ph-bar);
+    color: #fff;
+    box-shadow: 0 12px 30px rgb(0 0 0 / 30%);
+    animation: sheet-rise var(--dur) cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  html[data-mobile] .pf-actions > span {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-inline-end: auto;
+    padding-inline-start: 6px;
+    font-size: 12.5px;
+    font-weight: 600;
+  }
+
   html[data-mobile] .pf-empty {
     display: grid;
     gap: 12px;
@@ -992,6 +1081,34 @@ html[data-mobile] .measure-view {
   border: 1px solid var(--hairline);
   background: var(--surface-2);
   touch-action: none;
+}
+
+html[data-mobile] .code-result {
+  display: flex;
+  gap: 12px;
+  padding: 13px 14px;
+  border: 1px solid var(--hairline-soft);
+  border-radius: var(--r-md);
+  background: var(--surface-solid);
+}
+html[data-mobile] .code-kind {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
+}
+html[data-mobile] .code-result b { font-size: var(--text-sm); color: var(--fg-3); font-weight: 600; }
+html[data-mobile] .code-result p {
+  margin: 3px 0 0;
+  font-size: var(--text-base);
+  line-height: 1.5;
+  word-break: break-all;
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 html[data-mobile] .math-list { display: flex; flex-direction: column; gap: 8px; }

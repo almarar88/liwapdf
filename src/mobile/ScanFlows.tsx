@@ -23,7 +23,7 @@ import { tapFeedback } from './shell'
 /* ------------------------------------------------------------- shared bits */
 
 /** Decodes captured bytes into a canvas the pixel tools can read. */
-async function toCanvas(bytes: Uint8Array, maxEdge = 1600): Promise<HTMLCanvasElement> {
+export async function toCanvas(bytes: Uint8Array, maxEdge = 1600): Promise<HTMLCanvasElement> {
   const blob = new Blob([bytes as BlobPart])
   const url = URL.createObjectURL(blob)
   try {
