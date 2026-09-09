@@ -62,35 +62,30 @@ export function PhoneHome({ onSheet }: { onSheet: (sheet: Sheet) => void }): Rea
     icon: React.JSX.Element
     title: string
     lines: string
-    tall: boolean
   }[] = [
     {
       key: 'scan',
       icon: <ScanLine size={20} />,
       title: t('phone.card.scan'),
-      lines: t('phone.card.scan.d'),
-      tall: false
+      lines: t('phone.card.scan.d')
     },
     {
       key: 'edit',
       icon: <PenSquare size={20} />,
       title: t('phone.card.edit'),
-      lines: t('phone.card.edit.d'),
-      tall: true
+      lines: t('phone.card.edit.d')
     },
     {
       key: 'convert',
       icon: <Repeat2 size={20} />,
       title: t('phone.card.convert'),
-      lines: t('phone.card.convert.d'),
-      tall: true
+      lines: t('phone.card.convert.d')
     },
     {
       key: 'ai',
       icon: <Sparkles size={20} />,
       title: t('phone.card.ai'),
-      lines: t('phone.card.ai.d'),
-      tall: false
+      lines: t('phone.card.ai.d')
     }
   ]
 
@@ -138,7 +133,7 @@ export function PhoneHome({ onSheet }: { onSheet: (sheet: Sheet) => void }): Rea
         {cards.map((card, index) => (
           <motion.button
             key={card.key}
-            className={`ph-card ph-${card.key}${card.tall ? ' tall' : ''}`}
+            className={`ph-card ph-${card.key}`}
             onClick={() => open(card.key)}
             initial={{ opacity: 0, y: 14 }}
             animate={{ opacity: 1, y: 0 }}
