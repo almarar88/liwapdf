@@ -10,5 +10,6 @@ import renderProbe from './suites/render-probe'
 import docx from './suites/docx'
 import pdfEdit from './suites/pdf-edit'
 import wordPdf from './suites/word-pdf'
+import intelligence from './suites/intelligence'
 
-void runSuites([formulas, arabic, pdfText, compress, layout, documents, images, renderProbe, docx, pdfEdit, wordPdf])
+void runSuites([formulas, arabic, pdfText, compress, layout, documents, images, renderProbe, docx, pdfEdit, wordPdf, intelligence])

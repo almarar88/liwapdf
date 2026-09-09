@@ -65,7 +65,13 @@ export function AnnotateView(): React.JSX.Element {
   const notify = useApp((state) => state.notify)
   const { openDialog } = useDocumentActions()
 
-  const [tool, setTool] = useState<Tool>('select')
+  const takeEntry = useApp((state) => state.takeEntry)
+  // A caller that already said "Sign" arrives with the pen in hand rather than
+  // on the toolbar it would otherwise have to find it on.
+  const [tool, setTool] = useState<Tool>(() => {
+    const entry = takeEntry('annotate')
+    return entry && TOOLS.some((item) => item.id === entry) ? (entry as Tool) : 'select'
+  })
   const [color, setColor] = useState('#e5484d')
   const [strokeWidth, setStrokeWidth] = useState(2)
   const [fontSize, setFontSize] = useState(16)

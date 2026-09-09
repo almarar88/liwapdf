@@ -80,7 +80,13 @@ const CONVERTERS: Converter[] = [
 
 export function ConvertView(): React.JSX.Element {
   const t = useApp((state) => state.t)
-  const [active, setActive] = useState<ConverterId | null>(null)
+  const takeEntry = useApp((state) => state.takeEntry)
+  // Opened from a card that named the conversion, this starts on that panel
+  // rather than on the grid the user has already chosen from.
+  const [active, setActive] = useState<ConverterId | null>(() => {
+    const entry = takeEntry('convert')
+    return entry && CONVERTERS.some((converter) => converter.id === entry) ? (entry as ConverterId) : null
+  })
   const spotlight = useSpotlight()
   const descriptor = CONVERTERS.find((converter) => converter.id === active)
 

@@ -1,176 +1,143 @@
 import { useState } from 'react'
-import { motion } from 'framer-motion'
 import {
-  Camera,
-  FileText,
+  Layers,
+  UserRound,
+  Plus,
   FolderOpen,
-  Home,
+  FilePlus2,
+  FileSpreadsheet,
+  Wrench,
   LayoutGrid,
-  MoreHorizontal,
-  PenLine,
-  Repeat2,
-  Settings,
-  FileType2,
-  Wrench
+  Camera
 } from 'lucide-react'
-import { useApp, type Route } from '../renderer/src/store/app'
+import { useApp } from '../renderer/src/store/app'
 import { useDocumentActions } from '../renderer/src/hooks/useDocumentActions'
-import { Modal, SPRING } from '../renderer/src/components/ui'
-import type { TranslationKey } from '../renderer/src/i18n'
+import { Modal } from '../renderer/src/components/ui'
+import { SheetCards, type SheetEntry } from './SheetCard'
 import { tapFeedback } from './shell'
 
 /**
- * The phone's navigation.
+ * The phone's navigation, such as it is.
  *
- * The desktop sidebar lists seven destinations, two group headings, a promise
- * pill and a collapse control — a column that reads well at 248px. Folded onto
- * a 412px screen it became a sideways-scrolling strip of seven long Arabic
- * labels where three were off-screen and none were legible, which is not a
- * menu: it is a list nobody can reach the end of.
- *
- * So the phone gets its own: five fixed slots. Three destinations a phone
- * reaches for constantly — where you start, the document you are holding, the
- * tools you act on it with — the camera raised in the middle because scanning
- * is the one thing only a phone can do, and everything else behind "more" as
- * labelled rows. No scrolling, one word per label, nothing past an edge.
+ * There is deliberately almost none. The home screen's four cards are the
+ * navigation, so the bar underneath carries only the two places that are not
+ * a verb — the files you have, and you — and the one control that is: add
+ * something. A floating pill rather than a full-width bar, because at this
+ * count a bar is mostly empty and the document behind it is worth more than
+ * the background of a tab strip.
  */
-
-interface Destination {
-  route: Route
-  labelKey: TranslationKey
-  icon: React.JSX.Element
-  /** Shown with the open document's page count. */
-  counts?: boolean
-}
-
-const TABS: Destination[] = [
-  { route: 'home', labelKey: 'nav.home', icon: <Home size={21} /> },
-  { route: 'viewer', labelKey: 'phone.document', icon: <FileText size={21} />, counts: true }
-]
-
-const AFTER: Destination[] = [
-  { route: 'tools', labelKey: 'phone.tools', icon: <Wrench size={21} /> }
-]
-
-const MORE: Destination[] = [
-  { route: 'editor', labelKey: 'nav.editor', icon: <FileType2 size={18} /> },
-  { route: 'organize', labelKey: 'nav.organize', icon: <LayoutGrid size={18} /> },
-  { route: 'annotate', labelKey: 'nav.annotate', icon: <PenLine size={18} /> },
-  { route: 'convert', labelKey: 'nav.convert', icon: <Repeat2 size={18} /> },
-  { route: 'settings', labelKey: 'nav.settings', icon: <Settings size={18} /> }
-]
-
-export function PhoneNav({ onScan }: { onScan: () => void }): React.JSX.Element {
+export function PhoneNav({
+  onFiles,
+  onScan
+}: {
+  onFiles: () => void
+  onScan: () => void
+}): React.JSX.Element {
+  const t = useApp((state) => state.t)
   const route = useApp((state) => state.route)
   const navigate = useApp((state) => state.navigate)
-  const doc = useApp((state) => state.doc)
-  const t = useApp((state) => state.t)
-  const { openDialog } = useDocumentActions()
-  const [moreOpen, setMoreOpen] = useState(false)
+  const openTool = useApp((state) => state.openTool)
+  const { openDialog, newDocument } = useDocumentActions()
+  const [adding, setAdding] = useState(false)
 
-  const go = (target: Route): void => {
+  const go = (run: () => void) => (): void => {
     tapFeedback()
-    navigate(target)
-    setMoreOpen(false)
+    setAdding(false)
+    run()
   }
 
-  const tab = (entry: Destination): React.JSX.Element => {
-    const active = route === entry.route
-    return (
-      <button
-        key={entry.route}
-        className={`phone-tab${active ? ' active' : ''}`}
-        aria-current={active ? 'page' : undefined}
-        onClick={() => go(entry.route)}
-      >
-        {active ? (
-          <motion.span layoutId="phone-tab-glow" className="phone-tab-glow" transition={SPRING} />
-        ) : null}
-        <span className="phone-tab-icon">
-          {entry.icon}
-          {entry.counts && doc ? <span className="phone-tab-dot" /> : null}
-        </span>
-        <span>{t(entry.labelKey)}</span>
-      </button>
-    )
-  }
-
-  // The "more" sheet holds a destination anyone reaches for occasionally, so
-  // each one is a labelled row rather than an icon to decode.
-  const moreIsActive = MORE.some((entry) => entry.route === route)
+  const entries: SheetEntry[] = [
+    {
+      key: 'open',
+      tone: 'blue',
+      icon: <FolderOpen size={19} />,
+      title: t('action.open'),
+      detail: t('phone.add.open.d'),
+      run: go(() => void openDialog())
+    },
+    {
+      key: 'scan',
+      tone: 'green',
+      icon: <Camera size={19} />,
+      title: t('scan.title'),
+      detail: t('phone.add.scan.d'),
+      run: go(onScan)
+    },
+    {
+      key: 'rich',
+      icon: <FilePlus2 size={19} />,
+      title: t('editor.new.rich'),
+      detail: t('editor.new.rich.d'),
+      run: go(() => void newDocument('rich'))
+    },
+    {
+      key: 'sheet',
+      tone: 'yellow',
+      icon: <FileSpreadsheet size={19} />,
+      title: t('editor.new.sheet'),
+      detail: t('editor.new.sheet.d'),
+      run: go(() => void newDocument('sheet'))
+    },
+    {
+      key: 'tools',
+      tone: 'violet',
+      icon: <Wrench size={19} />,
+      title: t('nav.tools'),
+      detail: t('phone.add.tools.d'),
+      run: go(() => navigate('tools'))
+    },
+    {
+      key: 'organize',
+      tone: 'orange',
+      icon: <LayoutGrid size={19} />,
+      title: t('nav.organize'),
+      detail: t('phone.add.organize.d'),
+      run: go(() => openTool('deletePages', true))
+    }
+  ]
 
   return (
     <>
-      <nav className="phone-nav">
-        {TABS.map(tab)}
+      <div className="phone-bar">
+        <nav className="phone-pill">
+          <button
+            className="pill-btn"
+            aria-label={t('phone.files')}
+            title={t('phone.files')}
+            onClick={() => {
+              tapFeedback()
+              onFiles()
+            }}
+          >
+            <Layers size={20} />
+          </button>
+          <button
+            className={`pill-btn${route === 'settings' ? ' active' : ''}`}
+            aria-label={t('nav.settings')}
+            title={t('nav.settings')}
+            onClick={() => {
+              tapFeedback()
+              navigate(route === 'settings' ? 'home' : 'settings')
+            }}
+          >
+            <UserRound size={20} />
+          </button>
+        </nav>
 
         <button
-          className="phone-scan"
-          title={t('scan.title')}
+          className="phone-add"
+          aria-label={t('phone.add')}
           onClick={() => {
             tapFeedback('medium')
-            onScan()
+            setAdding(true)
           }}
         >
-          <span className="phone-scan-badge">
-            <Camera size={21} />
-          </span>
-          <span>{t('phone.scan')}</span>
+          <Plus size={22} />
         </button>
+      </div>
 
-        {AFTER.map(tab)}
-
-        <button
-          className={`phone-tab${moreIsActive || moreOpen ? ' active' : ''}`}
-          aria-expanded={moreOpen}
-          onClick={() => {
-            tapFeedback()
-            setMoreOpen(true)
-          }}
-        >
-          {moreIsActive && !moreOpen ? (
-            <motion.span layoutId="phone-tab-glow" className="phone-tab-glow" transition={SPRING} />
-          ) : null}
-          <span className="phone-tab-icon">
-            <MoreHorizontal size={21} />
-          </span>
-          <span>{t('phone.more')}</span>
-        </button>
-      </nav>
-
-      <Modal open={moreOpen} onClose={() => setMoreOpen(false)} title={t('phone.more')}>
-        <div className="stack">
-          <p className="muted" style={{ margin: 0, fontSize: 'var(--text-sm)' }}>
-            {t('phone.moreHint')}
-          </p>
-          <div className="more-list">
-            <button
-              className="more-row"
-              onClick={() => {
-                setMoreOpen(false)
-                void openDialog()
-              }}
-            >
-              <span className="more-icon accent">
-                <FolderOpen size={18} />
-              </span>
-              <span className="grow">{t('action.open')}</span>
-            </button>
-            {MORE.map((entry) => (
-              <button
-                key={entry.route}
-                className={`more-row${route === entry.route ? ' active' : ''}`}
-                onClick={() => go(entry.route)}
-              >
-                <span className="more-icon">{entry.icon}</span>
-                <span className="grow">{t(entry.labelKey)}</span>
-                {entry.route === 'organize' && doc ? (
-                  <span className="badge">{doc.pageCount}</span>
-                ) : null}
-              </button>
-            ))}
-          </div>
-        </div>
+      <Modal open={adding} onClose={() => setAdding(false)} title={t('phone.add')}>
+        <SheetCards entries={entries} />
       </Modal>
     </>
   )

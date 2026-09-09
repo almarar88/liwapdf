@@ -25,6 +25,14 @@ export type Route =
   | 'tools'
   | 'settings'
 
+export interface Notice {
+  id: string
+  kind: 'success' | 'error' | 'info'
+  title: string
+  message?: string
+  at: number
+}
+
 export interface Toast {
   id: string
   kind: 'success' | 'error' | 'info'
@@ -197,6 +205,17 @@ interface AppState {
   sidebarCollapsed: boolean
   paletteOpen: boolean
   toasts: Toast[]
+  /**
+   * Everything that has been announced this session, newest first.
+   *
+   * A toast is gone in four seconds, which is fine for "saved" and useless for
+   * "the last three pages could not be recognised" — the message the user
+   * looks back for is exactly the one they were not watching for. The history
+   * is kept in memory only: it describes this run, not the user's documents.
+   */
+  notices: Notice[]
+  /** Notices announced since the list was last opened. */
+  unreadNotices: number
   busy: BusyState | null
   recents: RecentFile[]
 
@@ -221,6 +240,15 @@ interface AppState {
    * grid of tiles to find it in again.
    */
   activeTool: string | null
+  /**
+   * A screen that was opened at a particular entry rather than at its grid.
+   *
+   * The annotate and convert screens both start on a chooser, which is right
+   * when the user arrived to browse and wrong when they tapped "Sign" or
+   * "Word → PDF" and already said what they wanted. The screen reads this once
+   * and clears it, so a later visit still starts where it should.
+   */
+  entryPoint: { screen: 'annotate' | 'convert'; id: string } | null
   /** Tool ids most recently opened, newest first; the toolbox shows them as chips. */
   recentTools: string[]
   /** Tool ids pinned to the dashboard's quick actions. */
@@ -255,6 +283,9 @@ interface AppActions {
 
   notify: (toast: Omit<Toast, 'id'>) => void
   dismissToast: (id: string) => void
+  /** Marks the notice list as seen. */
+  readNotices: () => void
+  clearNotices: () => void
   setBusy: (busy: BusyState | null) => void
   reportError: (error: unknown) => void
 
@@ -288,6 +319,11 @@ interface AppActions {
   /** Opens a tool panel, refusing the ones that need a document when none is open. */
   openTool: (id: string, needsDocument: boolean) => void
   closeTool: () => void
+
+  /** Goes to a screen and opens the named entry on it. */
+  openEntry: (screen: 'annotate' | 'convert', id: string) => void
+  /** Reads the pending entry for a screen and clears it. */
+  takeEntry: (screen: 'annotate' | 'convert') => string | null
 
   openEditorDocument: (loaded: LoadedDocument) => void
   updateEditorHtml: (html: string) => void
@@ -381,6 +417,8 @@ export const useApp = create<AppState & AppActions>((set, get) => ({
   sidebarCollapsed: false,
   paletteOpen: false,
   toasts: [],
+  notices: [],
+  unreadNotices: 0,
   busy: null,
   recents: [],
 
@@ -394,6 +432,7 @@ export const useApp = create<AppState & AppActions>((set, get) => ({
 
   editorDoc: null,
   activeTool: null,
+  entryPoint: null,
   recentTools: readRecentTools(),
   pinnedTools: readList(PINNED_TOOLS_KEY),
   passwordPrompt: null,
@@ -446,8 +485,27 @@ export const useApp = create<AppState & AppActions>((set, get) => ({
 
   notify(toast) {
     const id = uid()
-    set((state) => ({ toasts: [...state.toasts, { ...toast, id }] }))
+    const notice: Notice = {
+      id,
+      kind: toast.kind,
+      title: toast.title,
+      message: toast.message,
+      at: Date.now()
+    }
+    set((state) => ({
+      toasts: [...state.toasts, { ...toast, id }],
+      notices: [notice, ...state.notices].slice(0, 40),
+      unreadNotices: state.unreadNotices + 1
+    }))
     window.setTimeout(() => get().dismissToast(id), toast.kind === 'error' ? 7000 : 4200)
+  },
+
+  readNotices() {
+    set({ unreadNotices: 0 })
+  },
+
+  clearNotices() {
+    set({ notices: [], unreadNotices: 0 })
   },
 
   dismissToast(id) {
@@ -673,6 +731,17 @@ export const useApp = create<AppState & AppActions>((set, get) => ({
 
   closeTool() {
     set({ activeTool: null })
+  },
+
+  openEntry(screen, id) {
+    set({ route: screen, entryPoint: { screen, id }, paletteOpen: false })
+  },
+
+  takeEntry(screen) {
+    const pending = get().entryPoint
+    if (!pending || pending.screen !== screen) return null
+    set({ entryPoint: null })
+    return pending.id
   },
 
   openEditorDocument(loaded) {

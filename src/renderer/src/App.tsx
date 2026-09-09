@@ -42,7 +42,15 @@ const SettingsView = lazy(() =>
   import('./views/SettingsView').then((m) => ({ default: m.SettingsView }))
 )
 
-export default function App(): React.JSX.Element {
+/**
+ * The whole application.
+ *
+ * `home` is the one seam the platform shells are allowed: a phone's home
+ * screen is not a narrower desktop dashboard but a different screen with
+ * different content, and everything after it — the viewer, the editor, the
+ * tools — is genuinely the same app. Passing it in beats a second App.
+ */
+export default function App({ home }: { home?: React.ReactNode } = {}): React.JSX.Element {
   const init = useApp((state) => state.init)
   const setDark = useApp((state) => state.setDark)
   const route = useApp((state) => state.route)
@@ -258,7 +266,7 @@ export default function App(): React.JSX.Element {
   }, [navigate, openDialog, saveActive, t])
 
   const view = {
-    home: <HomeView />,
+    home: home ?? <HomeView />,
     viewer: <ViewerView />,
     organize: <OrganizeView />,
     annotate: <AnnotateView />,

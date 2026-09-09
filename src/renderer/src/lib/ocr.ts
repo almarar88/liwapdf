@@ -204,6 +204,40 @@ export async function recognizeDocument(
 }
 
 /**
+ * Recognises one picture rather than a document.
+ *
+ * A phone photograph is not a page of a PDF: there is nothing to render and
+ * no page number to report, and the caller usually wants the lines rather
+ * than a searchable layer. Everything else — the same bundled models, the
+ * same worker, the same nothing-leaves-the-device promise — is shared with
+ * the document path.
+ */
+export async function recognizeImage(
+  canvas: HTMLCanvasElement,
+  options: {
+    language: OcrLanguage
+    pageSegmentation?: PageSegmentation
+    onProgress?: (fraction: number, stage: string) => void
+  }
+): Promise<{ text: string; lines: string[]; words: OcrWord[]; confidence: number }> {
+  const worker = await workerFor(options.language, (fraction, stage) =>
+    options.onProgress?.(fraction, stage)
+  )
+  await worker.setParameters({
+    tessedit_pageseg_mode: psm(options.pageSegmentation ?? PSM.AUTO),
+    preserve_interword_spaces: '1'
+  })
+  const outcome = await worker.recognize(canvas, {}, { text: true, blocks: true })
+  const text = outcome.data.text ?? ''
+  return {
+    text,
+    lines: text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean),
+    words: wordsOf(outcome.data),
+    confidence: outcome.data.confidence ?? 0
+  }
+}
+
+/**
  * tesseract.js 7 reports words inside blocks/paragraphs/lines rather than as a
  * flat list, so they are collected by walking the tree.
  */

@@ -4,12 +4,17 @@
  * The desktop app is a two-column shell: a title bar with window controls
  * over a fixed sidebar beside the work area. A phone has none of those
  * affordances — no window to drag, no room for a 248px rail, and a thumb
- * rather than a pointer — so this sheet re-lays the same components rather
- * than shipping a second app: the sidebar becomes a bottom tab bar within
- * thumb reach, tool dialogs become sheets that rise from the bottom edge,
- * toolbars scroll sideways instead of wrapping, and every target grows to a
- * size a finger can actually hit. A tablet keeps the rail, because there the
- * hand holds the device at the edges and the extra width is real.
+ * rather than a pointer.
+ *
+ * So the phone gets its own way in: a home screen of four large cards for the
+ * four things the app does, a floating pill and an add button instead of a
+ * tab strip, and a sheet for each card's contents. Everything past that door
+ * — the viewer, the editor, the thirty-three tools — is the same application
+ * the desktop runs, re-laid here rather than rebuilt: dialogs rise from the
+ * bottom edge, toolbars scroll instead of wrapping, side rails become drawers
+ * over the page, and every target grows to a size a finger can hit. A tablet
+ * keeps the desktop rail, because there the hand holds the device at the
+ * edges and the extra width is real.
  *
  * All of it hangs off `html[data-mobile]`, so the desktop build is untouched.
  */
@@ -18,7 +23,8 @@ html[data-mobile] {
   /* Room for the notch, the gesture bar and the tab bar. */
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
-  --tabbar-height: 62px;
+  /* The floating bar's height, which every scrolling screen ends above. */
+  --tabbar-height: 78px;
   --touch: 44px;
   height: 100%;
   overscroll-behavior: none;
@@ -67,8 +73,6 @@ html[data-mobile] select {
   html[data-mobile] .app-body.collapsed {
     grid-template-columns: 1fr;
     grid-template-rows: 1fr;
-    /* The bar is fixed to the bottom edge; the work area ends above it. */
-    padding-bottom: calc(var(--tabbar-height) + var(--safe-bottom));
   }
 
   /* The desktop sidebar does not fold onto a phone: seven long labels in a
@@ -339,153 +343,581 @@ html[data-mobile] .modal:focus-within { padding-bottom: calc(12px + var(--safe-b
   from { opacity: 0; }
   to { opacity: 1; }
 }
-
-/* --------------------------------------------------------- phone navigation */
+/* ------------------------------------------------------------- phone home */
 
 /**
- * Five fixed slots, one word each, the camera raised in the middle.
+ * The four-card home screen.
  *
- * Nothing scrolls and nothing is hidden past an edge: on a phone a navigation
- * bar is a map of the app, and a map you have to drag is not one. The two
- * destinations most opened sit under the thumb, the two next to them are one
- * tap, and the remaining four wait in a labelled sheet behind "more".
+ * Everything the app does is one of four verbs, and on a phone those four are
+ * the whole navigation — so they are given the screen rather than a strip at
+ * the bottom of it. The cards are staggered by a shoulder because a 2×2 of
+ * identical rectangles reads as a wall, and a colour each because a person
+ * reaching for "convert" while walking is aiming at the green one, not
+ * reading a label.
  */
-@media (max-width: 767px) {
-  html[data-mobile] .phone-nav {
-    position: fixed;
-    z-index: 30;
-    inset-inline: 0;
-    inset-block-end: 0;
-    display: grid;
-    grid-template-columns: repeat(5, 1fr);
-    gap: 2px;
-    padding: 5px 6px calc(4px + var(--safe-bottom));
-    border-top: 1px solid var(--hairline);
-    background: color-mix(in srgb, var(--surface-solid) 90%, transparent);
-    backdrop-filter: var(--blur);
-    -webkit-backdrop-filter: var(--blur);
-  }
-  /* A sheet owns the screen while it is open: the bar is fixed outside the
-     app's stacking context, so it cannot be layered under the scrim — it
-     steps aside instead. */
-  html[data-mobile][data-modal] .phone-nav { display: none; }
 
-  html[data-mobile] .phone-tab,
-  html[data-mobile] .phone-scan {
-    position: relative;
+html[data-mobile] {
+  --ph-scan: #ffffff;
+  --ph-edit: #ffd75e;
+  --ph-convert: #cbe792;
+  --ph-ai: #ffa963;
+  --ph-ink: #16181d;
+  --ph-radius: 26px;
+}
+
+@media (prefers-color-scheme: dark) {
+  html[data-mobile] {
+    --ph-scan: #23262d;
+    --ph-edit: #e0b93f;
+    --ph-convert: #a9c774;
+    --ph-ai: #e08c46;
+    --ph-ink: #0d0f13;
+  }
+}
+
+@media (max-width: 767px) {
+  html[data-mobile] .phone-home {
     display: flex;
     flex-direction: column;
+    gap: 14px;
+    min-height: 100%;
+    padding: 14px 14px 4px;
+  }
+  /* The cards own the top of the screen; search and recents sit where the
+     thumb is, just above the bar. */
+  html[data-mobile] .ph-search { margin-block-start: auto; }
+
+  html[data-mobile] .ph-top {
+    display: flex;
     align-items: center;
-    justify-content: center;
-    gap: 3px;
-    min-width: 0;
-    min-height: 52px;
-    padding: 0 2px;
-    border: none;
-    border-radius: var(--r-md);
-    background: none;
-    color: var(--fg-3);
-    font: inherit;
-    font-size: 10.5px;
-    line-height: 1.15;
-    font-weight: 550;
-    transition: color var(--dur-fast) var(--ease-out);
+    justify-content: space-between;
+    gap: 8px;
   }
-  /* The label only: the pill and the icon are spans too, and clipping them to
-     one ellipsised line collapses them to nothing. */
-  html[data-mobile] .phone-tab > span:last-child,
-  html[data-mobile] .phone-scan > span:last-child {
+
+  html[data-mobile] .ph-round {
     position: relative;
-    z-index: 1;
-    max-width: 100%;
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-  }
-  html[data-mobile] .phone-tab.active { color: var(--accent); }
-  html[data-mobile] .phone-tab:active { transform: scale(0.96); }
-
-  /* The moving pill behind the active tab, carried between slots by the same
-     shared-layout animation the desktop sidebar uses. */
-  html[data-mobile] .phone-tab-glow {
-    position: absolute;
-    inset: 2px 0;
-    z-index: 0;
-    border-radius: var(--r-md);
-    background: color-mix(in srgb, var(--accent) 15%, transparent);
-  }
-
-  html[data-mobile] .phone-tab-icon { position: relative; z-index: 1; display: block; }
-  /* A document is open: the tab that leads to it says so without a number
-     nobody reads at 10px. */
-  html[data-mobile] .phone-tab-dot {
-    position: absolute;
-    inset-block-start: -1px;
-    inset-inline-end: -3px;
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    background: var(--accent);
-    box-shadow: 0 0 0 2px var(--surface-solid);
-  }
-
-  /* Scanning is the one thing only a phone can do, so it is the one control
-     that stands up off the bar. */
-  html[data-mobile] .phone-scan { color: var(--accent); }
-  html[data-mobile] .phone-scan-badge {
     display: grid;
     place-items: center;
     width: 42px;
     height: 42px;
-    margin-top: -14px;
+    border: 1px solid var(--hairline-soft);
     border-radius: 50%;
+    background: var(--surface-solid);
+    color: var(--fg-2);
+    box-shadow: var(--shadow-xs);
+  }
+  html[data-mobile] .ph-round:active { transform: scale(0.93); }
+  html[data-mobile] .ph-round.dark {
+    border-color: transparent;
+    background: var(--ph-ink);
     color: #fff;
-    background: linear-gradient(140deg, var(--accent), var(--accent-strong));
-    box-shadow: 0 8px 18px color-mix(in srgb, var(--accent) 42%, transparent);
+  }
+
+  html[data-mobile] .ph-badge {
+    position: absolute;
+    inset-block-start: -2px;
+    inset-inline-end: -2px;
+    min-width: 19px;
+    height: 19px;
+    padding: 0 5px;
+    border-radius: var(--r-full);
+    background: var(--red, #e5484d);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    font-style: normal;
+    line-height: 19px;
+    text-align: center;
+    box-shadow: 0 0 0 2px var(--surface-solid);
+  }
+
+  /* Two columns; the second starts a shoulder lower so the four read as a
+     path down the screen rather than as a grid. */
+  html[data-mobile] .ph-cards {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    align-items: start;
+  }
+  html[data-mobile] .ph-cards > *:nth-child(2),
+  html[data-mobile] .ph-cards > *:nth-child(4) {
+    margin-block-start: -22px;
+  }
+
+  html[data-mobile] .ph-card {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-height: 168px;
+    padding: 14px 16px 16px;
+    border: none;
+    border-radius: var(--ph-radius);
+    background: var(--surface-solid);
+    color: var(--ph-ink);
+    text-align: start;
+    box-shadow: 0 8px 22px rgb(0 0 0 / 7%);
     transition: transform var(--dur-fast) var(--ease-out);
   }
-  html[data-mobile] .phone-scan:active .phone-scan-badge { transform: scale(0.92); }
+  html[data-mobile] .ph-card.tall { min-height: 198px; }
+  html[data-mobile] .ph-card:active { transform: scale(0.97); }
 
-  /* The rest of the map, as rows that say what they are. */
-  html[data-mobile] .more-list { display: flex; flex-direction: column; gap: 6px; }
-  html[data-mobile] .more-row {
+  html[data-mobile] .ph-card-icon {
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    margin-block-end: auto;
+    border-radius: 50%;
+    background: rgb(255 255 255 / 72%);
+    color: var(--ph-ink);
+  }
+  html[data-mobile] .ph-card b {
+    font-size: 21px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+  }
+  html[data-mobile] .ph-card > span:last-child {
+    font-size: 11.5px;
+    line-height: 1.35;
+    opacity: 0.66;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  html[data-mobile] .ph-scan {
+    background: var(--ph-scan);
+    border: 1px solid var(--hairline-soft);
+  }
+  html[data-mobile] .ph-scan .ph-card-icon { background: var(--surface-sunken); }
+  html[data-mobile] .ph-edit { background: var(--ph-edit); }
+  html[data-mobile] .ph-convert { background: var(--ph-convert); }
+  html[data-mobile] .ph-ai { background: var(--ph-ai); }
+
+  /* Search, with the microphone at the end where the thumb already is. */
+  html[data-mobile] .ph-search {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: 54px;
+    padding: 0 6px 0 18px;
+    padding-inline: 18px 6px;
+    border: 1px solid var(--hairline-soft);
+    border-radius: var(--r-full);
+    background: var(--surface-solid);
+    color: var(--fg-3);
+    box-shadow: var(--shadow-xs);
+  }
+  html[data-mobile] .ph-search input {
+    flex: 1;
+    min-width: 0;
+    border: none;
+    background: none;
+    color: var(--fg);
+    font: inherit;
+    font-size: 15px;
+    outline: none;
+  }
+  html[data-mobile] .ph-voice {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 42px;
+    height: 42px;
+    border: none;
+    border-radius: 50%;
+    color: #fff;
+    background: linear-gradient(140deg, var(--ph-ai), #f08a3c);
+  }
+  html[data-mobile] .ph-voice:active { transform: scale(0.93); }
+
+  /* Recently opened, as a row that scrolls under the thumb. */
+  html[data-mobile] .ph-strip {
+    display: flex;
+    gap: 10px;
+    overflow-x: auto;
+    padding-block-end: 6px;
+    margin-inline: -14px;
+    padding-inline: 14px;
+    scrollbar-width: none;
+  }
+  html[data-mobile] .ph-strip::-webkit-scrollbar { display: none; }
+  /* With nothing opened yet the strip would be an empty band; this is the
+     one thing to do instead, said as a target rather than as a sentence. */
+  html[data-mobile] .ph-empty {
     display: flex;
     align-items: center;
     gap: 12px;
     width: 100%;
-    min-height: 54px;
-    padding: 8px 12px;
-    border: 1px solid var(--hairline-soft);
-    border-radius: var(--r-md);
-    background: var(--surface-solid);
-    color: var(--fg);
+    padding: 16px;
+    border: 1.5px dashed var(--hairline);
+    border-radius: 20px;
+    background: none;
+    color: var(--fg-3);
     font: inherit;
-    font-size: var(--text-base);
-    font-weight: 550;
+    font-size: var(--text-sm);
     text-align: start;
   }
-  html[data-mobile] .more-row:active { background: var(--surface-2); }
-  html[data-mobile] .more-row.active {
-    border-color: color-mix(in srgb, var(--accent) 55%, transparent);
-    background: color-mix(in srgb, var(--accent) 8%, var(--surface-solid));
+  html[data-mobile] .ph-empty:active { background: var(--surface-sunken); }
+  html[data-mobile] .ph-empty span { display: grid; place-items: center; color: var(--accent); }
+
+  html[data-mobile] .ph-file {
+    flex: none;
+    width: 152px;
+    padding: 10px;
+    border: 1px solid var(--hairline-soft);
+    border-radius: 18px;
+    background: var(--surface-solid);
+    box-shadow: var(--shadow-xs);
+  }
+  html[data-mobile] .ph-file-top {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-block-end: 10px;
+  }
+  html[data-mobile] .ph-file-act {
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    border: none;
+    border-radius: 9px;
+    background: var(--surface-sunken);
+    color: var(--fg-2);
+  }
+  html[data-mobile] .ph-file-act:active { background: var(--surface-2); }
+  html[data-mobile] .ph-file-glyph {
+    margin-inline-start: auto;
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 9px;
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
     color: var(--accent);
   }
-  html[data-mobile] .more-icon {
-    flex: none;
+  /* The colour says what kind of file it is before the name is read. */
+  html[data-mobile] .ph-file.kind-image .ph-file-glyph {
+    background: color-mix(in srgb, var(--tone-green, #30a46c) 15%, transparent);
+    color: var(--tone-green, #30a46c);
+  }
+  html[data-mobile] .ph-file.kind-docx .ph-file-glyph {
+    background: color-mix(in srgb, var(--tone-amber, #f5a524) 18%, transparent);
+    color: var(--tone-amber, #f5a524);
+  }
+  html[data-mobile] .ph-file-name {
+    display: block;
+    width: 100%;
+    padding: 0;
+    border: none;
+    background: none;
+    color: var(--fg);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.3;
+    text-align: start;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+  html[data-mobile] .ph-file-size {
+    display: block;
+    /* "34 KB" is a number and a unit, not a phrase: it keeps its order in an
+       Arabic interface. */
+    direction: ltr;
+    text-align: start;
+    margin-block-start: 3px;
+    color: var(--fg-3);
+    font-size: 11px;
+  }
+
+  /* ------------------------------------------------------------- the bar */
+
+  /**
+   * A floating pill and a button, not a tab strip.
+   *
+   * With two destinations and one action, a full-width bar is nine tenths
+   * background painted over the document. This leaves the page visible on
+   * both sides of it.
+   */
+  html[data-mobile] .phone-bar {
+    position: fixed;
+    z-index: 30;
+    inset-inline: 16px;
+    inset-block-end: calc(14px + var(--safe-bottom));
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    pointer-events: none;
+  }
+  html[data-mobile][data-modal] .phone-bar { display: none; }
+
+  html[data-mobile] .phone-pill,
+  html[data-mobile] .phone-add {
+    pointer-events: auto;
+    border: none;
+    background: var(--ph-ink);
+    color: #fff;
+    box-shadow: 0 10px 28px rgb(0 0 0 / 26%);
+  }
+  html[data-mobile] .phone-pill {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 5px;
+    border-radius: var(--r-full);
+  }
+  html[data-mobile] .pill-btn {
+    display: grid;
+    place-items: center;
+    width: 48px;
+    height: 48px;
+    border: none;
+    border-radius: 50%;
+    background: none;
+    color: rgb(255 255 255 / 62%);
+    transition: color var(--dur-fast), background var(--dur-fast);
+  }
+  html[data-mobile] .pill-btn.active {
+    background: rgb(255 255 255 / 14%);
+    color: #fff;
+  }
+  html[data-mobile] .pill-btn:active { transform: scale(0.92); }
+
+  html[data-mobile] .phone-add {
+    margin-inline-start: auto;
+    display: grid;
+    place-items: center;
+    width: 58px;
+    height: 58px;
+    border-radius: 50%;
+  }
+  html[data-mobile] .phone-add:active { transform: scale(0.93); }
+
+  /* Room for the bar at the end of every scrolling screen. */
+  html[data-mobile] .app-body,
+  html[data-mobile] .app-body.collapsed {
+    padding-bottom: calc(var(--tabbar-height) + var(--safe-bottom));
+  }
+
+  /* ---------------------------------------------------------- files screen */
+
+  html[data-mobile] .phone-files {
+    position: fixed;
+    inset: 0;
+    z-index: 45;
+    display: flex;
+    flex-direction: column;
+    /* Opaque on purpose: --surface is translucent, and a full-screen panel
+       that lets the home screen through is unreadable. */
+    background: var(--bg);
+    animation: sheet-rise var(--dur) cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  html[data-mobile] .pf-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: calc(10px + var(--safe-top)) 14px 12px;
+    background: var(--ph-ink);
+  }
+  html[data-mobile] .pf-search {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    height: 44px;
+    padding-inline: 14px;
+    border-radius: var(--r-full);
+    background: rgb(255 255 255 / 12%);
+    color: rgb(255 255 255 / 62%);
+  }
+  html[data-mobile] .pf-search input {
+    flex: 1;
+    min-width: 0;
+    border: none;
+    background: none;
+    color: #fff;
+    font: inherit;
+    outline: none;
+  }
+  html[data-mobile] .pf-search input::placeholder { color: rgb(255 255 255 / 52%); }
+
+  html[data-mobile] .pf-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 14px calc(90px + var(--safe-bottom));
+  }
+  html[data-mobile] .pf-body h2 {
+    margin: 18px 0 10px;
+    font-size: 19px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+  html[data-mobile] .pf-body section:first-child h2 { margin-top: 0; }
+  html[data-mobile] .pf-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  html[data-mobile] .pf-grid .ph-file { width: auto; }
+  html[data-mobile] .pf-empty {
+    display: grid;
+    gap: 12px;
+    justify-items: center;
+    padding: 60px 0;
+    color: var(--fg-3);
+    text-align: center;
+  }
+  html[data-mobile] .pf-empty p { margin: 0; }
+
+  /* ------------------------------------------------------------- sheets */
+
+  html[data-mobile] .sheet-cards {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  html[data-mobile] .sheet-card {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    min-height: 116px;
+    padding: 13px 14px 14px;
+    border: 1px solid var(--hairline-soft);
+    border-radius: 20px;
+    background: var(--surface-solid);
+    color: var(--fg);
+    text-align: start;
+  }
+  html[data-mobile] .sheet-card:active { transform: scale(0.97); }
+  html[data-mobile] .sheet-card:disabled { opacity: 0.45; }
+  html[data-mobile] .sheet-card-icon {
     display: grid;
     place-items: center;
     width: 36px;
     height: 36px;
-    border-radius: var(--r-md);
+    margin-block-end: auto;
+    border-radius: 50%;
     background: var(--surface-sunken);
     color: var(--fg-2);
   }
-  html[data-mobile] .more-row.active .more-icon { color: var(--accent); }
-  html[data-mobile] .more-icon.accent {
-    background: color-mix(in srgb, var(--accent) 14%, transparent);
-    color: var(--accent);
+  html[data-mobile] .sheet-card b { font-size: 15px; font-weight: 650; line-height: 1.2; }
+  html[data-mobile] .sheet-card > span:last-child {
+    font-size: 11px;
+    line-height: 1.35;
+    color: var(--fg-3);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  html[data-mobile] .sheet-card.tone-yellow { background: var(--ph-edit); border-color: transparent; color: var(--ph-ink); }
+  html[data-mobile] .sheet-card.tone-green { background: var(--ph-convert); border-color: transparent; color: var(--ph-ink); }
+  html[data-mobile] .sheet-card.tone-orange { background: var(--ph-ai); border-color: transparent; color: var(--ph-ink); }
+  html[data-mobile] .sheet-card.tone-blue { background: color-mix(in srgb, var(--accent) 16%, var(--surface-solid)); border-color: transparent; }
+  html[data-mobile] .sheet-card.tone-violet { background: color-mix(in srgb, #8b5cf6 16%, var(--surface-solid)); border-color: transparent; }
+  html[data-mobile] .sheet-card.tone-yellow > span:last-child,
+  html[data-mobile] .sheet-card.tone-green > span:last-child,
+  html[data-mobile] .sheet-card.tone-orange > span:last-child { color: inherit; opacity: 0.66; }
+  html[data-mobile] .sheet-card.tone-yellow .sheet-card-icon,
+  html[data-mobile] .sheet-card.tone-green .sheet-card-icon,
+  html[data-mobile] .sheet-card.tone-orange .sheet-card-icon {
+    background: rgb(255 255 255 / 66%);
+    color: var(--ph-ink);
   }
 }
+
+/* ------------------------------------------------- results inside a sheet */
+
+/* These are read on a tablet too, so they are not inside the phone query. */
+
+html[data-mobile] .notice-list { display: flex; flex-direction: column; gap: 8px; }
+html[data-mobile] .notice {
+  display: flex;
+  gap: 11px;
+  padding: 11px 12px;
+  border: 1px solid var(--hairline-soft);
+  border-radius: var(--r-md);
+  background: var(--surface-solid);
+}
+html[data-mobile] .notice b { font-size: var(--text-sm); }
+html[data-mobile] .notice p { margin: 3px 0 4px; font-size: var(--text-xs); color: var(--fg-2); }
+html[data-mobile] .notice .muted { font-size: 11px; }
+html[data-mobile] .notice-icon { flex: none; color: var(--fg-3); }
+html[data-mobile] .notice.kind-success .notice-icon { color: var(--tone-green, #30a46c); }
+html[data-mobile] .notice.kind-error .notice-icon { color: var(--red, #e5484d); }
+html[data-mobile] .notice.kind-info .notice-icon { color: var(--accent); }
+
+html[data-mobile] .count-total {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: var(--r-md);
+  background: var(--surface-sunken);
+}
+html[data-mobile] .count-total svg { align-self: center; color: var(--accent); }
+html[data-mobile] .count-total b { font-size: 30px; font-weight: 700; font-variant-numeric: tabular-nums; }
+html[data-mobile] .count-total span { color: var(--fg-3); font-size: var(--text-sm); }
+
+html[data-mobile] .count-view,
+html[data-mobile] .measure-view {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: var(--r-md);
+  border: 1px solid var(--hairline);
+  background: var(--surface-2);
+  touch-action: none;
+}
+
+html[data-mobile] .math-list { display: flex; flex-direction: column; gap: 8px; }
+html[data-mobile] .math-row {
+  display: grid;
+  gap: 3px;
+  padding: 11px 13px;
+  border: 1px solid var(--hairline-soft);
+  border-radius: var(--r-md);
+  background: var(--surface-solid);
+}
+html[data-mobile] .math-problem { font-family: var(--mono, monospace); font-size: var(--text-sm); color: var(--fg-2); }
+html[data-mobile] .math-row b { font-size: 20px; font-weight: 700; color: var(--accent); }
+html[data-mobile] .math-steps { font-size: 11px; color: var(--fg-3); }
+
+html[data-mobile] .ai-tabs { overflow-x: auto; scrollbar-width: none; margin-inline: -2px; padding-inline: 2px; }
+html[data-mobile] .ai-tabs::-webkit-scrollbar { display: none; }
+html[data-mobile] .ai-tabs .segmented { width: max-content; }
+html[data-mobile] .ai-answer {
+  max-height: 42vh;
+  overflow-y: auto;
+  padding: 12px 13px;
+  border: 1px solid var(--hairline-soft);
+  border-radius: var(--r-md);
+  background: var(--surface-sunken);
+  font-size: var(--text-sm);
+  line-height: 1.75;
+  white-space: pre-wrap;
+  -webkit-user-select: text;
+  user-select: text;
+}
+html[data-mobile] .ai-privacy {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--r-md);
+  background: color-mix(in srgb, var(--tone-green, #30a46c) 10%, transparent);
+  color: var(--fg-2);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+html[data-mobile] .ai-privacy svg { flex: none; margin-block-start: 1px; color: var(--tone-green, #30a46c); }
 
 /* ------------------------------------------------------------- scanning */
 
