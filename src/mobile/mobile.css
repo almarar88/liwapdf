@@ -394,6 +394,34 @@ html[data-mobile] {
     gap: 8px;
   }
 
+  html[data-mobile] .ph-top-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  /* Arabic and English are both first-class here, and the app is used by
+     people who switch between them mid-task — so the switch is one tap from
+     the home screen rather than four taps into settings. */
+  html[data-mobile] .ph-lang {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 42px;
+    padding-inline: 14px;
+    border: 1px solid var(--hairline-soft);
+    border-radius: var(--r-full);
+    background: var(--surface-solid);
+    color: var(--fg-2);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+    box-shadow: var(--shadow-xs);
+  }
+  html[data-mobile] .ph-lang:active { transform: scale(0.95); }
+  html[data-mobile] .ph-lang svg { color: var(--accent); }
+
   html[data-mobile] .ph-round {
     position: relative;
     display: grid;

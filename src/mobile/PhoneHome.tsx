@@ -15,7 +15,8 @@ import {
   FileType2,
   Share2,
   Repeat,
-  FolderOpen
+  FolderOpen,
+  Languages
 } from 'lucide-react'
 import { useApp } from '../renderer/src/store/app'
 import { useDocumentActions } from '../renderer/src/hooks/useDocumentActions'
@@ -43,6 +44,8 @@ export function PhoneHome({ onSheet }: { onSheet: (sheet: Sheet) => void }): Rea
   const t = useApp((state) => state.t)
   const recents = useApp((state) => state.recents)
   const unread = useApp((state) => state.unreadNotices)
+  const language = useApp((state) => state.settings.language)
+  const setSettings = useApp((state) => state.setSettings)
   const [query, setQuery] = useState('')
   const { openDialog, openPaths } = useDocumentActions()
 
@@ -99,9 +102,28 @@ export function PhoneHome({ onSheet }: { onSheet: (sheet: Sheet) => void }): Rea
   return (
     <div className="phone-home">
       <header className="ph-top">
-        <button className="ph-round" aria-label={t('phone.help')} onClick={() => onSheet('ai')}>
-          <HelpCircle size={19} />
-        </button>
+        <div className="ph-top-group">
+          <button className="ph-round" aria-label={t('phone.help')} onClick={() => onSheet('ai')}>
+            <HelpCircle size={19} />
+          </button>
+          {/* The label is the language you would get, not the one you are in:
+              a toggle that shows its current state leaves the user guessing
+              whether tapping it confirms or changes. */}
+          <button
+            className="ph-lang"
+            lang={language === 'ar' ? 'en' : 'ar'}
+            dir={language === 'ar' ? 'ltr' : 'rtl'}
+            aria-label={t('settings.language')}
+            title={t('settings.language')}
+            onClick={() => {
+              tapFeedback()
+              void setSettings({ language: language === 'ar' ? 'en' : 'ar' })
+            }}
+          >
+            <Languages size={15} />
+            {language === 'ar' ? 'English' : 'العربية'}
+          </button>
+        </div>
         <button
           className="ph-round"
           aria-label={t('phone.notices')}
