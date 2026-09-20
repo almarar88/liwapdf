@@ -53,6 +53,13 @@ export interface Poem {
   recordingSeconds: number
   createdAt: number
   updatedAt: number
+  /** Set instead of deleting, so the deletion reaches the other devices. */
+  deletedAt?: number | null
+  /** When the recording was made; the sync layer uploads it once it is newer than the copy. */
+  recordingAt?: number
+  /** Sync bookkeeping, local only: the updatedAt the cloud last saw. */
+  syncedAt?: number
+  recordingSyncedAt?: number
 }
 
 /**
@@ -125,7 +132,8 @@ export function emptyPoem(id: string, verseId: string): Poem {
     hasRecording: false,
     recordingSeconds: 0,
     createdAt: now,
-    updatedAt: now
+    updatedAt: now,
+    deletedAt: null
   }
 }
 

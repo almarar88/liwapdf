@@ -1,123 +1,74 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo } from 'react'
 import { motion } from 'framer-motion'
-import {
-  Bell,
-  HelpCircle,
-  Search,
-  AudioLines,
-  ScanLine,
-  PenSquare,
-  Repeat2,
-  Sparkles,
-  FileText,
-  FileSpreadsheet,
-  Image as ImageIcon,
-  FileType2,
-  Share2,
-  Repeat,
-  FolderOpen,
-  Languages,
-  Check,
-  Feather,
-  ChevronLeft,
-  ChevronRight
-} from 'lucide-react'
+import { BookOpen, CalendarDays, ChevronLeft, ChevronRight, Feather, Languages, PenLine, UserRound } from 'lucide-react'
 import { useApp } from '../renderer/src/store/app'
-import { useDocumentActions } from '../renderer/src/hooks/useDocumentActions'
-import type { RecentFile } from '@shared/types'
-import { toolById } from '../renderer/src/views/toolRegistry'
+import { useJournal } from '../renderer/src/store/journal'
+import { useDiwan } from '../renderer/src/store/diwan'
+import { useAccount } from '../renderer/src/store/account'
+import { MOODS, entryExcerpt, todayIso, wordCount, type JournalEntry } from '../renderer/src/lib/journal/types'
+import { poemLabel } from '../renderer/src/lib/diwan/types'
+import { formatRelativeTime } from '../renderer/src/lib/format'
 import { tapFeedback } from './shell'
+import '../renderer/src/styles/journal.css'
 
 /**
- * The phone's home screen.
+ * The phone's home screen: tonight's page, and the way to the two books.
  *
- * Everything this app can do fits in four verbs — scan a thing, edit a thing,
- * turn it into another format, read it for me — and on a phone that is the
- * whole navigation. Four cards big enough to hit without looking, a search
- * field, and the files you had open last: nothing else earns a place above
- * the fold on a screen this size.
- *
- * The cards are staggered rather than gridded because a 2×2 of identical
- * rectangles reads as a wall; offsetting the second column by a card's
- * shoulder gives the eye a path down the screen and makes the four distinct
- * at a glance rather than after reading four labels.
+ * A journal app has one job at 11pm, which is to open on the page for
+ * today with the keyboard one tap away. So the first thing on the screen
+ * is that page, then the two shelves — the days and the poems — with
+ * their counts, then the last few days written, for the pleasure of
+ * reading them back. There is no toolbox: the app does two things.
  */
-
-export type Sheet = 'scan' | 'edit' | 'convert' | 'ai' | 'notices' | 'files' | null
-
-export function PhoneHome({ onSheet }: { onSheet: (sheet: Sheet) => void }): React.JSX.Element {
+export function PhoneHome(): React.JSX.Element {
   const t = useApp((state) => state.t)
-  const recents = useApp((state) => state.recents)
-  const unread = useApp((state) => state.unreadNotices)
+  const navigate = useApp((state) => state.navigate)
   const language = useApp((state) => state.settings.language)
   const setSettings = useApp((state) => state.setSettings)
-  const recentTools = useApp((state) => state.recentTools)
-  const openTool = useApp((state) => state.openTool)
-  const navigate = useApp((state) => state.navigate)
-  const [query, setQuery] = useState('')
-  const { openDialog, openPaths } = useDocumentActions()
+  const entries = useJournal((state) => state.entries)
+  const journalLoaded = useJournal((state) => state.loaded)
+  const loadJournal = useJournal((state) => state.load)
+  const openToday = useJournal((state) => state.openToday)
+  const openEntry = useJournal((state) => state.open)
+  const poems = useDiwan((state) => state.poems)
+  const diwanLoaded = useDiwan((state) => state.loaded)
+  const loadDiwan = useDiwan((state) => state.load)
+  const profile = useAccount((state) => state.profile)
+  const user = useAccount((state) => state.user)
 
-  const matches = useMemo(() => {
-    const needle = query.trim().toLowerCase()
-    const list = needle
-      ? recents.filter((file) => file.name.toLowerCase().includes(needle))
-      : recents
-    return list.slice(0, 12)
-  }, [recents, query])
+  useEffect(() => {
+    if (!journalLoaded) void loadJournal()
+    if (!diwanLoaded) void loadDiwan()
+  }, [journalLoaded, loadJournal, diwanLoaded, loadDiwan])
 
-  const cards: {
-    key: Exclude<Sheet, null>
-    icon: React.JSX.Element
-    title: string
-    lines: string
-  }[] = [
-    {
-      key: 'scan',
-      icon: <ScanLine size={20} />,
-      title: t('phone.card.scan'),
-      lines: t('phone.card.scan.d')
-    },
-    {
-      key: 'edit',
-      icon: <PenSquare size={20} />,
-      title: t('phone.card.edit'),
-      lines: t('phone.card.edit.d')
-    },
-    {
-      key: 'convert',
-      icon: <Repeat2 size={20} />,
-      title: t('phone.card.convert'),
-      lines: t('phone.card.convert.d')
-    },
-    {
-      key: 'ai',
-      icon: <Sparkles size={20} />,
-      title: t('phone.card.ai'),
-      lines: t('phone.card.ai.d')
-    }
-  ]
+  const today = todayIso()
+  const todayEntry = entries.find((entry) => entry.day === today)
+  const recent = useMemo(() => entries.filter((entry) => entry.day !== today).slice(0, 4), [entries, today])
+  const year = today.slice(0, 4)
+  const daysThisYear = entries.filter((entry) => entry.day.startsWith(year)).length
+  const words = entries.reduce((sum, entry) => sum + wordCount(entry.body), 0)
+  const hour = new Date().getHours()
+  const greeting = hour < 12 ? t('phone.greeting.morning') : t('phone.greeting.evening')
+  const name = profile.displayName || profile.poetName
+  const Chevron = language === 'ar' ? ChevronLeft : ChevronRight
 
-  const open = (key: Exclude<Sheet, null>): void => {
+  const go = (run: () => void): void => {
     tapFeedback('medium')
-    onSheet(key)
+    run()
   }
 
   return (
     <div className="phone-home">
       <header className="ph-top">
         <div className="ph-top-group">
-          <button className="ph-round" aria-label={t('phone.help')} onClick={() => onSheet('ai')}>
-            <HelpCircle size={19} />
+          <button className="ph-round" aria-label={t('nav.account')} onClick={() => go(() => navigate('account'))}>
+            {user ? <span className="ph-avatar">{(name || user.email || '?').charAt(0).toUpperCase()}</span> : <UserRound size={19} />}
           </button>
-          {/* The label is the language you would get, not the one you are in:
-              a toggle that shows its current state leaves the user guessing
-              whether tapping it confirms or changes. */}
           <button
             className="ph-lang"
             lang={language === 'ar' ? 'en' : 'ar'}
             dir={language === 'ar' ? 'ltr' : 'rtl'}
             aria-label={t('settings.language')}
-            title={t('settings.language')}
             onClick={() => {
               tapFeedback()
               void setSettings({ language: language === 'ar' ? 'en' : 'ar' })
@@ -127,196 +78,143 @@ export function PhoneHome({ onSheet }: { onSheet: (sheet: Sheet) => void }): Rea
             {language === 'ar' ? 'English' : 'العربية'}
           </button>
         </div>
-        <button
-          className="ph-round"
-          aria-label={t('phone.notices')}
-          onClick={() => onSheet('notices')}
-        >
-          <Bell size={19} />
-          {unread > 0 ? <i className="ph-badge">{unread > 9 ? '9+' : unread}</i> : null}
-        </button>
       </header>
 
-      <div className="ph-cards">
-        {cards.map((card, index) => (
-          <motion.button
-            key={card.key}
-            className={`ph-card ph-${card.key}`}
-            onClick={() => open(card.key)}
-            initial={{ opacity: 0, y: 14 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.04 * index, duration: 0.34, ease: [0.22, 1, 0.36, 1] }}
-          >
-            <span className="ph-card-icon">{card.icon}</span>
-            <b>{card.title}</b>
-            <span>{card.lines}</span>
-          </motion.button>
-        ))}
+      <div className="ph-greet">
+        <h1>
+          {greeting}
+          {name ? `، ${name}` : ''}
+        </h1>
+        <p>{todayEntry ? t('journal.continue') : t('journal.today.d')}</p>
       </div>
 
-      {/* The poet's room. Not a fifth card — the four are verbs a document
-          goes through, and a diwan is a place you go to — so it gets a
-          banner of its own, in its own paper, under them. */}
       <motion.button
-        className="ph-diwan"
-        onClick={() => {
-          tapFeedback('medium')
-          navigate('diwan')
-        }}
+        className="jn-today ph-today"
+        onClick={() =>
+          go(() => {
+            openToday()
+            navigate('journal')
+          })
+        }
         initial={{ opacity: 0, y: 14 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.18, duration: 0.34, ease: [0.22, 1, 0.36, 1] }}
+        transition={{ duration: 0.34, ease: [0.22, 1, 0.36, 1] }}
       >
-        <span className="ph-diwan-icon">
-          <Feather size={19} />
+        <span className="ic">
+          <PenLine size={20} />
         </span>
-        <span className="ph-diwan-text">
-          <b>{t('phone.card.diwan')}</b>
-          <span>{t('phone.card.diwan.d')}</span>
+        <span className="text">
+          <b>{todayEntry ? t('journal.continue') : t('journal.today')}</b>
+          <span>{todayEntry ? entryExcerpt(todayEntry, 70) || t('journal.today.d') : t('journal.today.d')}</span>
         </span>
-        {language === 'ar' ? <ChevronLeft size={18} /> : <ChevronRight size={18} />}
+        <Chevron size={18} />
       </motion.button>
 
-      {/* What you were doing last. The store already remembered it for the
-          desktop's chip row; on a phone, going back to the tool you used an
-          hour ago is most of what a second visit is. */}
-      {recentTools.length > 0 ? (
-        <div className="ph-tools">
-          {recentTools.slice(0, 6).flatMap((id) => {
-            const tool = toolById(id)
-            if (!tool) return []
-            return [
-              <button
-                key={id}
-                className={`ph-tool tone-${tool.tone}`}
-                onClick={() => {
-                  tapFeedback()
-                  openTool(tool.id, tool.needsDocument)
-                }}
-              >
-                {tool.icon}
-                <span>{t(tool.titleKey)}</span>
-              </button>
-            ]
-          })}
-        </div>
+      <div className="ph-shelves">
+        <motion.button
+          className="ph-shelf"
+          onClick={() =>
+            go(() => {
+              openEntry(null)
+              navigate('journal')
+            })
+          }
+          initial={{ opacity: 0, y: 14 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.06, duration: 0.34, ease: [0.22, 1, 0.36, 1] }}
+        >
+          <span className="ph-shelf-icon">
+            <CalendarDays size={19} />
+          </span>
+          <b>{t('phone.days')}</b>
+          <span>
+            {t('journal.count', { n: entries.length })} · {t('journal.words', { n: words })}
+          </span>
+          <small>
+            {t('phone.this.year')}: {daysThisYear}
+          </small>
+        </motion.button>
+        <motion.button
+          className="ph-shelf poems"
+          onClick={() => go(() => navigate('diwan'))}
+          initial={{ opacity: 0, y: 14 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1, duration: 0.34, ease: [0.22, 1, 0.36, 1] }}
+        >
+          <span className="ph-shelf-icon">
+            <Feather size={19} />
+          </span>
+          <b>{t('phone.poems')}</b>
+          <span>{t('diwan.count', { n: poems.length })}</span>
+          <small>{poems[0] ? poemLabel(poems[0], t('diwan.untitled')) : t('diwan.new.d')}</small>
+        </motion.button>
+      </div>
+
+      {recent.length > 0 ? (
+        <section className="ph-recent">
+          <div className="row between">
+            <h3>{t('journal.recent')}</h3>
+            <button
+              className="ph-more"
+              onClick={() =>
+                go(() => {
+                  openEntry(null)
+                  navigate('journal')
+                })
+              }
+            >
+              {t('journal.all')} <Chevron size={14} />
+            </button>
+          </div>
+          <div className="jn-days">
+            {recent.map((entry) => (
+              <RecentDay
+                key={entry.id}
+                entry={entry}
+                onOpen={() =>
+                  go(() => {
+                    openEntry(entry.id)
+                    navigate('journal')
+                  })
+                }
+              />
+            ))}
+          </div>
+        </section>
       ) : null}
 
-      <div className="ph-search">
-        <Search size={17} />
-        <input
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder={t('phone.searchFiles')}
-          aria-label={t('phone.searchFiles')}
-          enterKeyHint="search"
-        />
-        <button
-          className="ph-voice"
-          aria-label={t('phone.dictate')}
-          onClick={() => onSheet('ai')}
-        >
-          <AudioLines size={17} />
-        </button>
-      </div>
-
-      {matches.length > 0 ? (
-        <div className="ph-strip">
-          {matches.map((file) => (
-            <FileChip key={file.path} file={file} onOpen={() => void openPaths([file.path])} />
-          ))}
-        </div>
-      ) : query ? (
-        <p className="ph-empty">{t('phone.noMatch')}</p>
-      ) : (
-        <button className="ph-empty" onClick={() => void openDialog()}>
-          <span>
-            <FolderOpen size={20} />
-          </span>
-          {t('home.dropSub')}
-        </button>
-      )}
-    </div>
-  )
-}
-
-/**
- * One recently opened file.
- *
- * The two small buttons are the two things anyone does with a file they can
- * see the name of but have not opened: convert it, or send it on. Putting
- * them on the card removes a screen from both journeys.
- */
-export function FileChip({
-  file,
-  onOpen,
-  showSize = false,
-  picked
-}: {
-  file: RecentFile
-  onOpen: () => void
-  showSize?: boolean
-  /** Undefined outside selection mode; true or false inside it. */
-  picked?: boolean
-}): React.JSX.Element {
-  const t = useApp((state) => state.t)
-  const openEntry = useApp((state) => state.openEntry)
-  const notify = useApp((state) => state.notify)
-
-  return (
-    <div className={`ph-file kind-${file.kind}${picked ? ' picked' : ''}`}>
-      <div className="ph-file-top">
-        {picked === undefined ? (
-          <>
-            <button
-              className="ph-file-act"
-              aria-label={t('nav.convert')}
-              title={t('nav.convert')}
-              onClick={() => openEntry('convert', converterFor(file))}
-            >
-              <Repeat size={13} />
-            </button>
-            <button
-              className="ph-file-act"
-              aria-label={t('action.share')}
-              title={t('action.share')}
-              onClick={() => {
-                void window.alcode.shell.reveal(file.path).catch(() => {
-                  notify({ kind: 'error', title: t('msg.error') })
-                })
-              }}
-            >
-              <Share2 size={13} />
-            </button>
-          </>
-        ) : (
-          // In selection mode the two shortcuts would be two ways to lose the
-          // selection, so the tick takes their place.
-          <span className={`ph-file-tick${picked ? ' on' : ''}`}>
-            {picked ? <Check size={13} /> : null}
-          </span>
-        )}
-        <span className="ph-file-glyph">{glyph(file.kind)}</span>
-      </div>
-      <button className="ph-file-name" onClick={onOpen}>
-        <bdi>{file.name}</bdi>
+      <button className="ph-diwan" onClick={() => go(() => navigate('diwan'))}>
+        <span className="ph-diwan-icon">
+          <BookOpen size={19} />
+        </span>
+        <span className="ph-diwan-text">
+          <b>{t('nav.diwan')}</b>
+          <span>{t('phone.card.diwan.d')}</span>
+        </span>
+        <Chevron size={18} />
       </button>
-      {showSize ? <span className="ph-file-size">{Math.max(1, Math.round(file.size / 1024))} KB</span> : null}
     </div>
   )
 }
 
-function glyph(kind: RecentFile['kind']): React.JSX.Element {
-  if (kind === 'image') return <ImageIcon size={13} />
-  if (kind === 'pdf') return <FileText size={13} />
-  if (kind === 'docx') return <FileType2 size={13} />
-  return <FileSpreadsheet size={13} />
-}
-
-/** The conversion a file of this kind is most often asked for. */
-function converterFor(file: RecentFile): string {
-  if (file.kind === 'image') return 'imagesToPdf'
-  if (file.kind === 'docx') return 'wordToPdf'
-  if (file.kind === 'text') return 'textToPdf'
-  return 'pdfToImages'
+function RecentDay({ entry, onOpen }: { entry: JournalEntry; onOpen: () => void }): React.JSX.Element {
+  const language = useApp((state) => state.settings.language)
+  const mood = MOODS.find((item) => item.key === entry.mood)
+  const date = new Date(`${entry.day}T12:00:00`)
+  return (
+    <button className="jn-day" onClick={onOpen}>
+      <span className="date">
+        <b>{new Intl.DateTimeFormat(language === 'ar' ? 'ar-SA-u-nu-arab-ca-gregory' : 'en-GB', { day: 'numeric' }).format(date)}</b>
+        <span>{new Intl.DateTimeFormat(language === 'ar' ? 'ar' : 'en-GB', { month: 'short' }).format(date)}</span>
+      </span>
+      <span className="text">
+        {entry.title.trim() ? <b dir="auto">{entry.title.trim()}</b> : null}
+        <span dir="auto">{entryExcerpt(entry) || '…'}</span>
+        <span className="meta">
+          {mood ? <span>{mood.glyph}</span> : null}
+          <span>{formatRelativeTime(entry.updatedAt, language)}</span>
+        </span>
+      </span>
+    </button>
+  )
 }

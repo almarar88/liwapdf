@@ -1,8 +1,10 @@
 import { Fragment, Suspense, lazy, useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, MotionConfig, motion } from 'framer-motion'
 import {
+  BookOpen,
   Feather,
   FileText,
+  UserRound,
   FolderOpen,
   Home,
   Keyboard,
@@ -15,6 +17,7 @@ import {
   Wrench
 } from 'lucide-react'
 import { useApp, type Route } from './store/app'
+import { useAccount } from './store/account'
 import { useDocumentActions } from './hooks/useDocumentActions'
 import { TitleBar } from './components/TitleBar'
 import { Sidebar } from './components/Sidebar'
@@ -44,6 +47,12 @@ const SettingsView = lazy(() =>
 )
 const DiwanView = lazy(() =>
   import('./views/diwan/DiwanView').then((m) => ({ default: m.DiwanView }))
+)
+const JournalView = lazy(() =>
+  import('./views/journal/JournalView').then((m) => ({ default: m.JournalView }))
+)
+const AccountView = lazy(() =>
+  import('./views/account/AccountView').then((m) => ({ default: m.AccountView }))
 )
 
 /**
@@ -119,6 +128,7 @@ export default function App({ home }: { home?: React.ReactNode } = {}): React.JS
 
   useEffect(() => {
     void init()
+    void useAccount.getState().init()
     // Chromium hands initial focus to the first enabled control when the
     // window is activated, which is a title-bar button — and that paints a
     // keyboard focus ring on a fresh launch nobody pressed a key for. Until
@@ -248,6 +258,8 @@ export default function App({ home }: { home?: React.ReactNode } = {}): React.JS
       { id: 'nav-convert', label: t('nav.convert'), icon: <Repeat2 size={15} />, run: () => navigate('convert') },
       { id: 'nav-tools', label: t('nav.tools'), icon: <Wrench size={15} />, run: () => navigate('tools') },
       { id: 'nav-diwan', label: t('nav.diwan'), icon: <Feather size={15} />, run: () => navigate('diwan') },
+      { id: 'nav-journal', label: t('nav.journal'), icon: <BookOpen size={15} />, run: () => navigate('journal') },
+      { id: 'nav-account', label: t('nav.account'), icon: <UserRound size={15} />, run: () => navigate('account') },
       { id: 'nav-settings', label: t('nav.settings'), icon: <SettingsIcon size={15} />, run: () => navigate('settings') }
     ]
 
@@ -279,6 +291,8 @@ export default function App({ home }: { home?: React.ReactNode } = {}): React.JS
     convert: <ConvertView />,
     tools: <ToolsView />,
     diwan: <DiwanView />,
+    journal: <JournalView />,
+    account: <AccountView />,
     settings: <SettingsView />
   }[route]
 

@@ -24,6 +24,8 @@ export type Route =
   | 'convert'
   | 'tools'
   | 'diwan'
+  | 'journal'
+  | 'account'
   | 'settings'
 
 export interface Notice {

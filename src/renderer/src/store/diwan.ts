@@ -1,14 +1,8 @@
 import { create } from 'zustand'
 import { uid } from '../lib/format'
 import { emptyPoem, newVerse, type Poem, type Verse } from '../lib/diwan/types'
-import {
-  deletePoem,
-  deleteRecording,
-  listPoems,
-  readRecording,
-  savePoem,
-  saveRecording
-} from '../lib/diwan/store'
+import { deleteRecording, listPoems, readRecording, savePoem, saveRecording } from '../lib/diwan/store'
+import { useAccount } from './account'
 
 /**
  * The diwan's live state: the poems, the one being edited, and the poet.
@@ -85,6 +79,7 @@ export const useDiwan = create<DiwanState & DiwanActions>((set, get) => {
           .catch(() => undefined)
           .then(() => {
             if (timers.size === 0) set({ pendingSave: false })
+            useAccount.getState().scheduleSync()
           })
       }, AUTOSAVE_DELAY)
     )
@@ -203,6 +198,7 @@ export const useDiwan = create<DiwanState & DiwanActions>((set, get) => {
     },
 
     async remove(id) {
+      const current = poemById(id)
       const pending = timers.get(id)
       if (pending) {
         clearTimeout(pending)
@@ -212,12 +208,18 @@ export const useDiwan = create<DiwanState & DiwanActions>((set, get) => {
         poems: get().poems.filter((poem) => poem.id !== id),
         activeId: get().activeId === id ? null : get().activeId
       })
-      await deletePoem(id).catch(() => undefined)
+      // A tombstone, not a removal: the sync layer purges it once the cloud
+      // knows, so the poem disappears from the other devices too.
+      if (current) {
+        await deleteRecording(id).catch(() => undefined)
+        await savePoem({ ...current, deletedAt: Date.now(), updatedAt: Date.now() }).catch(() => undefined)
+        useAccount.getState().scheduleSync()
+      }
     },
 
     async attachRecording(id, blob, seconds) {
       await saveRecording(id, blob)
-      patch(id, (poem) => ({ ...poem, hasRecording: true, recordingSeconds: Math.round(seconds) }))
+      patch(id, (poem) => ({ ...poem, hasRecording: true, recordingSeconds: Math.round(seconds), recordingAt: Date.now() }))
       await get().flush()
     },
 
@@ -227,7 +229,7 @@ export const useDiwan = create<DiwanState & DiwanActions>((set, get) => {
 
     async dropRecording(id) {
       await deleteRecording(id).catch(() => undefined)
-      patch(id, (poem) => ({ ...poem, hasRecording: false, recordingSeconds: 0 }))
+      patch(id, (poem) => ({ ...poem, hasRecording: false, recordingSeconds: 0, recordingAt: Date.now() }))
       await get().flush()
     },
 
@@ -240,7 +242,9 @@ export const useDiwan = create<DiwanState & DiwanActions>((set, get) => {
           id: existing.has(poem.id) ? uid() : poem.id,
           // A recording is not part of a backup file.
           hasRecording: false,
-          recordingSeconds: 0
+          recordingSeconds: 0,
+          deletedAt: null,
+          syncedAt: undefined
         }
         await savePoem(fresh)
         added += 1
@@ -260,6 +264,7 @@ export const useDiwan = create<DiwanState & DiwanActions>((set, get) => {
         if (poem) await savePoem(poem).catch(() => undefined)
       }
       set({ pendingSave: false })
+      useAccount.getState().scheduleSync()
     }
   }
 })

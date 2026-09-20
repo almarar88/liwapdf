@@ -1,44 +1,27 @@
 import { useState } from 'react'
-import {
-  Home,
-  Layers,
-  UserRound,
-  Plus,
-  FolderOpen,
-  FilePlus2,
-  FileSpreadsheet,
-  Wrench,
-  LayoutGrid,
-  Camera,
-  Feather
-} from 'lucide-react'
+import { BookOpen, CalendarDays, Feather, Home, Mic, PenLine, Plus, UserRound } from 'lucide-react'
 import { useApp } from '../renderer/src/store/app'
-import { useDocumentActions } from '../renderer/src/hooks/useDocumentActions'
+import { useJournal } from '../renderer/src/store/journal'
+import { useDiwan } from '../renderer/src/store/diwan'
 import { Modal } from '../renderer/src/components/ui'
 import { SheetCards, type SheetEntry } from './SheetCard'
 import { tapFeedback } from './shell'
 
 /**
- * The phone's navigation, such as it is.
+ * The phone's navigation: four places and one verb.
  *
- * There is deliberately almost none. The home screen's four cards are the
- * navigation, so the bar underneath carries only the two places that are not
- * a verb — the files you have, and you — and the one control that is: add
- * something. A floating pill rather than a full-width bar, because at this
- * count a bar is mostly empty and the document behind it is worth more than
- * the background of a tab strip.
+ * Home, the days, the diwan, and you — and the add button, which offers
+ * the three things a person opens this app to do: write tonight's page,
+ * write a poem, or record one.
  */
-export function PhoneNav({
-  onFiles,
-  onScan
-}: {
-  onFiles: () => void
-  onScan: () => void
-}): React.JSX.Element {
+export function PhoneNav(): React.JSX.Element {
   const t = useApp((state) => state.t)
   const route = useApp((state) => state.route)
   const navigate = useApp((state) => state.navigate)
-  const { openDialog, newDocument } = useDocumentActions()
+  const openToday = useJournal((state) => state.openToday)
+  const openEntry = useJournal((state) => state.open)
+  const createPoem = useDiwan((state) => state.create)
+  const openPoem = useDiwan((state) => state.open)
   const [adding, setAdding] = useState(false)
 
   const go = (run: () => void) => (): void => {
@@ -49,108 +32,64 @@ export function PhoneNav({
 
   const entries: SheetEntry[] = [
     {
-      key: 'open',
-      tone: 'blue',
-      icon: <FolderOpen size={19} />,
-      title: t('action.open'),
-      detail: t('phone.add.open.d'),
-      run: go(() => void openDialog())
-    },
-    {
-      key: 'scan',
-      tone: 'green',
-      icon: <Camera size={19} />,
-      title: t('scan.title'),
-      detail: t('phone.add.scan.d'),
-      run: go(onScan)
-    },
-    {
-      key: 'rich',
-      icon: <FilePlus2 size={19} />,
-      title: t('editor.new.rich'),
-      detail: t('editor.new.rich.d'),
-      run: go(() => void newDocument('rich'))
-    },
-    {
-      key: 'sheet',
+      key: 'entry',
       tone: 'yellow',
-      icon: <FileSpreadsheet size={19} />,
-      title: t('editor.new.sheet'),
-      detail: t('editor.new.sheet.d'),
-      run: go(() => void newDocument('sheet'))
+      icon: <PenLine size={19} />,
+      title: t('phone.add.entry'),
+      detail: t('phone.add.entry.d'),
+      run: go(() => {
+        openToday()
+        navigate('journal')
+      })
     },
     {
-      key: 'diwan',
+      key: 'poem',
       tone: 'orange',
       icon: <Feather size={19} />,
-      title: t('nav.diwan'),
-      detail: t('phone.add.diwan.d'),
-      run: go(() => navigate('diwan'))
+      title: t('phone.add.poem'),
+      detail: t('phone.add.poem.d'),
+      run: go(() => {
+        createPoem()
+        navigate('diwan')
+      })
     },
     {
-      key: 'tools',
-      tone: 'violet',
-      icon: <Wrench size={19} />,
-      title: t('nav.tools'),
-      detail: t('phone.add.tools.d'),
-      run: go(() => navigate('tools'))
-    },
-    {
-      key: 'organize',
-      tone: 'orange',
-      icon: <LayoutGrid size={19} />,
-      title: t('nav.organize'),
-      detail: t('phone.add.organize.d'),
-      // The organize screen, not the delete-pages tool: the card promises
-      // reordering and rotating too, and the screen has its own empty state
-      // for when nothing is open — the tool just refuses and goes nowhere.
-      run: go(() => navigate('organize'))
+      key: 'record',
+      tone: 'green',
+      icon: <Mic size={19} />,
+      title: t('phone.add.record'),
+      detail: t('phone.add.record.d'),
+      run: go(() => {
+        createPoem()
+        navigate('diwan')
+      })
     }
   ]
+
+  const tab = (target: 'home' | 'journal' | 'diwan' | 'account', label: string, icon: React.JSX.Element, before?: () => void): React.JSX.Element => (
+    <button
+      className={`pill-btn${route === target ? ' active' : ''}`}
+      aria-label={label}
+      title={label}
+      aria-current={route === target ? 'page' : undefined}
+      onClick={() => {
+        tapFeedback()
+        before?.()
+        navigate(target)
+      }}
+    >
+      {icon}
+    </button>
+  )
 
   return (
     <>
       <div className="phone-bar">
         <nav className="phone-pill">
-          {/* Home is a button of its own and always has been the missing one:
-              from the toolbox, the editor or the viewer there was nothing on
-              screen that went back, and a profile icon that doubles as "back"
-              is not something anybody guesses. */}
-          <button
-            className={`pill-btn${route === 'home' ? ' active' : ''}`}
-            aria-label={t('nav.home')}
-            title={t('nav.home')}
-            aria-current={route === 'home' ? 'page' : undefined}
-            onClick={() => {
-              tapFeedback()
-              navigate('home')
-            }}
-          >
-            <Home size={20} />
-          </button>
-          <button
-            className="pill-btn"
-            aria-label={t('phone.files')}
-            title={t('phone.files')}
-            onClick={() => {
-              tapFeedback()
-              onFiles()
-            }}
-          >
-            <Layers size={20} />
-          </button>
-          <button
-            className={`pill-btn${route === 'settings' ? ' active' : ''}`}
-            aria-label={t('nav.settings')}
-            title={t('nav.settings')}
-            aria-current={route === 'settings' ? 'page' : undefined}
-            onClick={() => {
-              tapFeedback()
-              navigate('settings')
-            }}
-          >
-            <UserRound size={20} />
-          </button>
+          {tab('home', t('nav.home'), <Home size={20} />)}
+          {tab('journal', t('nav.journal'), <CalendarDays size={20} />, () => openEntry(null))}
+          {tab('diwan', t('nav.diwan'), <BookOpen size={20} />, () => openPoem(null))}
+          {tab('account', t('nav.account'), <UserRound size={20} />)}
         </nav>
 
         <button

@@ -267,6 +267,7 @@ const UPDATE_HOSTS = ['github.com', 'api.github.com', 'objects.githubusercontent
  * the recording is sent only when the user presses the button.
  */
 const TRANSCRIBE_HOST = 'api.elevenlabs.io'
+const CLOUD_HOST = 'pisokgtgzvnlayjehasz.supabase.co'
 
 function blockOutboundRequests(): void {
   const filter = { urls: ['*://*/*'] }
@@ -283,6 +284,12 @@ function blockOutboundRequests(): void {
       return
     }
     if (current.transcriptionKey.trim() && host === TRANSCRIBE_HOST) {
+      callback({ cancel: false })
+      return
+    }
+    // The account and the cloud copy of the journal and diwan. The renderer
+    // talks to it only once a person has signed in.
+    if (host === CLOUD_HOST) {
       callback({ cancel: false })
       return
     }

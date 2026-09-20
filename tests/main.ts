@@ -12,5 +12,6 @@ import pdfEdit from './suites/pdf-edit'
 import wordPdf from './suites/word-pdf'
 import intelligence from './suites/intelligence'
 import diwan from './suites/diwan'
+import journal from './suites/journal'
 
-void runSuites([formulas, arabic, pdfText, compress, layout, documents, images, renderProbe, docx, pdfEdit, wordPdf, intelligence, diwan])
+void runSuites([formulas, arabic, pdfText, compress, layout, documents, images, renderProbe, docx, pdfEdit, wordPdf, intelligence, diwan, journal])

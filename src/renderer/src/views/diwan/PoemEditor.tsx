@@ -20,6 +20,7 @@ import {
   Sparkles
 } from 'lucide-react'
 import { useApp } from '../../store/app'
+import { usePhone } from '../../hooks/usePhone'
 import { useDiwan } from '../../store/diwan'
 import { Button, Checkbox, Field, Modal, Segmented, TextArea, TextInput } from '../../components/ui'
 import { saveBytes } from '../../lib/files'
@@ -70,6 +71,7 @@ export function PoemEditor({ id }: { id: string }): React.JSX.Element {
   const flush = useDiwan((state) => state.flush)
   const [mode, setMode] = useState<'edit' | 'preview'>('edit')
   const [sharing, setSharing] = useState(false)
+  const phone = usePhone()
 
   // Leaving the poem writes it at once rather than after the debounce.
   useEffect(() => () => void flush(), [flush])
@@ -170,9 +172,13 @@ export function PoemEditor({ id }: { id: string }): React.JSX.Element {
         <Button size="sm" onClick={() => void exportPdf()}>
           <FileDown size={14} /> {t('diwan.pdf.one')}
         </Button>
-        <Button size="sm" onClick={() => void insertIntoDocument()} title={t('diwan.insert.d')}>
-          <BookMarked size={14} /> {t('diwan.insert')}
-        </Button>
+        {/* The document editor is a desktop thing; the phone links poems to
+            journal days instead, from the day's page. */}
+        {phone ? null : (
+          <Button size="sm" onClick={() => void insertIntoDocument()} title={t('diwan.insert.d')}>
+            <BookMarked size={14} /> {t('diwan.insert')}
+          </Button>
+        )}
         <Button size="sm" icon title={t('diwan.copy')} onClick={() => void copyText()}>
           <Copy size={14} />
         </Button>

@@ -35,13 +35,13 @@ export interface DiwanPdfOptions {
   pagePerPoem: boolean
 }
 
-const INK = '#1f1a14'
-const SOFT = '#6f665a'
-const GOLD = '#a8823f'
-const MARGIN = 58
-const FRAME = 26
+export const INK = '#1f1a14'
+export const SOFT = '#6f665a'
+export const GOLD = '#a8823f'
+export const MARGIN = 58
+export const FRAME = 26
 
-interface Layout {
+export interface Layout {
   width: number
   height: number
   left: number
@@ -53,7 +53,7 @@ interface Layout {
   column: number
 }
 
-function layoutFor(size: DiwanPdfOptions['pageSize']): Layout {
+export function layoutFor(size: DiwanPdfOptions['pageSize']): Layout {
   const [width, height] = PAGE_PRESETS[size ?? 'A4'] ?? PAGE_PRESETS.A4
   const left = MARGIN
   const right = width - MARGIN
@@ -180,7 +180,7 @@ export async function renderDiwanPdf(poems: Poem[], options: DiwanPdfOptions): P
 
 /* ------------------------------------------------------------------ parts */
 
-function hex(color: string): ReturnType<typeof rgb> {
+export function hex(color: string): ReturnType<typeof rgb> {
   const clean = color.replace('#', '')
   return rgb(
     parseInt(clean.slice(0, 2), 16) / 255,
@@ -194,7 +194,7 @@ function hex(color: string): ReturnType<typeof rgb> {
  * a shape and not the ✦ character because the embedded face has no glyph
  * for it, and a substitution box on every verse is not an ornament.
  */
-function drawOrnament(page: PDFPage, x: number, y: number, size: number): void {
+export function drawOrnament(page: PDFPage, x: number, y: number, size: number): void {
   page.drawSvgPath('M0 -1 L0.22 -0.22 L1 0 L0.22 0.22 L0 1 L-0.22 0.22 L-1 0 L-0.22 -0.22 Z', {
     x,
     y,
@@ -205,7 +205,7 @@ function drawOrnament(page: PDFPage, x: number, y: number, size: number): void {
 }
 
 /** A double hairline frame, the outer heavier, the way bound diwans are ruled. */
-function drawFrame(page: PDFPage, layout: Layout): void {
+export function drawFrame(page: PDFPage, layout: Layout): void {
   page.drawRectangle({
     x: FRAME,
     y: FRAME,
@@ -224,7 +224,7 @@ function drawFrame(page: PDFPage, layout: Layout): void {
   })
 }
 
-async function drawAligned(
+export async function drawAligned(
   page: PDFPage,
   fonts: FontSet,
   text: string,
@@ -297,7 +297,7 @@ async function drawHeading(
   return y - 30
 }
 
-async function fitSize(fonts: FontSet, verses: { sadr: string; ajuz: string }[], column: number): Promise<number> {
+export async function fitSize(fonts: FontSet, verses: { sadr: string; ajuz: string }[], column: number): Promise<number> {
   const probe = 14
   let widest = 0
   for (const verse of verses) {
@@ -316,7 +316,7 @@ async function fitSize(fonts: FontSet, verses: { sadr: string; ajuz: string }[],
  * the ornament between them on the page's axis. A free-verse line simply
  * hangs from the right margin, as a line of prose would.
  */
-async function drawVerse(
+export async function drawVerse(
   page: PDFPage,
   fonts: FontSet,
   layout: Layout,
