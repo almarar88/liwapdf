@@ -9,7 +9,8 @@ import {
   FileSpreadsheet,
   Wrench,
   LayoutGrid,
-  Camera
+  Camera,
+  Feather
 } from 'lucide-react'
 import { useApp } from '../renderer/src/store/app'
 import { useDocumentActions } from '../renderer/src/hooks/useDocumentActions'
@@ -77,6 +78,14 @@ export function PhoneNav({
       title: t('editor.new.sheet'),
       detail: t('editor.new.sheet.d'),
       run: go(() => void newDocument('sheet'))
+    },
+    {
+      key: 'diwan',
+      tone: 'orange',
+      icon: <Feather size={19} />,
+      title: t('nav.diwan'),
+      detail: t('phone.add.diwan.d'),
+      run: go(() => navigate('diwan'))
     },
     {
       key: 'tools',

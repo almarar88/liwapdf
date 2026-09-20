@@ -1,6 +1,7 @@
 import { Fragment, Suspense, lazy, useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, MotionConfig, motion } from 'framer-motion'
 import {
+  Feather,
   FileText,
   FolderOpen,
   Home,
@@ -40,6 +41,9 @@ const ConvertView = lazy(() =>
 const ToolsView = lazy(() => import('./views/ToolsView').then((m) => ({ default: m.ToolsView })))
 const SettingsView = lazy(() =>
   import('./views/SettingsView').then((m) => ({ default: m.SettingsView }))
+)
+const DiwanView = lazy(() =>
+  import('./views/diwan/DiwanView').then((m) => ({ default: m.DiwanView }))
 )
 
 /**
@@ -243,6 +247,7 @@ export default function App({ home }: { home?: React.ReactNode } = {}): React.JS
       { id: 'nav-editor', label: t('nav.editor'), icon: <FileText size={15} />, run: () => navigate('editor') },
       { id: 'nav-convert', label: t('nav.convert'), icon: <Repeat2 size={15} />, run: () => navigate('convert') },
       { id: 'nav-tools', label: t('nav.tools'), icon: <Wrench size={15} />, run: () => navigate('tools') },
+      { id: 'nav-diwan', label: t('nav.diwan'), icon: <Feather size={15} />, run: () => navigate('diwan') },
       { id: 'nav-settings', label: t('nav.settings'), icon: <SettingsIcon size={15} />, run: () => navigate('settings') }
     ]
 
@@ -273,6 +278,7 @@ export default function App({ home }: { home?: React.ReactNode } = {}): React.JS
     editor: <EditorView />,
     convert: <ConvertView />,
     tools: <ToolsView />,
+    diwan: <DiwanView />,
     settings: <SettingsView />
   }[route]
 

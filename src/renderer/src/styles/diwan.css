@@ -1,0 +1,345 @@
+/* ============================================================================
+   The Diwan — a poet's own room inside the studio.
+
+   Calmer than the rest of the app on purpose: warmer paper, the bundled
+   calligraphic face for the verses, and a small gold ornament where a
+   toolbar would put a divider. The forms stay the app's own forms; only the
+   poem itself is set differently, because it is the one thing here that is
+   not a document.
+   ========================================================================== */
+
+.diwan {
+  --dw-paper: #fbf7ef;
+  --dw-paper-2: #f3ecdd;
+  --dw-ink: #24201a;
+  --dw-soft: #7a6f60;
+  --dw-gold: #b08a44;
+  --dw-line: color-mix(in srgb, var(--dw-gold) 34%, transparent);
+  --font-poem: 'Alcode Amiri', 'Amiri', 'Sakkal Majalla', 'Noto Naskh Arabic', 'Traditional Arabic', serif;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  max-width: 980px;
+  margin: 0 auto;
+}
+[data-theme='dark'] .diwan,
+html.dark .diwan {
+  --dw-paper: #1c1a17;
+  --dw-paper-2: #24211c;
+  --dw-ink: #f0e9dc;
+  --dw-soft: #b3a894;
+  --dw-gold: #d0ad68;
+}
+
+.dw-head { display: flex; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
+.dw-head h1 { margin: 0; font-size: var(--text-2xl); font-weight: 700; letter-spacing: -0.02em; }
+.dw-head p { margin: 4px 0 0; color: var(--fg-3); max-width: 60ch; font-size: var(--text-base); }
+.dw-head .spacer { margin-inline-start: auto; }
+.dw-status { font-size: var(--text-xs); color: var(--fg-3); white-space: nowrap; }
+
+/* The poet's name, edited in place: a line the eye reads as a signature. */
+.dw-poet {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--dw-gold);
+}
+.dw-poet input {
+  border: none;
+  border-bottom: 1px dashed var(--dw-line);
+  background: none;
+  color: var(--fg);
+  font: 600 var(--text-md) var(--font-poem);
+  padding: 4px 2px;
+  min-width: 12ch;
+  max-width: 28ch;
+  outline: none;
+}
+.dw-poet input:focus { border-bottom-color: var(--dw-gold); }
+
+/* ------------------------------------------------------------- the shelf */
+
+.dw-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 10px;
+}
+.dw-action {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  color: var(--fg);
+  text-align: start;
+  transition: transform var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
+}
+.dw-action:hover { transform: translateY(-1px); box-shadow: var(--shadow-sm); }
+.dw-action:active { transform: scale(0.98); }
+.dw-action .ic {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  flex: none;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--dw-gold) 14%, transparent);
+  color: var(--dw-gold);
+}
+.dw-action.primary .ic { background: var(--accent-strong); color: var(--accent-contrast); }
+.dw-action b { display: block; font-size: var(--text-base); font-weight: 600; }
+.dw-action span { display: block; font-size: var(--text-xs); color: var(--fg-3); margin-top: 2px; }
+
+.dw-shelf {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 12px;
+}
+.dw-poem {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 150px;
+  padding: 16px 18px 14px;
+  border: 1px solid var(--dw-line);
+  border-radius: var(--r-lg);
+  background: linear-gradient(170deg, var(--dw-paper), var(--dw-paper-2));
+  color: var(--dw-ink);
+  text-align: start;
+  box-shadow: var(--shadow-xs);
+  transition: transform var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
+}
+.dw-poem:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+.dw-poem::before {
+  content: '✦';
+  position: absolute;
+  inset-inline-end: 14px;
+  top: 10px;
+  color: var(--dw-gold);
+  font-size: 11px;
+  opacity: 0.8;
+}
+.dw-poem h3 { margin: 0; font: 700 var(--text-lg) var(--font-poem); line-height: 1.35; padding-inline-end: 18px; }
+.dw-poem .first { font: 400 var(--text-md) var(--font-poem); line-height: 1.7; color: var(--dw-ink); opacity: 0.85; }
+.dw-poem .meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: auto; }
+.dw-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: var(--r-full);
+  background: color-mix(in srgb, var(--dw-gold) 12%, transparent);
+  color: var(--dw-soft);
+  font-size: var(--text-xs);
+}
+.dw-tag.voice { color: var(--dw-gold); }
+
+/* ------------------------------------------------------------ the editor */
+
+.dw-editor { display: flex; flex-direction: column; gap: 16px; }
+.dw-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.dw-bar .spacer { margin-inline-start: auto; }
+.dw-title {
+  width: 100%;
+  border: none;
+  border-bottom: 1px solid var(--dw-line);
+  background: none;
+  color: var(--fg);
+  font: 700 var(--text-2xl) var(--font-poem);
+  padding: 6px 2px 8px;
+  outline: none;
+}
+.dw-title:focus { border-bottom-color: var(--dw-gold); }
+.dw-title::placeholder { color: var(--fg-3); font-weight: 400; }
+
+.dw-meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px 12px;
+}
+.dw-meta .field.wide { grid-column: 1 / -1; }
+.dw-meta .with-btn { display: flex; gap: 6px; align-items: center; }
+.dw-meta .with-btn .input { flex: 1; min-width: 0; }
+
+details.dw-fold { border: 1px solid var(--hairline); border-radius: var(--r-lg); background: var(--surface); }
+details.dw-fold > summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 14px;
+  font-weight: 600;
+  font-size: var(--text-base);
+  color: var(--fg-2);
+}
+details.dw-fold > summary::-webkit-details-marker { display: none; }
+details.dw-fold > summary svg:last-child { margin-inline-start: auto; transition: transform var(--dur-fast) var(--ease-out); }
+details.dw-fold[open] > summary svg:last-child { transform: rotate(180deg); }
+details.dw-fold > .body { padding: 2px 14px 14px; }
+
+/* The verse rows. Two fields per verse, the ornament between them, the row
+   number in the gutter and the tools on the far side: a table, but one a
+   thumb can use. */
+.dw-verses { display: flex; flex-direction: column; gap: 8px; }
+.dw-verse {
+  display: grid;
+  grid-template-columns: 26px 1fr auto 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px 6px 6px;
+  border-radius: var(--r-md);
+  background: var(--surface);
+  border: 1px solid var(--hairline-soft);
+}
+.dw-verse:focus-within { border-color: color-mix(in srgb, var(--dw-gold) 55%, transparent); background: var(--surface-solid); }
+.dw-verse .n { font-size: var(--text-xs); color: var(--fg-3); text-align: center; font-variant-numeric: tabular-nums; }
+.dw-verse .star { color: var(--dw-gold); font-size: 13px; }
+.dw-verse input {
+  width: 100%;
+  min-width: 0;
+  height: 40px;
+  border: none;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--fg);
+  font: 400 17px var(--font-poem);
+  padding: 0 8px;
+  outline: none;
+}
+.dw-verse input:focus { background: color-mix(in srgb, var(--dw-gold) 8%, transparent); }
+.dw-verse input::placeholder { color: var(--fg-3); font-size: 13px; font-family: var(--font-ui); }
+.dw-verse .tools { display: flex; gap: 2px; }
+.dw-verse .tools .btn.icon { width: 30px; height: 30px; color: var(--fg-3); }
+.dw-verse .tools .btn.icon:hover { color: var(--fg); }
+
+.dw-versions { display: flex; flex-direction: column; gap: 8px; }
+.dw-version {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+.dw-version .text { flex: 1; min-width: 0; font: 400 15px var(--font-poem); line-height: 1.6; }
+.dw-version time { font-size: var(--text-xs); color: var(--fg-3); white-space: nowrap; }
+
+/* The poem set as it will print: the canvas. */
+.dw-canvas {
+  padding: 30px 26px 26px;
+  border: 1px solid var(--dw-line);
+  border-radius: var(--r-xl);
+  background: linear-gradient(170deg, var(--dw-paper), var(--dw-paper-2));
+  color: var(--dw-ink);
+  box-shadow: inset 0 0 0 4px var(--dw-paper), inset 0 0 0 5px var(--dw-line);
+  direction: rtl;
+  text-align: center;
+  font-family: var(--font-poem);
+}
+.dw-canvas h2 { margin: 0 0 2px; font-size: 26px; font-weight: 700; }
+.dw-canvas .meta { color: var(--dw-soft); font-size: 13px; }
+.dw-canvas .orn { color: var(--dw-gold); font-size: 12px; margin: 8px 0 14px; }
+.dw-canvas .rows { display: grid; gap: 4px; }
+.dw-canvas .row {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: baseline;
+  gap: 14px;
+  font-size: var(--dw-verse-size, 20px);
+  line-height: 1.9;
+}
+.dw-canvas .row .s { text-align: start; }
+.dw-canvas .row .a { text-align: end; }
+.dw-canvas .row .d { color: var(--dw-gold); font-size: 0.55em; }
+.dw-canvas .row.free { grid-template-columns: 1fr; text-align: start; }
+.dw-canvas .note { margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--dw-line); color: var(--dw-soft); font-size: 13px; line-height: 1.7; }
+.dw-canvas .sign { margin-top: 14px; color: var(--dw-gold); font-size: 14px; }
+
+/* Recording: one big button that becomes the timer, and a player after. */
+.dw-record {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 14px 16px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+}
+.dw-record .mic {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 18px;
+  border-radius: var(--r-full);
+  background: var(--accent-strong);
+  color: var(--accent-contrast);
+  font-weight: 600;
+  box-shadow: var(--shadow-accent);
+}
+.dw-record .mic.live { background: var(--red); animation: dw-pulse 1.4s ease-in-out infinite; }
+.dw-record .mic:active { transform: scale(0.97); }
+.dw-record .clock { font-variant-numeric: tabular-nums; font-weight: 600; min-width: 4ch; }
+.dw-record p { margin: 0; flex: 1 1 220px; color: var(--fg-3); font-size: var(--text-sm); line-height: 1.6; }
+.dw-record audio { width: 100%; max-width: 420px; height: 40px; }
+@keyframes dw-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--red) 40%, transparent); }
+  50% { box-shadow: 0 0 0 9px transparent; }
+}
+
+.dw-card-preview {
+  width: 100%;
+  max-width: 280px;
+  aspect-ratio: 4 / 5;
+  border-radius: var(--r-md);
+  object-fit: cover;
+  box-shadow: var(--shadow-md);
+  margin: 0 auto;
+  display: block;
+  background: var(--surface-2);
+}
+.dw-pick { display: flex; flex-direction: column; gap: 6px; max-height: 240px; overflow-y: auto; }
+.dw-pick label {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 10px;
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  font: 400 15px var(--font-poem);
+  cursor: pointer;
+}
+.dw-pick label.on { background: color-mix(in srgb, var(--dw-gold) 14%, transparent); }
+.dw-pick input { accent-color: var(--dw-gold); }
+
+/* The phone. The number gutter goes, the two halves stack, and the tools
+   become a single row under the verse rather than a column beside it. */
+@media (max-width: 767px) {
+  .diwan { gap: 14px; }
+  .dw-head h1 { font-size: var(--text-xl); }
+  .dw-actions { grid-template-columns: 1fr 1fr; }
+  .dw-shelf { grid-template-columns: 1fr; }
+  .dw-verse {
+    grid-template-columns: 1fr;
+    grid-template-areas: 'n' 's' 'star' 'a' 'tools';
+    gap: 0;
+    padding: 6px 10px 4px;
+  }
+  .dw-verse .n { grid-area: n; text-align: start; padding: 0 6px; line-height: 1.4; }
+  .dw-verse .star { grid-area: star; text-align: center; font-size: 10px; line-height: 1; margin: -2px 0; }
+  .dw-verse > span:empty { display: none; }
+  .dw-verse .tools { grid-area: tools; justify-content: flex-end; }
+  .dw-verse .tools .btn.icon { width: 36px; height: 36px; }
+  .dw-verse input { font-size: 18px; height: 44px; }
+  .dw-canvas { padding: 22px 14px 18px; }
+  .dw-canvas .row { grid-template-columns: 1fr; gap: 0; font-size: 18px; line-height: 1.75; margin-bottom: 8px; }
+  .dw-canvas .row .a { text-align: start; padding-inline-start: 22px; }
+  .dw-canvas .row .d { display: none; }
+  .dw-bar .btn:not(.icon) { flex: 1 1 auto; }
+}

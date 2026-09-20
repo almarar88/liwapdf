@@ -11,6 +11,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   FolderOpen,
+  Feather,
   ShieldCheck
 } from 'lucide-react'
 import { useApp, type Route } from '../store/app'
@@ -34,7 +35,8 @@ const PRIMARY: NavEntry[] = [
 const SECONDARY: NavEntry[] = [
   { route: 'editor', labelKey: 'nav.editor', icon: <FileType2 size={17} /> },
   { route: 'convert', labelKey: 'nav.convert', icon: <Repeat2 size={17} /> },
-  { route: 'tools', labelKey: 'nav.tools', icon: <Wrench size={17} /> }
+  { route: 'tools', labelKey: 'nav.tools', icon: <Wrench size={17} /> },
+  { route: 'diwan', labelKey: 'nav.diwan', icon: <Feather size={17} /> }
 ]
 
 export function Sidebar({ onOpenFile }: { onOpenFile: () => void }): React.JSX.Element {

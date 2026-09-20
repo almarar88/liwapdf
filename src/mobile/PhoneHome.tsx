@@ -17,7 +17,10 @@ import {
   Repeat,
   FolderOpen,
   Languages,
-  Check
+  Check,
+  Feather,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react'
 import { useApp } from '../renderer/src/store/app'
 import { useDocumentActions } from '../renderer/src/hooks/useDocumentActions'
@@ -50,6 +53,7 @@ export function PhoneHome({ onSheet }: { onSheet: (sheet: Sheet) => void }): Rea
   const setSettings = useApp((state) => state.setSettings)
   const recentTools = useApp((state) => state.recentTools)
   const openTool = useApp((state) => state.openTool)
+  const navigate = useApp((state) => state.navigate)
   const [query, setQuery] = useState('')
   const { openDialog, openPaths } = useDocumentActions()
 
@@ -149,6 +153,29 @@ export function PhoneHome({ onSheet }: { onSheet: (sheet: Sheet) => void }): Rea
           </motion.button>
         ))}
       </div>
+
+      {/* The poet's room. Not a fifth card — the four are verbs a document
+          goes through, and a diwan is a place you go to — so it gets a
+          banner of its own, in its own paper, under them. */}
+      <motion.button
+        className="ph-diwan"
+        onClick={() => {
+          tapFeedback('medium')
+          navigate('diwan')
+        }}
+        initial={{ opacity: 0, y: 14 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.18, duration: 0.34, ease: [0.22, 1, 0.36, 1] }}
+      >
+        <span className="ph-diwan-icon">
+          <Feather size={19} />
+        </span>
+        <span className="ph-diwan-text">
+          <b>{t('phone.card.diwan')}</b>
+          <span>{t('phone.card.diwan.d')}</span>
+        </span>
+        {language === 'ar' ? <ChevronLeft size={18} /> : <ChevronRight size={18} />}
+      </motion.button>
 
       {/* What you were doing last. The store already remembered it for the
           desktop's chip row; on a phone, going back to the tool you used an

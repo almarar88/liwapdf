@@ -70,6 +70,11 @@
     <!-- The web layer is served from the APK itself; the network is used only
          if the user opens a link, and every document tool works offline. -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Recording a poem's recitation in the Diwan. The WebView asks the
+         system for the microphone the first time a recording starts. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
     <!-- Scanning a document with the camera. -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />

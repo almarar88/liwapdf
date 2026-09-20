@@ -1,0 +1,84 @@
+name: Android APK
+
+# Every push builds an installable APK and keeps it as a workflow artifact,
+# so a branch can be tried on a phone before it becomes a release. The
+# release workflow is unchanged: it still runs on tags and publishes the
+# download page. This one never publishes anything.
+
+on:
+  push:
+    branches: ['**']
+  workflow_dispatch:
+
+jobs:
+  apk:
+    name: Build APK
+    runs-on: ubuntu-latest
+    env:
+      ANDROID_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build the web layer and sync it into the Android project
+        run: npm run mobile:sync
+
+      - name: Prepare the signing key
+        # Android refuses an unsigned APK, so the build is always signed: with
+        # the repository's upload key when it has one, otherwise with a key
+        # made for this build (which means updating over an install from a
+        # different build needs an uninstall first).
+        run: |
+          set -euo pipefail
+          if [ -n "$ANDROID_KEYSTORE" ]; then
+            echo "$ANDROID_KEYSTORE" | base64 -d > "$RUNNER_TEMP/upload.jks"
+          else
+            keytool -genkeypair -v \
+              -keystore "$RUNNER_TEMP/upload.jks" -alias alcode \
+              -keyalg RSA -keysize 4096 -validity 10000 \
+              -storepass alcode-build -keypass alcode-build \
+              -dname "CN=Alcode Editor, O=Alcode, C=SA"
+            echo "ANDROID_KEYSTORE_PASSWORD=alcode-build" >> "$GITHUB_ENV"
+            echo "ANDROID_KEY_ALIAS=alcode" >> "$GITHUB_ENV"
+            echo "ANDROID_KEY_PASSWORD=alcode-build" >> "$GITHUB_ENV"
+            echo "::warning::No ANDROID_KEYSTORE secret: signed with a key generated for this build."
+          fi
+          echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/upload.jks" >> "$GITHUB_ENV"
+
+      - name: Assemble the APK
+        working-directory: android
+        run: ./gradlew --no-daemon assembleRelease
+
+      - name: Verify the signature and name the file
+        run: |
+          set -euo pipefail
+          VERSION=$(node -p "require('./package.json').version")
+          mkdir -p release
+          APK=$(find android/app/build/outputs/apk/release -name '*.apk' ! -name '*unsigned*' | head -1)
+          test -n "$APK"
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -1)
+          "$APKSIGNER" verify --print-certs "$APK"
+          cp "$APK" "release/Alcode-Editor-${VERSION}-${GITHUB_SHA::7}.apk"
+
+      - name: Upload the APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Alcode-Editor-Android-APK
+          path: release/*.apk
+          retention-days: 30
+          if-no-files-found: error

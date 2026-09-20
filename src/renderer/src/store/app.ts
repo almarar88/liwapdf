@@ -23,6 +23,7 @@ export type Route =
   | 'editor'
   | 'convert'
   | 'tools'
+  | 'diwan'
   | 'settings'
 
 export interface Notice {

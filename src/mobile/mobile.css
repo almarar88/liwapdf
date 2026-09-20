@@ -649,6 +649,44 @@ html[data-mobile][data-theme='dark'] {
 
   /* The tools used last, as chips rather than cards: they are a shortcut
      back to work in progress, not a destination worth a card's weight. */
+  /* The diwan banner: the poet's paper under the four cards. */
+  html[data-mobile] .ph-diwan {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 13px 14px;
+    border: 1px solid color-mix(in srgb, #b08a44 34%, transparent);
+    border-radius: var(--ph-radius);
+    background: linear-gradient(160deg, #fbf7ef, #f1e7d3);
+    color: #24201a;
+    text-align: start;
+    box-shadow: var(--shadow-sm);
+    transition: transform var(--dur-fast) var(--ease-out);
+  }
+  html[data-mobile] .ph-diwan:active { transform: scale(0.98); }
+  html[data-mobile] .ph-diwan-icon {
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    flex: none;
+    border-radius: 50%;
+    background: rgb(255 255 255 / 70%);
+    color: #a8823f;
+  }
+  html[data-mobile] .ph-diwan-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  html[data-mobile] .ph-diwan-text b { font-size: 16px; font-weight: 700; letter-spacing: -0.01em; }
+  html[data-mobile] .ph-diwan-text span { font-size: 12px; color: #7a6f60; }
+  html[data-mobile] .ph-diwan > svg:last-child { color: #a8823f; flex: none; }
+  :root[data-theme='dark'] html[data-mobile] .ph-diwan,
+  html[data-mobile][data-theme='dark'] .ph-diwan {
+    background: linear-gradient(160deg, #24211c, #1c1a17);
+    color: #f0e9dc;
+  }
+  html[data-mobile][data-theme='dark'] .ph-diwan-icon { background: rgb(255 255 255 / 10%); color: #d0ad68; }
+  html[data-mobile][data-theme='dark'] .ph-diwan-text span { color: #b3a894; }
+
   html[data-mobile] .ph-tools {
     display: flex;
     gap: 8px;
