@@ -16,7 +16,8 @@ import {
   Share2,
   Square,
   Trash2,
-  Wand2
+  Wand2,
+  Sparkles
 } from 'lucide-react'
 import { useApp } from '../../store/app'
 import { useDiwan } from '../../store/diwan'
@@ -24,6 +25,8 @@ import { Button, Checkbox, Field, Modal, Segmented, TextArea, TextInput } from '
 import { saveBytes } from '../../lib/files'
 import { escapeHtml, formatRelativeTime } from '../../lib/format'
 import { guessRhyme, poemToText } from '../../lib/diwan/parse'
+import { TranscribeError, transcribeRecording, wordsToVerses } from '../../lib/diwan/transcribe'
+import { uid } from '../../lib/format'
 import {
   FUSHA_METERS,
   NABATI_MELODIES,
@@ -510,10 +513,62 @@ function RecorderPanel({ poem }: { poem: Poem }): React.JSX.Element {
   const attachRecording = useDiwan((state) => state.attachRecording)
   const loadRecording = useDiwan((state) => state.loadRecording)
   const dropRecording = useDiwan((state) => state.dropRecording)
+  const update = useDiwan((state) => state.update)
+  const transcriptionKey = useApp((state) => state.settings.transcriptionKey)
+  const language = useApp((state) => state.settings.language)
+  const setBusy = useApp((state) => state.setBusy)
   const [recorder, setRecorder] = useState<Recorder | null>(null)
   const [seconds, setSeconds] = useState(0)
   const [url, setUrl] = useState<string | null>(null)
+  const [heard, setHeard] = useState<Verse[] | null>(null)
   const startedAt = useRef(0)
+
+  /**
+   * The recording, written down. Everything else in the app stays on the
+   * device; this sends the audio to the service the user chose by pasting
+   * their key, and only when they press the button.
+   */
+  const transcribe = async (): Promise<void> => {
+    if (!transcriptionKey.trim()) {
+      notify({
+        kind: 'info',
+        title: t('diwan.transcribe'),
+        message: t('diwan.transcribe.noKey'),
+        action: { label: t('diwan.transcribe.settings'), run: () => useApp.getState().navigate('settings') }
+      })
+      return
+    }
+    const blob = await loadRecording(poem.id)
+    if (!blob) return
+    setBusy({ label: t('diwan.transcribe.running'), progress: null })
+    try {
+      const transcript = await transcribeRecording(blob, transcriptionKey, language)
+      const verses = wordsToVerses(transcript.words, uid, transcript.text)
+      if (verses.length === 0) throw new TranscribeError('empty')
+      setHeard(verses)
+    } catch (error) {
+      const reason = error instanceof TranscribeError ? error.reason : 'network'
+      const key =
+        reason === 'unauthorized'
+          ? 'diwan.transcribe.unauthorized'
+          : reason === 'empty'
+            ? 'diwan.transcribe.empty'
+            : reason === 'rejected'
+              ? 'diwan.transcribe.rejected'
+              : 'diwan.transcribe.network'
+      notify({ kind: 'error', title: t(key, { code: error instanceof Error ? error.message : '' }) })
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const adopt = (replace: boolean): void => {
+    if (!heard) return
+    const existing = filledVerses(poem)
+    update(poem.id, { verses: replace || existing.length === 0 ? heard : [...existing, ...heard] })
+    notify({ kind: 'success', title: t('diwan.transcribe.done', { n: heard.length }) })
+    setHeard(null)
+  }
 
   // The stored recording, as a playable URL while the poem is open.
   useEffect(() => {
@@ -617,6 +672,9 @@ function RecorderPanel({ poem }: { poem: Poem }): React.JSX.Element {
           <span className="dw-status" dir="ltr">
             {formatClock(poem.recordingSeconds)}
           </span>
+          <Button size="sm" variant="primary" onClick={() => void transcribe()} title={t('diwan.transcribe.d')}>
+            <Sparkles size={14} /> {t('diwan.transcribe')}
+          </Button>
           <Button size="sm" onClick={() => void exportAudio()}>
             <FileDown size={14} /> {t('diwan.record.export')}
           </Button>
@@ -627,6 +685,39 @@ function RecorderPanel({ poem }: { poem: Poem }): React.JSX.Element {
       ) : (
         <p>{recordingSupported() ? t('diwan.record.hint') : t('diwan.record.unsupported')}</p>
       )}
+
+      <Modal
+        open={heard !== null}
+        onClose={() => setHeard(null)}
+        title={t('diwan.transcribe.preview')}
+        icon={<Sparkles size={16} />}
+        footer={
+          <>
+            <Button onClick={() => setHeard(null)}>{t('action.cancel')}</Button>
+            {filledVerses(poem).length > 0 ? (
+              <Button onClick={() => adopt(true)}>{t('diwan.transcribe.replace')}</Button>
+            ) : null}
+            <Button variant="primary" onClick={() => adopt(false)}>
+              {t('diwan.transcribe.append')}
+            </Button>
+          </>
+        }
+      >
+        <div className="stack">
+          <span className="hint">{t('diwan.transcribe.hint')}</span>
+          <div className="dw-canvas" style={{ padding: '14px 12px', '--dw-verse-size': '16px' } as React.CSSProperties}>
+            <div className="rows">
+              {(heard ?? []).map((verse) => (
+                <div className="row" key={verse.id}>
+                  <span className="s">{verse.sadr}</span>
+                  <span className="d">{verse.ajuz ? '✦' : ''}</span>
+                  <span className="a">{verse.ajuz}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }

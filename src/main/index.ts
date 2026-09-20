@@ -261,19 +261,30 @@ app.commandLine.appendSwitch(
  */
 const UPDATE_HOSTS = ['github.com', 'api.github.com', 'objects.githubusercontent.com', 'release-assets.githubusercontent.com']
 
+/**
+ * The Diwan's transcription service. Reachable only while the user has put
+ * their own API key in the settings: an empty key is the off switch, and
+ * the recording is sent only when the user presses the button.
+ */
+const TRANSCRIBE_HOST = 'api.elevenlabs.io'
+
 function blockOutboundRequests(): void {
   const filter = { urls: ['*://*/*'] }
   session.defaultSession.webRequest.onBeforeRequest(filter, (details, callback) => {
-    if (settings().get().checkUpdates) {
-      try {
-        const host = new URL(details.url).hostname
-        if (UPDATE_HOSTS.some((allowed) => host === allowed || host.endsWith(`.${allowed}`))) {
-          callback({ cancel: false })
-          return
-        }
-      } catch {
-        // Not a URL we can judge; blocked below.
-      }
+    const current = settings().get()
+    let host = ''
+    try {
+      host = new URL(details.url).hostname
+    } catch {
+      // Not a URL we can judge; blocked below.
+    }
+    if (current.checkUpdates && UPDATE_HOSTS.some((allowed) => host === allowed || host.endsWith(`.${allowed}`))) {
+      callback({ cancel: false })
+      return
+    }
+    if (current.transcriptionKey.trim() && host === TRANSCRIBE_HOST) {
+      callback({ cancel: false })
+      return
     }
     callback({ cancel: true })
   })

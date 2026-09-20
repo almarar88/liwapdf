@@ -55,42 +55,54 @@ export interface Poem {
   updatedAt: number
 }
 
-/** The meters and melodies a poet in the Gulf and the wider Arab world reaches for. */
-export const NABATI_MELODIES = [
+/**
+ * What a Nabati poet names when asked "on what?": the meters proper, and
+ * the performance forms a poem is composed for. The two lists are kept
+ * apart because they are different questions — a poem is *on* the mas-hoob
+ * and *for* a samri — but both are offered, because poets name either.
+ * (Sources: بحور الشعر النبطي on Arabic Wikipedia; صحيفة الوسط, تراث.)
+ */
+export const NABATI_METERS = [
   'مسحوب',
   'هجيني',
   'صخري',
   'هلالي',
-  'ونّة',
-  'ردحة',
-  'تغرودة',
+  'الرمل الهلالي',
+  'مروبع',
+  'الهزج',
+  'الرجز',
+  'الشيباني',
+  'الزهيري',
   'سامري',
-  'عرضة',
-  'لعبوني',
   'حداء',
   'قلطة'
 ] as const
 
+/** Performance and singing forms a poem is written for. */
+export const NABATI_FORMS = ['ونّة', 'ردحة', 'تغرودة', 'عرضة', 'لعبوني', 'شيلة', 'دحة', 'رزفة'] as const
+
+export const NABATI_MELODIES = [...NABATI_METERS, ...NABATI_FORMS] as const
+
 export const FUSHA_METERS = [
   'الطويل',
-  'البسيط',
-  'الكامل',
-  'الوافر',
-  'الرمل',
-  'الخفيف',
-  'المتقارب',
-  'الرجز',
-  'السريع',
   'المديد',
+  'البسيط',
+  'الوافر',
+  'الكامل',
   'الهزج',
+  'الرجز',
+  'الرمل',
+  'السريع',
   'المنسرح',
-  'المجتث',
-  'المقتضب',
+  'الخفيف',
   'المضارع',
+  'المقتضب',
+  'المجتث',
+  'المتقارب',
   'المتدارك'
 ] as const
 
-export const PURPOSES = ['غزل', 'مدح', 'رثاء', 'حكمة', 'وصف', 'فخر', 'هجاء', 'وطني', 'ديني', 'شكوى', 'عتاب', 'حنين'] as const
+export const PURPOSES = ['غزل', 'مدح', 'رثاء', 'حكمة', 'وصف', 'فخر', 'هجاء', 'حماسة', 'وطني', 'ديني', 'شكوى', 'عتاب', 'حنين'] as const
 
 export function newVerse(id: string, sadr = '', ajuz = ''): Verse {
   return { id, sadr, ajuz }

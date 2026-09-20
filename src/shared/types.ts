@@ -19,6 +19,12 @@ export interface AppSettings {
   spellcheck: boolean
   /** Ask github.com for a newer release at startup; nothing else is sent. */
   checkUpdates: boolean
+  /**
+   * An ElevenLabs API key, entered by the user, for turning a recorded
+   * recitation into verses. Empty means the feature is off and the app
+   * never contacts that host; the key itself is the opt-in.
+   */
+  transcriptionKey: string
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -29,7 +35,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   defaultExportDir: null,
   rememberSession: true,
   spellcheck: false,
-  checkUpdates: true
+  checkUpdates: true,
+  transcriptionKey: ''
 }
 
 export interface RecentFile {

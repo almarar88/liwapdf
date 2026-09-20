@@ -140,7 +140,9 @@ export function coerceSettings(raw: unknown): AppSettings {
     spellcheck:
       typeof source.spellcheck === 'boolean' ? source.spellcheck : DEFAULT_SETTINGS.spellcheck,
     checkUpdates:
-      typeof source.checkUpdates === 'boolean' ? source.checkUpdates : DEFAULT_SETTINGS.checkUpdates
+      typeof source.checkUpdates === 'boolean' ? source.checkUpdates : DEFAULT_SETTINGS.checkUpdates,
+    transcriptionKey:
+      typeof source.transcriptionKey === 'string' ? source.transcriptionKey : DEFAULT_SETTINGS.transcriptionKey
   }
 }
 

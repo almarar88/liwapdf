@@ -4,6 +4,7 @@ import { guessRhyme, poemToText, splitIntoVerses } from '../../src/renderer/src/
 import { emptyPoem, filledVerses, poemLabel } from '../../src/renderer/src/lib/diwan/types'
 import { renderDiwanPdf } from '../../src/renderer/src/lib/diwan/pdf'
 import { parseDiwan, serializeDiwan } from '../../src/renderer/src/lib/diwan/store'
+import { wordsToVerses } from '../../src/renderer/src/lib/diwan/transcribe'
 
 let counter = 0
 const id = (): string => `v${(counter += 1)}`
@@ -53,6 +54,21 @@ const suite: Suite = {
     eq('poem label falls back to first words', poemLabel({ ...poem, title: '' }, 'x'), 'يا طير يا اللي في')
     eq('filled verses ignore blanks', filledVerses({ ...poem, verses: [...poem.verses, { id: 'e', sadr: ' ', ajuz: '' }] }).length, 2)
     eq('rhyme letter skips the final vowel', guessRhyme(poem), 'ب')
+
+    // A recitation's word timings (from a real transcription of a two-verse
+    // recording) split at the pauses between the halves.
+    const timed = [
+      ['يا', 0.1, 0.2], ['طير', 0.2, 1.0], ['يا', 1.1, 1.2], ['اللي', 1.2, 1.5], ['في', 1.5, 1.7], ['سماك', 1.7, 2.0], ['تحلق', 2.0, 2.5],
+      ['سلم', 3.6, 4.0], ['على', 4.0, 4.1], ['من', 4.1, 4.3], ['في', 4.3, 4.4], ['الديار', 4.4, 4.8], ['حبيبي', 4.8, 5.3],
+      ['قل', 6.3, 6.4], ['له', 6.4, 6.5], ['عيوني', 6.5, 7.0], ['بالسهر', 7.0, 7.6], ['تتعلق', 7.9, 8.4],
+      ['والقلب', 9.5, 10.2], ['من', 10.2, 10.4], ['فراقه', 10.4, 10.9], ['صار', 10.9, 11.2], ['غريبي.', 11.2, 11.8]
+    ].map(([text, start, end]) => ({ text: String(text), start: Number(start), end: Number(end) }))
+    const heard = wordsToVerses(timed, id)
+    eq('timed words become two verses', heard.length, 2)
+    eq('timed sadr 1', heard[0].sadr, 'يا طير يا اللي في سماك تحلق')
+    eq('timed ajuz 1', heard[0].ajuz, 'سلم على من في الديار حبيبي')
+    eq('timed ajuz 2 without punctuation', heard[1].ajuz, 'والقلب من فراقه صار غريبي')
+    eq('no timings falls back to text', wordsToVerses([], id, 'صدر ✦ عجز')[0].ajuz, 'عجز')
 
     // Backup round trip.
     const restored = parseDiwan(serializeDiwan([poem]))

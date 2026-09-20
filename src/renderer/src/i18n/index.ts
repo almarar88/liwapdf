@@ -1008,7 +1008,24 @@ const dict = {
     'diwan.storage.none': 'لا يمكن حفظ القصائد على هذا الجهاز؛ ستبقى لهذه الجلسة فقط.',
     'phone.card.diwan': 'ديوان الشاعر',
     'phone.card.diwan.d': 'صدر وعجز، تسجيل بصوتك، ديوان مطبوع',
-    'phone.add.diwan.d': 'قصيدة جديدة في ديوانك'
+    'phone.add.diwan.d': 'قصيدة جديدة في ديوانك',
+    'settings.transcription': 'التفريغ الصوتي للقصائد (خدمة سحابية اختيارية)',
+    'settings.transcription.ph': 'مفتاح ElevenLabs API',
+    'settings.transcriptionHint': 'يحوّل تسجيل إلقائك في الديوان إلى أبيات مكتوبة. الميزة الوحيدة التي تغادر جهازك: يُرسَل التسجيل إلى ElevenLabs بمفتاحك أنت وعند ضغطك أنت فقط. اترك الحقل فارغاً فيبقى التطبيق بلا أي اتصال.',
+    'diwan.transcribe': 'تفريغ إلى أبيات',
+    'diwan.transcribe.d': 'يكتب الإلقاء ويوزّعه صدراً وعجزاً عند وقفات صوتك',
+    'diwan.transcribe.noKey': 'التفريغ خدمة سحابية اختيارية: يُرسَل التسجيل إلى ElevenLabs. أدخل مفتاح API الخاص بك في الإعدادات أولاً.',
+    'diwan.transcribe.running': 'يُفرَّغ التسجيل…',
+    'diwan.transcribe.unauthorized': 'المفتاح مرفوض. تحقق منه في الإعدادات.',
+    'diwan.transcribe.network': 'تعذّر الاتصال بخدمة التفريغ.',
+    'diwan.transcribe.rejected': 'رفضت الخدمة التسجيل ({code}).',
+    'diwan.transcribe.empty': 'لم يُسمع كلام في التسجيل.',
+    'diwan.transcribe.preview': 'الأبيات المستخرجة',
+    'diwan.transcribe.hint': 'راجع التوزيع قبل الإضافة؛ وقفة قصيرة أو طويلة تنقل كلمة من شطر إلى آخر.',
+    'diwan.transcribe.append': 'إضافة إلى القصيدة',
+    'diwan.transcribe.replace': 'استبدال الأبيات',
+    'diwan.transcribe.done': 'أُضيفت {n} بيت',
+    'diwan.transcribe.settings': 'فتح الإعدادات'
   },
 
   en: {
@@ -2017,7 +2034,24 @@ const dict = {
     'diwan.storage.none': 'Poems cannot be stored on this device; they last for this session only.',
     'phone.card.diwan': "Poet's Diwan",
     'phone.card.diwan.d': 'Sadr and ajuz, your own voice, a printed book',
-    'phone.add.diwan.d': 'A new poem in your diwan'
+    'phone.add.diwan.d': 'A new poem in your diwan',
+    'settings.transcription': 'Poem transcription (optional cloud service)',
+    'settings.transcription.ph': 'ElevenLabs API key',
+    'settings.transcriptionHint': 'Turns a recorded recitation in the Diwan into written verses. The one feature that leaves your device: the recording is sent to ElevenLabs with your own key, and only when you press the button. Leave it empty and the app makes no connection.',
+    'diwan.transcribe': 'Transcribe into verses',
+    'diwan.transcribe.d': 'Writes the recitation down and splits it at the pauses in your voice',
+    'diwan.transcribe.noKey': 'Transcription is an optional cloud service: the recording is sent to ElevenLabs. Enter your own API key in Settings first.',
+    'diwan.transcribe.running': 'Transcribing…',
+    'diwan.transcribe.unauthorized': 'The key was refused. Check it in Settings.',
+    'diwan.transcribe.network': 'Could not reach the transcription service.',
+    'diwan.transcribe.rejected': 'The service refused the recording ({code}).',
+    'diwan.transcribe.empty': 'No speech was heard in the recording.',
+    'diwan.transcribe.preview': 'Verses heard',
+    'diwan.transcribe.hint': 'Check the split before adding; a short or long pause moves a word from one half to the other.',
+    'diwan.transcribe.append': 'Add to the poem',
+    'diwan.transcribe.replace': 'Replace the verses',
+    'diwan.transcribe.done': '{n} verses added',
+    'diwan.transcribe.settings': 'Open Settings'
   }
 } as const
 

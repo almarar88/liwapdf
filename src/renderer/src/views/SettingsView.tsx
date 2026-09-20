@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Check, FolderOpen, Github, Moon, Sun, SunMoon } from 'lucide-react'
 import { useApp } from '../store/app'
-import { Button, Card, Field, Segmented, Switch } from '../components/ui'
+import { Button, Card, Field, Segmented, Switch, TextInput } from '../components/ui'
 import type { AppSettings } from '@shared/types'
 import { SHORTCUTS } from '../lib/shortcuts'
 
@@ -174,6 +174,15 @@ export function SettingsView(): React.JSX.Element {
                 {t('update.checkNow')}
               </Button>
             </div>
+          </Field>
+
+          <Field label={t('settings.transcription')} hint={t('settings.transcriptionHint')}>
+            <TextInput
+              type="password"
+              value={settings.transcriptionKey}
+              placeholder={t('settings.transcription.ph')}
+              onChange={(transcriptionKey) => void setSettings({ transcriptionKey })}
+            />
           </Field>
         </div>
       </Card>
