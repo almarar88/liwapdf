@@ -1,4 +1,4 @@
-import type { Poem, Verse } from './types'
+import { fontFamilyFor, styleOf, type Poem, type PoemTheme, type Verse } from './types'
 
 /**
  * A verse card for sharing.
@@ -12,8 +12,8 @@ import type { Poem, Verse } from './types'
 
 export interface CardOptions {
   poet: string
-  /** Warm paper, deep night, or plain ivory. */
-  theme: 'paper' | 'night' | 'ivory'
+  /** Warm paper, deep night, plain ivory, sage or rose. */
+  theme: PoemTheme
   /** Rendered from the verses the poet picked, or the first few. */
   verses: Verse[]
   title?: string
@@ -22,14 +22,16 @@ export interface CardOptions {
 const THEMES = {
   paper: { back: ['#f6efe1', '#ead9bb'], ink: '#2a2118', soft: '#7d6a4f', gold: '#a8823f' },
   night: { back: ['#141a26', '#0b0f17'], ink: '#f2ebdc', soft: '#b3a68c', gold: '#d2b06a' },
-  ivory: { back: ['#fbfaf7', '#f1eee6'], ink: '#1f1f1f', soft: '#6b6b6b', gold: '#9a8a5a' }
+  ivory: { back: ['#fbfaf7', '#f1eee6'], ink: '#1f1f1f', soft: '#6b6b6b', gold: '#9a8a5a' },
+  sage: { back: ['#eef3ec', '#cfdcc7'], ink: '#1f2a1e', soft: '#5f7059', gold: '#7f9b6e' },
+  rose: { back: ['#fbf0ee', '#ebcfc8'], ink: '#2b1d1b', soft: '#8a6560', gold: '#b8776a' }
 } as const
 
 const WIDTH = 1080
 const HEIGHT = 1350
 
 export async function renderVerseCard(poem: Poem, options: CardOptions): Promise<Blob> {
-  const family = '"Alcode Amiri", "Amiri", "Noto Naskh Arabic", "Traditional Arabic", serif'
+  const family = fontFamilyFor(styleOf(poem).font)
   // The bundled face is declared in CSS; the canvas needs it resolved before
   // it draws, or the first card ever made comes out in the fallback font.
   if (typeof document !== 'undefined' && 'fonts' in document) {

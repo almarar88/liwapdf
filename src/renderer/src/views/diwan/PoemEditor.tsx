@@ -24,18 +24,26 @@ import { usePhone } from '../../hooks/usePhone'
 import { useDiwan } from '../../store/diwan'
 import { Button, Checkbox, Field, Modal, Segmented, TextArea, TextInput } from '../../components/ui'
 import { saveBytes } from '../../lib/files'
-import { escapeHtml, formatRelativeTime } from '../../lib/format'
+import { formatRelativeTime } from '../../lib/format'
+import { poemDocx, poemHtml, poemPlainText, renderPoemPoster } from '../../lib/diwan/export'
+import { AiError, ai, type Critique, type VerseSuggestion } from '../../lib/ai/client'
 import { guessRhyme, poemToText } from '../../lib/diwan/parse'
 import { TranscribeError, transcribeRecording, wordsToVerses } from '../../lib/diwan/transcribe'
 import { uid } from '../../lib/format'
 import {
   FUSHA_METERS,
   NABATI_MELODIES,
+  POEM_FONTS,
+  POEM_THEMES,
   PURPOSES,
   filledVerses,
+  fontFamilyFor,
   poemLabel,
+  styleOf,
   type Poem,
   type PoemForm,
+  type PoemFont,
+  type PoemTheme,
   type Verse
 } from '../../lib/diwan/types'
 import {
@@ -71,6 +79,8 @@ export function PoemEditor({ id }: { id: string }): React.JSX.Element {
   const flush = useDiwan((state) => state.flush)
   const [mode, setMode] = useState<'edit' | 'preview'>('edit')
   const [sharing, setSharing] = useState(false)
+  const [assisting, setAssisting] = useState(false)
+  const [exporting, setExporting] = useState(false)
   const phone = usePhone()
 
   // Leaving the poem writes it at once rather than after the debounce.
@@ -111,6 +121,32 @@ export function PoemEditor({ id }: { id: string }): React.JSX.Element {
     }
   }
 
+  const exportAs = async (kind: 'docx' | 'txt' | 'poster'): Promise<void> => {
+    setBusy({ label: t('diwan.export'), progress: null })
+    try {
+      const base = safeName(poemLabel(poem, 'poem'))
+      const file =
+        kind === 'docx'
+          ? { bytes: await poemDocx(poem, poet), name: `${base}.docx`, filter: 'file.word' }
+          : kind === 'txt'
+            ? { bytes: new TextEncoder().encode(poemPlainText(poem, poet)), name: `${base}.txt`, filter: 'file.text' }
+            : { bytes: new Uint8Array(await (await renderPoemPoster(poem, poet)).arrayBuffer()), name: `${base}.png`, filter: 'file.images' }
+      const outcome = await saveBytes(file.bytes, file.name, [{ name: file.filter, extensions: [file.name.split('.').pop() ?? ''] }])
+      if (outcome.saved) {
+        notify({
+          kind: 'success',
+          title: t('diwan.pdf.saved'),
+          message: outcome.path,
+          action: { label: t('action.share'), run: () => void window.alcode.shell.reveal(outcome.path ?? '') }
+        })
+      }
+    } catch (error) {
+      notify({ kind: 'error', title: t('msg.error'), message: String(error) })
+    } finally {
+      setBusy(null)
+    }
+  }
+
   const copyText = async (): Promise<void> => {
     const text = [poemLabel(poem, ''), poemToText(poem)].filter(Boolean).join('\n\n')
     await window.alcode.clipboard.writeText(text)
@@ -119,7 +155,7 @@ export function PoemEditor({ id }: { id: string }): React.JSX.Element {
 
   const insertIntoDocument = async (): Promise<void> => {
     const app = useApp.getState()
-    const html = poemHtml(poem, poet)
+    const html = `${poemHtml(poem, poet)}<p></p>`
     if (app.editorDoc && app.editorDoc.source.kind === 'rich') {
       app.replaceEditorHtml(`${app.editorDoc.html}${html}`)
     } else {
@@ -169,8 +205,11 @@ export function PoemEditor({ id }: { id: string }): React.JSX.Element {
         <Button size="sm" onClick={() => setSharing(true)} title={t('diwan.share.d')}>
           <Share2 size={14} /> {t('diwan.share')}
         </Button>
-        <Button size="sm" onClick={() => void exportPdf()}>
-          <FileDown size={14} /> {t('diwan.pdf.one')}
+        <Button size="sm" variant="primary" onClick={() => setAssisting(true)} title={t('ai.assistant')}>
+          <Sparkles size={14} /> {t('ai.assistant')}
+        </Button>
+        <Button size="sm" onClick={() => setExporting(true)}>
+          <FileDown size={14} /> {t('diwan.export')}
         </Button>
         {/* The document editor is a desktop thing; the phone links poems to
             journal days instead, from the day's page. */}
@@ -215,6 +254,23 @@ export function PoemEditor({ id }: { id: string }): React.JSX.Element {
       <RecorderPanel poem={poem} />
 
       <ShareCardModal open={sharing} onClose={() => setSharing(false)} poem={poem} poet={poet} />
+      <AssistantModal open={assisting} onClose={() => setAssisting(false)} poem={poem} />
+      <Modal open={exporting} onClose={() => setExporting(false)} title={t('diwan.export')} icon={<FileDown size={16} />}>
+        <div className="stack">
+          <Button block onClick={() => { setExporting(false); void exportPdf() }}>
+            <FileDown size={15} /> {t('diwan.pdf.one')}
+          </Button>
+          <Button block onClick={() => { setExporting(false); void exportAs('docx') }}>
+            <FileDown size={15} /> {t('diwan.export.docx')}
+          </Button>
+          <Button block onClick={() => { setExporting(false); void exportAs('txt') }}>
+            <FileDown size={15} /> {t('diwan.export.txt')}
+          </Button>
+          <Button block onClick={() => { setExporting(false); void exportAs('poster') }}>
+            <Share2 size={15} /> {t('diwan.export.poster')}
+          </Button>
+        </div>
+      </Modal>
     </div>
   )
 }
@@ -475,8 +531,10 @@ function VerseRows({ poem }: { poem: Poem }): React.JSX.Element {
 /* ---------------------------------------------------------------- canvas */
 
 /** The poem as it prints, in the calligraphic face, at a size the longest half decides. */
-export function Canvas({ poem, poet }: { poem: Poem; poet: string }): React.JSX.Element {
+export function Canvas({ poem, poet, editable = true }: { poem: Poem; poet: string; editable?: boolean }): React.JSX.Element {
   const t = useApp((state) => state.t)
+  const update = useDiwan((state) => state.update)
+  const style = styleOf(poem)
   const verses = filledVerses(poem)
   const longest = Math.max(1, ...verses.flatMap((verse) => [verse.sadr.trim().length, verse.ajuz.trim().length]))
   // 20px down to 15px as the halves get long; measured in characters, which
@@ -487,7 +545,34 @@ export function Canvas({ poem, poet }: { poem: Poem; poet: string }): React.JSX.
     .join(' · ')
 
   return (
-    <div className="dw-canvas" style={{ '--dw-verse-size': `${size}px` } as React.CSSProperties}>
+    <>
+    {editable ? (
+      <div className="dw-style">
+        <span className="lbl">{t('diwan.font')}</span>
+        {POEM_FONTS.map((font) => (
+          <button
+            key={font}
+            className={`dw-font${style.font === font ? ' on' : ''}`}
+            style={{ fontFamily: fontFamilyFor(font) }}
+            onClick={() => update(poem.id, { style: { ...style, font } })}
+          >
+            {t(`diwan.font.${font}`)}
+          </button>
+        ))}
+        <span className="lbl" style={{ marginInlineStart: 8 }}>{t('diwan.theme')}</span>
+        {POEM_THEMES.map((theme) => (
+          <button
+            key={theme}
+            className={`dw-swatch${style.theme === theme ? ' on' : ''}`}
+            title={t(`diwan.theme.${theme}`)}
+            aria-label={t(`diwan.theme.${theme}`)}
+            style={{ background: SWATCHES[theme] }}
+            onClick={() => update(poem.id, { style: { ...style, theme } })}
+          />
+        ))}
+      </div>
+    ) : null}
+    <div className={`dw-canvas theme-${style.theme}`} style={{ '--dw-verse-size': `${size}px`, '--dw-font': fontFamilyFor(style.font) } as React.CSSProperties}>
       <h2 dir="auto">{poemLabel(poem, t('diwan.untitled'))}</h2>
       {meta ? <div className="meta">{meta}</div> : null}
       <div className="orn">✦</div>
@@ -507,6 +592,154 @@ export function Canvas({ poem, poet }: { poem: Poem; poet: string }): React.JSX.
       {poem.occasion.trim() ? <div className="note" dir="auto">{poem.occasion.trim()}</div> : null}
       {poet.trim() ? <div className="sign">— {poet.trim()}</div> : null}
     </div>
+    </>
+  )
+}
+
+const SWATCHES: Record<PoemTheme, string> = {
+  paper: 'linear-gradient(160deg,#fbf7ef,#e9dcc1)',
+  night: 'linear-gradient(160deg,#2b2740,#12101c)',
+  ivory: 'linear-gradient(160deg,#fcfbf8,#eee9dd)',
+  sage: 'linear-gradient(160deg,#eef3ec,#c9d8c1)',
+  rose: 'linear-gradient(160deg,#fbf0ee,#e8c9c2)'
+}
+
+/* ------------------------------------------------------------- assistant */
+
+/**
+ * The poet's assistant: titles, alternatives for a verse, the missing
+ * half, and a critic's reading. Each is one request; the answer is shown
+ * and nothing touches the poem until the poet presses apply.
+ */
+function AssistantModal({ open, onClose, poem }: { open: boolean; onClose: () => void; poem: Poem }): React.JSX.Element {
+  const t = useApp((state) => state.t)
+  const notify = useApp((state) => state.notify)
+  const update = useDiwan((state) => state.update)
+  const updateVerse = useDiwan((state) => state.updateVerse)
+  const keepVersion = useDiwan((state) => state.keepVersion)
+  const [busy, setBusy] = useState(false)
+  const [verseId, setVerseId] = useState<string>('')
+  const [instruction, setInstruction] = useState('')
+  const [titles, setTitles] = useState<string[] | null>(null)
+  const [suggestions, setSuggestions] = useState<VerseSuggestion[] | null>(null)
+  const [critique, setCritique] = useState<Critique | null>(null)
+  const verses = filledVerses(poem)
+  const chosen = verses.find((verse) => verse.id === verseId) ?? verses[0]
+
+  useEffect(() => {
+    if (open) {
+      setTitles(null)
+      setSuggestions(null)
+      setCritique(null)
+      if (!verseId && verses[0]) setVerseId(verses[0].id)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
+
+  const run = async (work: () => Promise<void>): Promise<void> => {
+    setBusy(true)
+    try {
+      await work()
+    } catch (error) {
+      const reason = error instanceof AiError ? error.reason : 'upstream'
+      notify({ kind: 'error', title: t(`ai.err.${reason}`) })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title={t('ai.assistant')} icon={<Sparkles size={16} />}>
+      <div className="dw-ai">
+        <div className="row wrap">
+          <Button size="sm" disabled={busy || verses.length === 0} onClick={() => void run(async () => setTitles(await ai.titles(poem.verses)))}>
+            {t('ai.titles')}
+          </Button>
+          <Button size="sm" disabled={busy || verses.length === 0} onClick={() => void run(async () => setCritique(await ai.critique(poem.title, poem.form, poem.meter, poem.verses)))}>
+            {t('ai.critique')}
+          </Button>
+        </div>
+        <Field label={t('ai.suggest')}>
+          <select className="select" value={chosen?.id ?? ''} onChange={(event) => setVerseId(event.target.value)}>
+            {verses.map((verse, index) => (
+              <option key={verse.id} value={verse.id}>
+                {index + 1}. {verse.sadr.trim().split(/\s+/).slice(0, 4).join(' ')}…
+              </option>
+            ))}
+          </select>
+          <input className="input" value={instruction} placeholder={t('ai.instruction.ph')} onChange={(event) => setInstruction(event.target.value)} />
+          <div className="row wrap">
+            <Button
+              size="sm"
+              disabled={busy || !chosen}
+              onClick={() =>
+                void run(async () => {
+                  if (!chosen) return
+                  setSuggestions(await ai.suggest(poem.verses, poem.verses.findIndex((verse) => verse.id === chosen.id), instruction))
+                })
+              }
+            >
+              {chosen && !chosen.ajuz.trim() ? t('ai.complete') : t('ai.suggest')}
+            </Button>
+            {busy ? <span className="dw-status">{t('ai.working')}</span> : null}
+          </div>
+        </Field>
+
+        {titles ? (
+          <>
+            <h4>{t('ai.titles')}</h4>
+            {titles.map((title) => (
+              <div className="item row between" key={title}>
+                <p dir="auto">{title}</p>
+                <Button size="sm" onClick={() => { update(poem.id, { title }); notify({ kind: 'success', title: t('diwan.saved') }) }}>
+                  {t('ai.apply')}
+                </Button>
+              </div>
+            ))}
+          </>
+        ) : null}
+
+        {suggestions && chosen ? (
+          <>
+            <h4>{t('ai.suggest')}</h4>
+            {suggestions.map((suggestion, index) => (
+              <div className="item" key={index}>
+                <p dir="auto">
+                  {suggestion.sadr}
+                  {suggestion.ajuz ? ` ✦ ${suggestion.ajuz}` : ''}
+                </p>
+                <small dir="auto">{suggestion.why}</small>
+                <div className="row" style={{ marginTop: 6 }}>
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      keepVersion(poem.id, chosen.id)
+                      updateVerse(poem.id, chosen.id, { sadr: suggestion.sadr, ajuz: suggestion.ajuz })
+                      notify({ kind: 'success', title: t('diwan.verse.kept') })
+                    }}
+                  >
+                    {t('ai.apply')}
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </>
+        ) : null}
+
+        {critique ? (
+          <>
+            <h4>{t('ai.overall')}</h4>
+            <div className="item"><p dir="auto">{critique.overall}</p></div>
+            <h4>{t('ai.strengths')}</h4>
+            <ul>{critique.strengths.map((line, index) => <li key={index} dir="auto">{line}</li>)}</ul>
+            <h4>{t('ai.improvements')}</h4>
+            <ul>{critique.improvements.map((line, index) => <li key={index} dir="auto">{line}</li>)}</ul>
+            <h4>{t('ai.meterNote')}</h4>
+            <div className="item"><p dir="auto">{critique.meter_note}</p></div>
+          </>
+        ) : null}
+      </div>
+    </Modal>
   )
 }
 
@@ -711,7 +944,7 @@ function RecorderPanel({ poem }: { poem: Poem }): React.JSX.Element {
       >
         <div className="stack">
           <span className="hint">{t('diwan.transcribe.hint')}</span>
-          <div className="dw-canvas" style={{ padding: '14px 12px', '--dw-verse-size': '16px' } as React.CSSProperties}>
+          <div className="dw-canvas compact" style={{ padding: '14px 12px', '--dw-verse-size': '16px' } as React.CSSProperties}>
             <div className="rows">
               {(heard ?? []).map((verse) => (
                 <div className="row" key={verse.id}>
@@ -848,30 +1081,4 @@ function ShareCardModal({
 
 function safeName(name: string): string {
   return name.replace(/[\\/:*?"<>|]+/g, ' ').trim().slice(0, 60) || 'poem'
-}
-
-/**
- * The poem as a two-column table for the rich editor: the sadr on the
- * right, the ajuz on the left, the ornament between — the same page the
- * PDF prints, in the markup the editor and every exporter understand.
- */
-function poemHtml(poem: Poem, poet: string): string {
-  const rows = filledVerses(poem)
-    .map((verse) =>
-      poem.form === 'free'
-        ? `<tr><td colspan="3" style="text-align:right">${escapeHtml(verse.sadr.trim() || verse.ajuz.trim())}</td></tr>`
-        : `<tr><td style="text-align:right;width:47%">${escapeHtml(verse.sadr.trim())}</td>` +
-          `<td style="text-align:center;width:6%;color:#a8823f">✦</td>` +
-          `<td style="text-align:left;width:47%">${escapeHtml(verse.ajuz.trim())}</td></tr>`
-    )
-    .join('')
-  const title = poem.title.trim() ? `<h2 style="text-align:center">${escapeHtml(poem.title.trim())}</h2>` : ''
-  const meta = [poem.meter.trim(), poem.purpose.trim()].filter(Boolean).join(' · ')
-  const line = meta ? `<p style="text-align:center;color:#6f665a">${escapeHtml(meta)}</p>` : ''
-  const note = poem.occasion.trim() ? `<p style="color:#6f665a;font-size:0.9em">${escapeHtml(poem.occasion.trim())}</p>` : ''
-  const sign = poet.trim() ? `<p style="text-align:center;color:#a8823f">— ${escapeHtml(poet.trim())}</p>` : ''
-  return (
-    `<section dir="rtl" style="font-family:'Amiri','Sakkal Majalla','Traditional Arabic',serif;line-height:1.9">` +
-    `${title}${line}<table style="width:100%;border-collapse:collapse">${rows}</table>${note}${sign}</section><p></p>`
-  )
 }

@@ -2,7 +2,7 @@ import { supabase } from './client'
 import { listAllPoems, purgePoem, readRecording, savePoem, saveRecording } from '../diwan/store'
 import { listEntries, purgeEntry, saveEntry } from '../journal/store'
 import { readMeta, writeMeta } from '../local/db'
-import type { Poem, Verse, VerseVersion } from '../diwan/types'
+import { styleOf, type Poem, type PoemStyle, type Verse, type VerseVersion } from '../diwan/types'
 import type { JournalEntry } from '../journal/types'
 
 /**
@@ -48,6 +48,7 @@ interface PoemRow {
   has_recording: boolean
   recording_seconds: number
   recording_path: string
+  style: Partial<PoemStyle>
   created_at: string
   updated_at: string
   deleted_at: string | null
@@ -171,6 +172,7 @@ function rowFromPoem(poem: Poem, userId: string, recordingPath: string): PoemRow
     has_recording: poem.hasRecording,
     recording_seconds: poem.recordingSeconds,
     recording_path: poem.hasRecording && (poem.recordingSyncedAt ?? 0) > 0 ? recordingPath : '',
+    style: styleOf(poem),
     created_at: iso(poem.createdAt),
     updated_at: iso(poem.updatedAt),
     deleted_at: poem.deletedAt ? iso(poem.deletedAt) : null
@@ -193,6 +195,7 @@ function poemFromRow(row: PoemRow, mine: Poem | undefined): Poem {
     versions: Array.isArray(row.versions) ? row.versions : [],
     hasRecording: Boolean(row.has_recording),
     recordingSeconds: row.recording_seconds ?? 0,
+    style: styleOf({ style: row.style }),
     createdAt: ms(row.created_at) || updatedAt,
     updatedAt,
     deletedAt: null,

@@ -21,6 +21,9 @@ import { saveBytes } from '../../lib/files'
 import { formatGregorian, formatHijri, formatRelativeTime } from '../../lib/format'
 import { MOODS, entryExcerpt, todayIso, wordCount, type JournalEntry } from '../../lib/journal/types'
 import { filledVerses, poemLabel, type Poem } from '../../lib/diwan/types'
+import { AiError, ai, type Reflection } from '../../lib/ai/client'
+import { Sparkles, FileDown } from 'lucide-react'
+import { escapeHtml } from '../../lib/format'
 import '../../styles/diwan.css'
 import '../../styles/journal.css'
 
@@ -67,6 +70,54 @@ function Days(): React.JSX.Element {
   const open = useJournal((state) => state.open)
   const [query, setQuery] = useState('')
   const [printing, setPrinting] = useState(false)
+  const [reflection, setReflection] = useState<Reflection | null>(null)
+  const [reflecting, setReflecting] = useState(false)
+  const notify = useApp((state) => state.notify)
+  const setBusy = useApp((state) => state.setBusy)
+
+  /** The assistant reads the last fortnight and writes back, warmly. */
+  const reflect = async (): Promise<void> => {
+    const recent = entries.slice(0, 14).filter((entry) => entry.body.trim())
+    if (recent.length === 0) {
+      notify({ kind: 'info', title: t('ai.reflect.none') })
+      return
+    }
+    setReflecting(true)
+    try {
+      const text = recent.map((entry) => `${entry.day}${entry.title ? ` — ${entry.title}` : ''}${entry.mood ? ` (${t(`journal.mood.${entry.mood}` as 'journal.mood.joy')})` : ''}\n${entry.body.trim()}`).join('\n\n')
+      setReflection(await ai.reflect(text))
+    } catch (error) {
+      const reason = error instanceof AiError ? error.reason : 'upstream'
+      notify({ kind: 'error', title: t(`ai.err.${reason}`) })
+    } finally {
+      setReflecting(false)
+    }
+  }
+
+  const exportDocx = async (): Promise<void> => {
+    setBusy({ label: t('journal.export.docx'), progress: null })
+    try {
+      const { htmlToDocx } = await import('../../lib/docx/write')
+      const html = `<div dir="rtl" style="font-family:'Amiri','Sakkal Majalla',serif;line-height:1.9">${[...entries]
+        .sort((a, b) => a.day.localeCompare(b.day))
+        .map(
+          (entry) =>
+            `<h2>${escapeHtml(entry.day)}${entry.title.trim() ? ` — ${escapeHtml(entry.title.trim())}` : ''}</h2>` +
+            entry.body
+              .split(/\n{2,}/)
+              .map((paragraph) => `<p>${escapeHtml(paragraph.trim()).replace(/\n/g, '<br/>')}</p>`)
+              .join('')
+        )
+        .join('')}</div>`
+      const bytes = await htmlToDocx(html, { title: t('nav.journal'), rightToLeft: true })
+      const outcome = await saveBytes(bytes, 'journal.docx', [{ name: 'file.word', extensions: ['docx'] }])
+      if (outcome.saved) notify({ kind: 'success', title: t('diwan.pdf.saved'), message: outcome.path })
+    } catch (error) {
+      notify({ kind: 'error', title: t('msg.error'), message: String(error) })
+    } finally {
+      setBusy(null)
+    }
+  }
 
   const today = todayIso()
   const todayEntry = entries.find((entry) => entry.day === today)
@@ -142,7 +193,41 @@ function Days(): React.JSX.Element {
             <span>{t('journal.book.d')}</span>
           </span>
         </button>
+        <button className="dw-action" onClick={() => void reflect()} disabled={entries.length === 0 || reflecting}>
+          <span className="ic">
+            <Sparkles size={18} />
+          </span>
+          <span>
+            <b>{reflecting ? t('ai.working') : t('ai.reflect')}</b>
+            <span>{t('ai.reflect.d')}</span>
+          </span>
+        </button>
+        <button className="dw-action" onClick={() => void exportDocx()} disabled={entries.length === 0}>
+          <span className="ic">
+            <FileDown size={18} />
+          </span>
+          <span>
+            <b>{t('journal.export.docx')}</b>
+            <span>{t('journal.count', { n: entries.length })}</span>
+          </span>
+        </button>
       </div>
+
+      <Modal open={reflection !== null} onClose={() => setReflection(null)} title={t('ai.reflect')} icon={<Sparkles size={16} />}>
+        {reflection ? (
+          <div className="dw-ai">
+            <div className="item"><p dir="auto">{reflection.summary}</p></div>
+            <h4>{t('ai.themes')}</h4>
+            <ul>{reflection.themes.map((theme, index) => <li key={index} dir="auto">{theme}</li>)}</ul>
+            <h4>{t('ai.mood')}</h4>
+            <div className="item"><p dir="auto">{reflection.mood}</p></div>
+            <h4>{t('ai.highlight')}</h4>
+            <div className="item"><p dir="auto">{reflection.highlight}</p></div>
+            <h4>{t('ai.question')}</h4>
+            <div className="item"><p dir="auto">{reflection.question}</p></div>
+          </div>
+        ) : null}
+      </Modal>
 
       {entries.length > 4 ? (
         <label className="jn-search">

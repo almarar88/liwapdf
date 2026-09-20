@@ -18,6 +18,9 @@ import { splitIntoVerses } from '../../lib/diwan/parse'
 import { parseDiwan, serializeDiwan } from '../../lib/diwan/store'
 import { filledVerses, poemLabel, type Poem } from '../../lib/diwan/types'
 import { PoemEditor } from './PoemEditor'
+import { AiError, ai } from '../../lib/ai/client'
+import { diwanDocx } from '../../lib/diwan/export'
+import { Sparkles, FileDown } from 'lucide-react'
 import '../../styles/diwan.css'
 
 /**
@@ -158,9 +161,22 @@ function Shelf(): React.JSX.Element {
       )}
 
       {poems.length > 0 ? (
-        <div className="row" style={{ justifyContent: 'center' }}>
+        <div className="row wrap" style={{ justifyContent: 'center' }}>
           <Button size="sm" onClick={() => void restore()}>
             <Upload size={14} /> {t('diwan.restore')}
+          </Button>
+          <Button
+            size="sm"
+            onClick={() =>
+              void (async () => {
+                const title = t('diwan.book.title.ph', { poet: poet || '…' })
+                const bytes = await diwanDocx(poems, title, poet)
+                const outcome = await saveBytes(bytes, `${title.replace(/[\\/:*?"<>|]/g, ' ')}.docx`, [{ name: 'file.word', extensions: ['docx'] }])
+                if (outcome.saved) notify({ kind: 'success', title: t('diwan.pdf.saved'), message: outcome.path })
+              })()
+            }
+          >
+            <FileDown size={14} /> {t('diwan.export.diwanDocx')}
           </Button>
         </div>
       ) : null}
@@ -203,10 +219,39 @@ function PoemCard({ poem, onOpen }: { poem: Poem; onOpen: () => void }): React.J
 /** Pasted text, split into verses and opened as a new poem. */
 function PasteModal({ open, onClose }: { open: boolean; onClose: () => void }): React.JSX.Element {
   const t = useApp((state) => state.t)
+  const notify = useApp((state) => state.notify)
   const create = useDiwan((state) => state.create)
   const [text, setText] = useState('')
+  const [thinking, setThinking] = useState(false)
 
   const preview = useMemo(() => splitIntoVerses(text, uid), [text])
+
+  /** The assistant reads the text as a poet would: verses, meter, purpose, rhyme, title. */
+  const arrange = async (): Promise<void> => {
+    if (!text.trim()) return
+    setThinking(true)
+    try {
+      const arranged = await ai.arrange(text)
+      const verses = arranged.verses.filter((verse) => verse.sadr.trim() || verse.ajuz.trim()).map((verse) => ({ id: uid(), sadr: verse.sadr.trim(), ajuz: verse.ajuz.trim() }))
+      if (verses.length === 0) throw new AiError('refused')
+      create({
+        title: arranged.title.trim(),
+        form: arranged.form,
+        meter: arranged.meter.trim(),
+        purpose: arranged.purpose.trim(),
+        rhyme: arranged.rhyme.trim(),
+        verses
+      })
+      if (arranged.note.trim()) notify({ kind: 'info', title: t('ai.note'), message: arranged.note.trim() })
+      setText('')
+      onClose()
+    } catch (error) {
+      const reason = error instanceof AiError ? error.reason : 'upstream'
+      notify({ kind: 'error', title: t(`ai.err.${reason}`) })
+    } finally {
+      setThinking(false)
+    }
+  }
 
   const finish = (): void => {
     if (preview.length === 0) return
@@ -230,17 +275,20 @@ function PasteModal({ open, onClose }: { open: boolean; onClose: () => void }): 
       footer={
         <>
           <Button onClick={onClose}>{t('action.cancel')}</Button>
-          <Button variant="primary" disabled={preview.length === 0} onClick={finish}>
-            {t('diwan.split')} · {preview.length}
+          <Button disabled={preview.length === 0 || thinking} onClick={finish}>
+            {t('ai.arrange.local')} · {preview.length}
+          </Button>
+          <Button variant="primary" disabled={!text.trim() || thinking} onClick={() => void arrange()} title={t('ai.arrange.d')}>
+            <Sparkles size={14} /> {thinking ? t('ai.working') : t('ai.arrange')}
           </Button>
         </>
       }
     >
       <div className="stack">
         <TextArea value={text} onChange={setText} rows={8} placeholder={t('diwan.paste.ph')} />
-        <span className="hint">{t('diwan.split.hint')}</span>
+        <span className="hint">{t('ai.arrange.d')} · {t('diwan.split.hint')}</span>
         {preview.length > 0 ? (
-          <div className="dw-canvas" style={{ padding: '14px 12px', '--dw-verse-size': '16px' } as React.CSSProperties}>
+          <div className="dw-canvas compact" style={{ padding: '14px 12px', '--dw-verse-size': '16px' } as React.CSSProperties}>
             <div className="rows">
               {preview.slice(0, 4).map((verse) => (
                 <div className="row" key={verse.id}>

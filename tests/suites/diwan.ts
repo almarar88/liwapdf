@@ -5,6 +5,8 @@ import { emptyPoem, filledVerses, poemLabel } from '../../src/renderer/src/lib/d
 import { renderDiwanPdf } from '../../src/renderer/src/lib/diwan/pdf'
 import { parseDiwan, serializeDiwan } from '../../src/renderer/src/lib/diwan/store'
 import { wordsToVerses } from '../../src/renderer/src/lib/diwan/transcribe'
+import { diwanHtml, poemHtml, poemPlainText } from '../../src/renderer/src/lib/diwan/export'
+import { fontFamilyFor, styleOf } from '../../src/renderer/src/lib/diwan/types'
 
 let counter = 0
 const id = (): string => `v${(counter += 1)}`
@@ -69,6 +71,17 @@ const suite: Suite = {
     eq('timed ajuz 1', heard[0].ajuz, 'سلم على من في الديار حبيبي')
     eq('timed ajuz 2 without punctuation', heard[1].ajuz, 'والقلب من فراقه صار غريبي')
     eq('no timings falls back to text', wordsToVerses([], id, 'صدر ✦ عجز')[0].ajuz, 'عجز')
+
+    // Exports: the two-column table and the plain text form.
+    const html = poemHtml(poem, 'شاعر')
+    check('poem html has one row per verse', (html.match(/<tr>/g) ?? []).length === 2 && html.includes('مسحوب الليل') && html.includes('— شاعر'))
+    const plain = poemPlainText(poem, 'شاعر')
+    eq('plain text starts with the title', plain.split('\n')[0], 'مسحوب الليل')
+    check('plain text carries the star and the signature', plain.includes(' ✦ ') && plain.trim().endsWith('— شاعر'))
+    check('diwan html separates poems with page breaks', (diwanHtml([poem, poem], 'ديوان', 'شاعر').match(/page-break-before/g) ?? []).length === 2)
+    eq('default style', styleOf(poem).font, 'amiri')
+    eq('style falls back per field', styleOf({ style: { theme: 'night' } }).font, 'amiri')
+    check('every face resolves to a family', fontFamilyFor('ruqaa').includes('Aref Ruqaa') && fontFamilyFor(undefined).includes('Amiri'))
 
     // Backup round trip.
     const restored = parseDiwan(serializeDiwan([poem]))

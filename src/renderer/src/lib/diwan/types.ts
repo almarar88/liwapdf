@@ -30,6 +30,38 @@ export interface VerseVersion {
 
 export type PoemForm = 'nabati' | 'fusha' | 'free'
 
+/** The faces the poem can be set in on screen and on a card. All bundled. */
+export type PoemFont = 'amiri' | 'naskh' | 'ruqaa' | 'scheherazade'
+/** The paper behind the verses. */
+export type PoemTheme = 'paper' | 'night' | 'ivory' | 'sage' | 'rose'
+
+export interface PoemStyle {
+  font: PoemFont
+  theme: PoemTheme
+}
+
+export const DEFAULT_STYLE: PoemStyle = { font: 'amiri', theme: 'paper' }
+export const POEM_FONTS: PoemFont[] = ['amiri', 'naskh', 'ruqaa', 'scheherazade']
+export const POEM_THEMES: PoemTheme[] = ['paper', 'night', 'ivory', 'sage', 'rose']
+
+/** The CSS family for a face; every one ships inside the app. */
+export function fontFamilyFor(font: PoemFont | undefined): string {
+  switch (font) {
+    case 'naskh':
+      return "'Noto Naskh Arabic', 'Alcode Amiri', serif"
+    case 'ruqaa':
+      return "'Aref Ruqaa', 'Alcode Amiri', serif"
+    case 'scheherazade':
+      return "'Scheherazade New', 'Alcode Amiri', serif"
+    default:
+      return "'Alcode Amiri', 'Amiri', 'Noto Naskh Arabic', serif"
+  }
+}
+
+export function styleOf(poem: { style?: Partial<PoemStyle> | null }): PoemStyle {
+  return { font: poem.style?.font ?? DEFAULT_STYLE.font, theme: poem.style?.theme ?? DEFAULT_STYLE.theme }
+}
+
 export interface Poem {
   id: string
   title: string
@@ -51,6 +83,8 @@ export interface Poem {
   /** True when a recording is stored under the poem's id. */
   hasRecording: boolean
   recordingSeconds: number
+  /** How the poem is set on screen and on cards; absent means the default. */
+  style?: PoemStyle
   createdAt: number
   updatedAt: number
   /** Set instead of deleting, so the deletion reaches the other devices. */

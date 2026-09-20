@@ -1,3 +1,10 @@
+@import '@fontsource/noto-naskh-arabic/arabic-400.css';
+@import '@fontsource/noto-naskh-arabic/arabic-700.css';
+@import '@fontsource/aref-ruqaa/arabic-400.css';
+@import '@fontsource/aref-ruqaa/arabic-700.css';
+@import '@fontsource/scheherazade-new/arabic-400.css';
+@import '@fontsource/scheherazade-new/arabic-700.css';
+
 /* ============================================================================
    The Diwan — a poet's own room inside the studio.
 
@@ -239,7 +246,77 @@ details.dw-fold > .body { padding: 2px 14px 14px; }
   box-shadow: inset 0 0 0 4px var(--dw-paper), inset 0 0 0 5px var(--dw-line);
   direction: rtl;
   text-align: center;
-  font-family: var(--font-poem);
+  font-family: var(--dw-font, var(--font-poem));
+}
+/* The corner ornaments a bound diwan carries. */
+.dw-canvas::before,
+.dw-canvas::after {
+  content: '❧';
+  position: absolute;
+  color: var(--dw-gold);
+  font-size: 18px;
+  opacity: 0.8;
+}
+.dw-canvas { position: relative; }
+.dw-canvas.compact::before,
+.dw-canvas.compact::after { display: none; }
+.dw-canvas::before { top: 10px; inset-inline-start: 14px; }
+.dw-canvas::after { bottom: 8px; inset-inline-end: 14px; transform: rotate(180deg); }
+.dw-style { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.dw-style .lbl { font-size: var(--text-xs); color: var(--fg-3); margin-inline-end: 4px; }
+.dw-swatch {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 12%);
+}
+.dw-swatch.on { border-color: var(--accent); }
+.dw-font {
+  padding: 4px 10px;
+  border-radius: var(--r-full);
+  border: 1px solid var(--hairline);
+  background: var(--surface);
+  color: var(--fg-2);
+  font-size: 15px;
+}
+.dw-font.on { border-color: var(--dw-gold); color: var(--fg); background: color-mix(in srgb, var(--dw-gold) 14%, transparent); }
+.dw-ai { display: flex; flex-direction: column; gap: 10px; }
+.dw-ai .item { padding: 10px 12px; border: 1px solid var(--hairline); border-radius: var(--r-md); background: var(--surface); }
+.dw-ai .item p { margin: 0; font: 400 15px var(--font-poem); line-height: 1.7; }
+.dw-ai .item small { display: block; margin-top: 4px; color: var(--fg-3); font-size: var(--text-xs); line-height: 1.5; }
+.dw-ai h4 { margin: 4px 0 0; font-size: var(--text-sm); color: var(--fg-2); }
+.dw-ai ul { margin: 0; padding-inline-start: 18px; line-height: 1.7; font-size: var(--text-base); }
+.dw-canvas.theme-night {
+  --dw-paper: #1c1a2a;
+  --dw-paper-2: #100e18;
+  --dw-ink: #f2ebdc;
+  --dw-soft: #b3a68c;
+  --dw-gold: #d2b06a;
+  --dw-line: color-mix(in srgb, #d2b06a 40%, transparent);
+}
+.dw-canvas.theme-ivory {
+  --dw-paper: #fcfbf8;
+  --dw-paper-2: #f2efe7;
+  --dw-ink: #1f1f1f;
+  --dw-soft: #6b6b6b;
+  --dw-gold: #9a8a5a;
+}
+.dw-canvas.theme-sage {
+  --dw-paper: #eef3ec;
+  --dw-paper-2: #d9e4d3;
+  --dw-ink: #1f2a1e;
+  --dw-soft: #5f7059;
+  --dw-gold: #7f9b6e;
+  --dw-line: color-mix(in srgb, #7f9b6e 40%, transparent);
+}
+.dw-canvas.theme-rose {
+  --dw-paper: #fbf0ee;
+  --dw-paper-2: #f0d9d4;
+  --dw-ink: #2b1d1b;
+  --dw-soft: #8a6560;
+  --dw-gold: #b8776a;
+  --dw-line: color-mix(in srgb, #b8776a 40%, transparent);
 }
 .dw-canvas h2 { margin: 0 0 2px; font-size: 26px; font-weight: 700; }
 .dw-canvas .meta { color: var(--dw-soft); font-size: 13px; }
