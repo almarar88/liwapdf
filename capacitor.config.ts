@@ -1,8 +1,8 @@
 import type { CapacitorConfig } from '@capacitor/cli'
 
 const config: CapacitorConfig = {
-  appId: 'app.alcode.editor',
-  appName: 'Alcode Editor',
+  appId: 'app.alcode.awraq',
+  appName: 'أوراق',
   webDir: 'out/mobile',
   android: {
     // The app works on files the user picked; mixed content is never needed.

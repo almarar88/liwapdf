@@ -15,7 +15,7 @@ android {
     namespace = "app.alcode.editor"
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "app.alcode.editor"
+        applicationId "app.alcode.awraq"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode appVersionCode
